@@ -112,6 +112,9 @@ TYPES_FILE=$(extract_types "$FILE_PATH")
 # Find Swift files containing definitions for the types.
 FOUND_FILES=$(find_definition_files "$TYPES_FILE" "$SEARCH_ROOT")
 
+# NEW: Ensure the chosen TODO file is included in the found files.
+echo "$FILE_PATH" >> "$FOUND_FILES"
+
 # If slim mode is enabled, filter the FOUND_FILES list.
 if [ "$SLIM" = true ]; then
     echo "Slim mode enabled: filtering files to include only the TODO file and model files..."
