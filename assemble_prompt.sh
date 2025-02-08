@@ -32,12 +32,11 @@ assemble_prompt() {
         clipboard_content+=$(printf "\nThe contents of %s is as follows:\n\n%s\n\n--------------------------------------------------\n" "$file_basename" "$file_content")
     done <<< "$unique_found_files"
     
-    # Replace "// TODO: - " with "// TODO: ChatGPT: " for consistency.
-    local modified_clipboard_content
-    modified_clipboard_content=$(echo -e "$clipboard_content" | sed 's/\/\/ TODO: - /\/\/ TODO: ChatGPT: /g')
+    # Removed the massaging of "// TODO: - " into "// TODO: ChatGPT: "
+    local modified_clipboard_content="$clipboard_content"
     
     # Instead of appending the actual TODO instruction, use the fixed instruction:
-    local fixed_instruction="Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore \"// TODO: example\" because it doesn't have the hyphen"
+    local fixed_instruction="Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen"
     
     local final_clipboard_content
     final_clipboard_content=$(printf "%s\n\n%s" "$modified_clipboard_content" "$fixed_instruction")
