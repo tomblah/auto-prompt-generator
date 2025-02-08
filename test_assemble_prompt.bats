@@ -57,6 +57,6 @@ EOF
   [[ "$output" == *"struct MyStruct {}"* ]]
   
   # Confirm that the fixed instruction content is appended at the end.
-  fixed_instruction="Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore \"// TODO: example\" because it doesn't have the hyphen"
+  fixed_instruction="Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen"
   [[ "$output" == *"$fixed_instruction"* ]]
 }
