@@ -9,15 +9,17 @@ set -euo pipefail
 # processes it along with related type definitions in the repository,
 # and then assembles a ChatGPT prompt that is copied to the clipboard.
 #
-# It sources the find_prompt_instruction.sh component to
-# isolate the logic for finding the TODO instruction.
+# It sources the following components:
+#   - find_prompt_instruction.sh : Locates the unique Swift file with the TODO.
+#   - extract_types.sh           : Extracts potential type names from a Swift file.
 ##########################################
 
 # Determine the directory where this script resides.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Source the find_prompt_instruction component.
+# Source external components.
 source "$SCRIPT_DIR/find_prompt_instruction.sh"
+source "$SCRIPT_DIR/extract_types.sh"
 
 echo "--------------------------------------------------"
 
@@ -43,55 +45,22 @@ echo "Found exactly one instruction in $FILE_PATH"
 # (This extracts the first matching line from the file.)
 INSTRUCTION_CONTENT=$(grep -E '// TODO: (ChatGPT: |- )' "$FILE_PATH" | head -n 1 | sed 's/^[[:space:]]*//')
 
-# Temporary files for intermediate steps.
-TEMP_FILE_PREPROCESS="/tmp/filtered_swift_file_preprocess.tmp"
-TEMP_FILE_STAGE0="/tmp/filtered_swift_file_stage0.tmp"
-TEMP_FILE_STAGE1="/tmp/filtered_swift_file_stage1.tmp"
-TEMP_FILE_STAGE2="/tmp/filtered_swift_file_stage2.tmp"
-TYPES_FILE="/tmp/swift_types.txt"
-FOUND_FILES="/tmp/found_swift_files.tmp"
-
-# Ensure FOUND_FILES is empty at the start.
-> "$FOUND_FILES"
-
-# Start by adding the file containing the instruction to FOUND_FILES.
-echo "$FILE_PATH" >> "$FOUND_FILES"
-
-# --- Preprocessing the Swift file ---
-
-# Preprocess: Replace all non-alphanumeric characters with whitespace.
-awk '{gsub(/[^a-zA-Z0-9]/, " "); print}' "$FILE_PATH" > "$TEMP_FILE_PREPROCESS"
-
-# Stage 0: Trim leading spaces from each line.
-awk '{$1=$1; print}' "$TEMP_FILE_PREPROCESS" > "$TEMP_FILE_STAGE0"
-
-# Stage 1: Remove import lines.
-awk '!/^import /' "$TEMP_FILE_STAGE0" > "$TEMP_FILE_STAGE1"
-
-# Stage 2: Remove comment lines.
-awk '!/^\/\//' "$TEMP_FILE_STAGE1" > "$TEMP_FILE_STAGE2"
-
-# Stage 3: Extract potential type names (classes, structs, enums, etc.)
-awk '
-{
-    for(i = 1; i <= NF; i++) {
-        if ($i ~ /^[A-Z][A-Za-z0-9]+$/) {
-            print $i
-        } else if ($i ~ /\[[A-Z][A-Za-z0-9]+\]/) {
-            gsub(/\[|\]/, "", $i)
-            print $i
-        }
-    }
-}' "$TEMP_FILE_STAGE2" | sort | uniq > "$TYPES_FILE"
+# Use the extract_types component to get potential type names from the Swift file.
+TYPES_FILE=$(extract_types "$FILE_PATH")
 
 echo "--------------------------------------------------"
 echo "Types found:"
 cat "$TYPES_FILE"
 echo "--------------------------------------------------"
 
-# --- Finding Definition Files for the Types ---
+# Temporary file for storing found Swift files.
+FOUND_FILES="/tmp/found_swift_files.tmp"
+> "$FOUND_FILES"
 
-# For each type found, search for its definition in Swift files (class, struct, enum, etc.)
+# Add the file containing the instruction to FOUND_FILES.
+echo "$FILE_PATH" >> "$FOUND_FILES"
+
+# For each type found, search for its definition in Swift files.
 while read -r TYPE; do
     grep -rwlE --include="*.swift" "\\b(class|struct|enum|protocol|typealias)\\s+$TYPE\\b" "$GIT_ROOT" >> "$FOUND_FILES" || true
 done < "$TYPES_FILE"
@@ -101,12 +70,8 @@ sort "$FOUND_FILES" | uniq | while read -r file_path; do
     basename "$file_path"
 done
 
-# --- Assembling the Final Clipboard Content ---
-
-# Ensure we're working with a unique list of files.
+# Assemble the final clipboard content.
 UNIQUE_FOUND_FILES=$(sort "$FOUND_FILES" | uniq)
-
-# Initialize an empty variable to accumulate the content.
 CLIPBOARD_CONTENT=""
 
 while read -r file_path; do
@@ -115,7 +80,7 @@ while read -r file_path; do
     CLIPBOARD_CONTENT+="The contents of $FILE_BASENAME is as follows:\n\n$FILE_CONTENT\n\n--------------------------------------------------\n"
 done <<< "$UNIQUE_FOUND_FILES"
 
-# Modify the clipboard content: Replace "// TODO: - " with "// TODO: ChatGPT: "
+# Replace occurrences of "// TODO: - " with "// TODO: ChatGPT: "
 MODIFIED_CLIPBOARD_CONTENT=$(echo -e "$CLIPBOARD_CONTENT" | sed 's/\/\/ TODO: - /\/\/ TODO: ChatGPT: /g')
 
 # Append the instruction content to the final clipboard content.
