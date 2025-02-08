@@ -13,12 +13,28 @@
 find_definition_files() {
     local types_file="$1"
     local git_root="$2"
-    local found_files
-    found_files=$(mktemp)
+
+    # Create a temporary directory to store the intermediate file.
+    local tempdir
+    tempdir=$(mktemp -d)
+
+    local temp_found="$tempdir/found_files.txt"
+
+    # For each type listed in the types file, search for matching definitions.
     while IFS= read -r TYPE; do
-        grep -rwlE --include="*.swift" "\\b(class|struct|enum|protocol|typealias)\\s+$TYPE\\b" "$git_root" >> "$found_files" || true
+        grep -rwlE --include="*.swift" "\\b(class|struct|enum|protocol|typealias)\\s+$TYPE\\b" "$git_root" >> "$temp_found" || true
     done < "$types_file"
-    echo "$found_files"
+
+    # Copy the final results to a new temporary file outside of the temporary directory.
+    local final_found
+    final_found=$(mktemp)
+    cp "$temp_found" "$final_found"
+
+    # Clean up the temporary directory and its contents.
+    rm -rf "$tempdir"
+
+    # Output the path to the final file.
+    echo "$final_found"
 }
 
 # Allow running this file directly for a quick manual test.
