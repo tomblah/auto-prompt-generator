@@ -88,3 +88,31 @@ EOF
   [[ "$result" == *"$swift_file1"* ]]
   [[ "$result" == *"$swift_file2"* ]]
 }
+
+@test "finds definitions in subpackage directories" {
+  # Create a subdirectory to simulate a Swift package.
+  SUBPACKAGE_DIR="$GIT_ROOT/SubPackage"
+  mkdir -p "$SUBPACKAGE_DIR"
+  # Mark it as a package by creating a Package.swift file.
+  touch "$SUBPACKAGE_DIR/Package.swift"
+  
+  # Create a Swift file in the subpackage that defines MyEnum.
+  swift_file="$SUBPACKAGE_DIR/SubFile.swift"
+  cat <<'EOF' > "$swift_file"
+import Foundation
+enum MyEnum {
+}
+EOF
+
+  # Write the type name to the types file.
+  echo "MyEnum" > "$TYPES_FILE"
+
+  run find_definition_files "$TYPES_FILE" "$GIT_ROOT"
+  [ "$status" -eq 0 ]
+
+  FOUND_FILES_FILE="$output"
+  result="$(cat "$FOUND_FILES_FILE")"
+  
+  # Expect the swift file path from the subpackage to be present in the result.
+  [[ "$result" == *"$swift_file"* ]]
+}
