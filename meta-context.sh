@@ -4,9 +4,15 @@ set -euo pipefail
 ##########################################
 # meta-context.sh
 #
-# This script collects the contents of all .sh and README* files
+# This script collects the contents of all .sh, README* files,
+# and optionally .bats files (if --include-tests is passed)
 # in the repository (excluding itself and any files in the Legacy or MockFiles folders)
 # and copies them to the clipboard.
+#
+# Usage:
+#   ./meta-context.sh [--include-tests]
+#
+# When the --include-tests option is used, .bats files will also be included.
 #
 # Before each file's content, a header is added in the following format:
 #
@@ -14,10 +20,25 @@ set -euo pipefail
 #
 # At the very end of the prompt, a custom message is appended:
 #
-#   I'm improving the get_the_prompt.sh script (see README above). I would like you to
+#   I'm improving the get_the_prompt.sh script (see README above for more context)...
 #
 # The final prompt is then copied to the clipboard using pbcopy.
 ##########################################
+
+# Parse command-line options
+INCLUDE_TESTS=false
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --include-tests)
+            INCLUDE_TESTS=true
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+    esac
+done
 
 # Determine the directory where this script resides.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,12 +47,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$SCRIPT_DIR")
 cd "$REPO_ROOT"
 
-# Find all .sh and README* files in the repository,
-# excluding meta-context.sh itself and any files under Legacy or MockFiles directories.
-files=$(find . -type f \( -iname "*.sh" -o -iname "README*" \) \
-        -not -name "meta-context.sh" \
-        -not -path "*/Legacy/*" \
-        -not -path "*/MockFiles/*")
+# Build the find command based on whether tests should be included.
+if $INCLUDE_TESTS; then
+    echo "Including .bats files in the context."
+    files=$(find . -type f \( -iname "*.sh" -o -iname "README*" -o -iname "*.bats" \) \
+            -not -name "meta-context.sh" \
+            -not -path "*/Legacy/*" \
+            -not -path "*/MockFiles/*")
+else
+    files=$(find . -type f \( -iname "*.sh" -o -iname "README*" \) \
+            -not -name "meta-context.sh" \
+            -not -path "*/Legacy/*" \
+            -not -path "*/MockFiles/*")
+fi
 
 echo "--------------------------------------------------"
 echo "Files to include in the meta-context prompt:"
