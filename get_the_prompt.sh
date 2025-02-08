@@ -10,14 +10,15 @@ set -euo pipefail
 # and then assembles a ChatGPT prompt that is copied to the clipboard.
 #
 # Usage:
-#   get-the-prompt.sh [--slim]
+#   get-the-prompt.sh [--slim] [--exclude <filename>] [--exclude <another_filename>] ...
 #
 # Options:
-#   --slim    Only include the file that contains the TODO instruction
-#             and “model” files. In slim mode, files whose names contain
-#             keywords such as “ViewController”, “Manager”, “Presenter”,
-#             “Configurator”, “Router”, “DataSource”, “Delegate”, or “View”
-#             are excluded.
+#   --slim         Only include the file that contains the TODO instruction
+#                  and “model” files. In slim mode, files whose names contain
+#                  keywords such as “ViewController”, “Manager”, “Presenter”,
+#                  “Configurator”, “Router”, “DataSource”, “Delegate”, or “View”
+#                  are excluded.
+#   --exclude      Exclude any file whose basename matches the provided filename.
 #
 # It sources the following components:
 #   - find_prompt_instruction.sh       : Locates the unique Swift file with the TODO.
@@ -25,20 +26,35 @@ set -euo pipefail
 #   - extract_types.sh                 : Extracts potential type names from a Swift file.
 #   - find_definition_files.sh         : Finds Swift files containing definitions for the types.
 #   - filter_files.sh                  : Filters the found files in slim mode.
+#   - exclude_files.sh                 : (New) Filters out files matching user-specified exclusions.
 #   - assemble_prompt.sh               : Assembles the final prompt and copies it to the clipboard.
 #   - get_git_root.sh                  : Determines the Git repository root.
 ##########################################
 
 # Process optional parameters.
 SLIM=false
-if [ "$#" -gt 0 ]; then
-    if [ "$1" == "--slim" ]; then
-        SLIM=true
-    else
-        echo "Usage: $0 [--slim]" >&2
-        exit 1
-    fi
-fi
+EXCLUDES=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --slim)
+            SLIM=true
+            shift
+            ;;
+        --exclude)
+            if [ -n "${2:-}" ]; then
+                EXCLUDES+=("$2")
+                shift 2
+            else
+                echo "Usage: $0 [--slim] [--exclude <filename>]" >&2
+                exit 1
+            fi
+            ;;
+        *)
+            echo "Usage: $0 [--slim] [--exclude <filename>]" >&2
+            exit 1
+            ;;
+    esac
+done
 
 # Save the directory where you invoked the script.
 CURRENT_DIR="$(pwd)"
@@ -51,7 +67,8 @@ source "$SCRIPT_DIR/find_prompt_instruction.sh"
 source "$SCRIPT_DIR/extract_instruction_content.sh"
 source "$SCRIPT_DIR/extract_types.sh"
 source "$SCRIPT_DIR/find_definition_files.sh"
-source "$SCRIPT_DIR/filter_files.sh"   # New component for slim mode filtering.
+source "$SCRIPT_DIR/filter_files.sh"      # Slim mode filtering.
+source "$SCRIPT_DIR/exclude_files.sh"       # New exclusion filtering.
 source "$SCRIPT_DIR/assemble_prompt.sh"
 source "$SCRIPT_DIR/get_git_root.sh"
 
@@ -84,6 +101,12 @@ FOUND_FILES=$(find_definition_files "$TYPES_FILE" "$GIT_ROOT")
 if [ "$SLIM" = true ]; then
     echo "Slim mode enabled: filtering files to include only the TODO file and model files..."
     FOUND_FILES=$(filter_files_for_slim_mode "$FILE_PATH" "$FOUND_FILES")
+fi
+
+# If any exclusions were specified, filter them out.
+if [ "${#EXCLUDES[@]}" -gt 0 ]; then
+    echo "Excluding files matching: ${EXCLUDES[*]}"
+    FOUND_FILES=$(filter_excluded_files "$FOUND_FILES" "${EXCLUDES[@]}")
 fi
 
 # Register a trap to clean up temporary files.
