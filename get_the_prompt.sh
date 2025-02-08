@@ -9,14 +9,52 @@ set -euo pipefail
 # processes it along with related type definitions in the repository,
 # and then assembles a ChatGPT prompt that is copied to the clipboard.
 #
+# Usage:
+#   get-the-prompt.sh [--slim] [--exclude <filename>] [--exclude <another_filename>] ...
+#
+# Options:
+#   --slim         Only include the file that contains the TODO instruction
+#                  and “model” files. In slim mode, files whose names contain
+#                  keywords such as “ViewController”, “Manager”, “Presenter”,
+#                  “Configurator”, “Router”, “DataSource”, “Delegate”, or “View”
+#                  are excluded.
+#   --exclude      Exclude any file whose basename matches the provided filename.
+#
 # It sources the following components:
 #   - find_prompt_instruction.sh       : Locates the unique Swift file with the TODO.
 #   - extract_instruction_content.sh   : Extracts the TODO instruction content from the file.
 #   - extract_types.sh                 : Extracts potential type names from a Swift file.
 #   - find_definition_files.sh         : Finds Swift files containing definitions for the types.
+#   - filter_files.sh                  : Filters the found files in slim mode.
+#   - exclude_files.sh                 : (New) Filters out files matching user-specified exclusions.
 #   - assemble_prompt.sh               : Assembles the final prompt and copies it to the clipboard.
 #   - get_git_root.sh                  : Determines the Git repository root.
 ##########################################
+
+# Process optional parameters.
+SLIM=false
+EXCLUDES=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --slim)
+            SLIM=true
+            shift
+            ;;
+        --exclude)
+            if [ -n "${2:-}" ]; then
+                EXCLUDES+=("$2")
+                shift 2
+            else
+                echo "Usage: $0 [--slim] [--exclude <filename>]" >&2
+                exit 1
+            fi
+            ;;
+        *)
+            echo "Usage: $0 [--slim] [--exclude <filename>]" >&2
+            exit 1
+            ;;
+    esac
+done
 
 # Save the directory where you invoked the script.
 CURRENT_DIR="$(pwd)"
@@ -29,8 +67,10 @@ source "$SCRIPT_DIR/find_prompt_instruction.sh"
 source "$SCRIPT_DIR/extract_instruction_content.sh"
 source "$SCRIPT_DIR/extract_types.sh"
 source "$SCRIPT_DIR/find_definition_files.sh"
+source "$SCRIPT_DIR/filter_files.sh"      # Slim mode filtering.
+source "$SCRIPT_DIR/exclude_files.sh"       # New exclusion filtering.
 source "$SCRIPT_DIR/assemble_prompt.sh"
-source "$SCRIPT_DIR/get_git_root.sh"  # Newly extracted module
+source "$SCRIPT_DIR/get_git_root.sh"
 
 echo "--------------------------------------------------"
 
@@ -48,16 +88,28 @@ cd "$GIT_ROOT"
 FILE_PATH=$(find_prompt_instruction "$GIT_ROOT") || exit 1
 echo "Found exactly one instruction in $FILE_PATH"
 
-# Extract the instruction content from the file using the dedicated module.
+# Extract the instruction content from the file.
 INSTRUCTION_CONTENT=$(extract_instruction_content "$FILE_PATH")
 
-# Use the extract_types component to get potential type names from the Swift file.
+# Extract potential type names from the Swift file.
 TYPES_FILE=$(extract_types "$FILE_PATH")
 
-# Use find_definition_files to search for Swift files containing definitions.
+# Find Swift files containing definitions for the types.
 FOUND_FILES=$(find_definition_files "$TYPES_FILE" "$GIT_ROOT")
 
-# Register a trap to clean up the temporary files on exit.
+# If slim mode is enabled, filter the FOUND_FILES list.
+if [ "$SLIM" = true ]; then
+    echo "Slim mode enabled: filtering files to include only the TODO file and model files..."
+    FOUND_FILES=$(filter_files_for_slim_mode "$FILE_PATH" "$FOUND_FILES")
+fi
+
+# If any exclusions were specified, filter them out.
+if [ "${#EXCLUDES[@]}" -gt 0 ]; then
+    echo "Excluding files matching: ${EXCLUDES[*]}"
+    FOUND_FILES=$(filter_excluded_files "$FOUND_FILES" "${EXCLUDES[@]}")
+fi
+
+# Register a trap to clean up temporary files.
 cleanup_temp_files() {
     [[ -n "${TYPES_FILE:-}" ]] && rm -f "$TYPES_FILE"
     [[ -n "${FOUND_FILES:-}" ]] && rm -f "$FOUND_FILES"

@@ -15,7 +15,7 @@ teardown() {
 # Load the assemble_prompt component. Adjust the path if needed.
 load "${BATS_TEST_DIRNAME}/assemble_prompt.sh"
 
-@test "assemble_prompt formats output correctly" {
+@test "assemble_prompt formats output correctly with fixed instruction" {
   # Create two temporary Swift files.
   file1="$TMP_DIR/File1.swift"
   file2="$TMP_DIR/File2.swift"
@@ -38,8 +38,8 @@ EOF
   echo "$file2" >> "$found_files_file"
   echo "$file1" >> "$found_files_file"  # duplicate entry to test deduplication.
 
-  # Define a sample instruction content.
-  instruction_content="This is the instruction content."
+  # Define a sample instruction content that should be ignored.
+  instruction_content="This is the instruction content that will be ignored."
 
   # Run the assemble_prompt function.
   run assemble_prompt "$found_files_file" "$instruction_content"
@@ -56,6 +56,7 @@ EOF
   [[ "$output" == *"class MyClass {"* ]]
   [[ "$output" == *"struct MyStruct {}"* ]]
   
-  # Confirm that the instruction content is appended at the end.
-  [[ "$output" == *"$instruction_content"* ]]
+  # Confirm that the fixed instruction content is appended at the end.
+  fixed_instruction="Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore \"// TODO: example\" because it doesn't have the hyphen"
+  [[ "$output" == *"$fixed_instruction"* ]]
 }
