@@ -20,14 +20,20 @@
 #   All intermediate temporary files (except the final output) are cleaned up.
 extract_types() {
     local swift_file="$1"
+    
+    # Create a temporary directory for all intermediate files.
+    local tempdir
+    tempdir=$(mktemp -d)
 
-    # Create temporary files for each processing stage.
-    local temp_preprocess temp_stage0 temp_stage1 temp_stage2 types_file
-    temp_preprocess=$(mktemp)
-    temp_stage0=$(mktemp)
-    temp_stage1=$(mktemp)
-    temp_stage2=$(mktemp)
-    types_file=$(mktemp)
+    # Define paths for intermediate files inside the temporary directory.
+    local temp_preprocess="$tempdir/temp_preprocess"
+    local temp_stage0="$tempdir/temp_stage0"
+    local temp_stage1="$tempdir/temp_stage1"
+    local temp_stage2="$tempdir/temp_stage2"
+    local types_file="$tempdir/types_file"
+
+    # Set a trap to ensure the temporary directory is removed if the function exits prematurely.
+    trap 'rm -rf "$tempdir"' EXIT
 
     # Preprocessing: Replace all non-alphanumeric characters with whitespace.
     awk '{gsub(/[^a-zA-Z0-9]/, " "); print}' "$swift_file" > "$temp_preprocess"
@@ -56,11 +62,17 @@ extract_types() {
         }
     }' "$temp_stage2" | sort | uniq > "$types_file"
 
-    # Clean up the intermediate temporary files.
-    rm "$temp_preprocess" "$temp_stage0" "$temp_stage1" "$temp_stage2"
+    # Copy the final types file to a new temporary file outside of tempdir.
+    local final_types_file
+    final_types_file=$(mktemp)
+    cp "$types_file" "$final_types_file"
 
-    # Output the file containing the sorted, unique list of types.
-    echo "$types_file"
+    # Clean up: Remove the temporary directory and its contents.
+    rm -rf "$tempdir"
+    trap - EXIT
+
+    # Output the path to the final file containing the sorted, unique list of types.
+    echo "$final_types_file"
 }
 
 # Allow running this file directly for quick manual testing.
