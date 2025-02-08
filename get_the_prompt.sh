@@ -29,6 +29,7 @@ set -euo pipefail
 #   - exclude_files.sh                 : Filters out files matching user-specified exclusions.
 #   - assemble_prompt.sh               : Assembles the final prompt and copies it to the clipboard.
 #   - get_git_root.sh                  : Determines the Git repository root.
+#   - get_package_root.sh              : Determines the package root (if any) for a given file.
 ##########################################
 
 # Process optional parameters.
@@ -88,12 +89,12 @@ cd "$GIT_ROOT"
 FILE_PATH=$(find_prompt_instruction "$GIT_ROOT") || exit 1
 echo "Found exactly one instruction in $FILE_PATH"
 
-# --- NEW: Determine Package Scope ---
+# --- Determine Package Scope ---
 # Source the package root helper.
 source "$SCRIPT_DIR/get_package_root.sh"
 
 # If the TODO file is in a package (i.e. an ancestor directory contains Package.swift),
-# use that as the search scope; otherwise, continue using the Git root.
+# use that package as the search scope; otherwise, use the entire Git repository.
 PACKAGE_ROOT=$(get_package_root "$FILE_PATH" || true)
 if [ -n "$PACKAGE_ROOT" ]; then
     echo "Found package root: $PACKAGE_ROOT"
@@ -139,7 +140,7 @@ echo "Types found:"
 cat "$TYPES_FILE"
 echo "--------------------------------------------------"
 
-echo "Files:"
+echo "Files (final list):"
 sort "$FOUND_FILES" | uniq | while read -r file_path; do
     basename "$file_path"
 done
