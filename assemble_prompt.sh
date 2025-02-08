@@ -27,9 +27,9 @@ assemble_prompt() {
         file_basename=$(basename "$file_path")
         local file_content
         file_content=$(cat "$file_path")
-        
-        # Append a header and the file content, followed by a separator.
-        clipboard_content+=$(printf "The contents of %s is as follows:\n\n%s\n\n--------------------------------------------------\n" "$file_basename" "$file_content")
+    
+        # Prepend a newline so that the header appears on its own line.
+        clipboard_content+=$(printf "\nThe contents of %s is as follows:\n\n%s\n\n--------------------------------------------------\n" "$file_basename" "$file_content")
     done <<< "$unique_found_files"
     
     # Replace "// TODO: - " with "// TODO: ChatGPT: " for consistency.
