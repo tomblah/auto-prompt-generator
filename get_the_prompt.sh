@@ -12,6 +12,7 @@ set -euo pipefail
 # It sources the following components:
 #   - find_prompt_instruction.sh : Locates the unique Swift file with the TODO.
 #   - extract_types.sh           : Extracts potential type names from a Swift file.
+#   - find_definition_files.sh   : Finds Swift files containing definitions for the types.
 ##########################################
 
 # Determine the directory where this script resides.
@@ -20,6 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Source external components.
 source "$SCRIPT_DIR/find_prompt_instruction.sh"
 source "$SCRIPT_DIR/extract_types.sh"
+source "$SCRIPT_DIR/find_definition_files.sh"
 
 echo "--------------------------------------------------"
 
@@ -53,17 +55,8 @@ echo "Types found:"
 cat "$TYPES_FILE"
 echo "--------------------------------------------------"
 
-# Temporary file for storing found Swift files.
-FOUND_FILES="/tmp/found_swift_files.tmp"
-> "$FOUND_FILES"
-
-# Add the file containing the instruction to FOUND_FILES.
-echo "$FILE_PATH" >> "$FOUND_FILES"
-
-# For each type found, search for its definition in Swift files.
-while read -r TYPE; do
-    grep -rwlE --include="*.swift" "\\b(class|struct|enum|protocol|typealias)\\s+$TYPE\\b" "$GIT_ROOT" >> "$FOUND_FILES" || true
-done < "$TYPES_FILE"
+# Use find_definition_files to search for Swift files containing definitions.
+FOUND_FILES=$(find_definition_files "$TYPES_FILE" "$GIT_ROOT")
 
 echo "Files:"
 sort "$FOUND_FILES" | uniq | while read -r file_path; do
