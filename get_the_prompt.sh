@@ -13,6 +13,7 @@ set -euo pipefail
 #   - find_prompt_instruction.sh : Locates the unique Swift file with the TODO.
 #   - extract_types.sh           : Extracts potential type names from a Swift file.
 #   - find_definition_files.sh   : Finds Swift files containing definitions for the types.
+#   - assemble_prompt.sh         : Assembles the final prompt and copies it to the clipboard.
 ##########################################
 
 # Determine the directory where this script resides.
@@ -22,6 +23,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/find_prompt_instruction.sh"
 source "$SCRIPT_DIR/extract_types.sh"
 source "$SCRIPT_DIR/find_definition_files.sh"
+source "$SCRIPT_DIR/assemble_prompt.sh"
 
 echo "--------------------------------------------------"
 
@@ -63,24 +65,8 @@ sort "$FOUND_FILES" | uniq | while read -r file_path; do
     basename "$file_path"
 done
 
-# Assemble the final clipboard content.
-UNIQUE_FOUND_FILES=$(sort "$FOUND_FILES" | uniq)
-CLIPBOARD_CONTENT=""
-
-while read -r file_path; do
-    FILE_BASENAME=$(basename "$file_path")
-    FILE_CONTENT=$(cat "$file_path")
-    CLIPBOARD_CONTENT+="The contents of $FILE_BASENAME is as follows:\n\n$FILE_CONTENT\n\n--------------------------------------------------\n"
-done <<< "$UNIQUE_FOUND_FILES"
-
-# Replace occurrences of "// TODO: - " with "// TODO: ChatGPT: "
-MODIFIED_CLIPBOARD_CONTENT=$(echo -e "$CLIPBOARD_CONTENT" | sed 's/\/\/ TODO: - /\/\/ TODO: ChatGPT: /g')
-
-# Append the instruction content to the final clipboard content.
-FINAL_CLIPBOARD_CONTENT="$MODIFIED_CLIPBOARD_CONTENT\n\n$INSTRUCTION_CONTENT"
-
-# Copy the final content to the clipboard using pbcopy.
-echo -e "$FINAL_CLIPBOARD_CONTENT" | pbcopy
+# Assemble the final clipboard content and copy it to the clipboard.
+FINAL_CLIPBOARD_CONTENT=$(assemble_prompt "$FOUND_FILES" "$INSTRUCTION_CONTENT")
 
 echo "--------------------------------------------------"
 echo
