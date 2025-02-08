@@ -52,13 +52,20 @@ INSTRUCTION_CONTENT=$(grep -E '// TODO: (ChatGPT: |- )' "$FILE_PATH" | head -n 1
 # Use the extract_types component to get potential type names from the Swift file.
 TYPES_FILE=$(extract_types "$FILE_PATH")
 
+# Use find_definition_files to search for Swift files containing definitions.
+FOUND_FILES=$(find_definition_files "$TYPES_FILE" "$GIT_ROOT")
+
+# Register a trap to clean up the temporary files on exit.
+cleanup_temp_files() {
+    [[ -n "${TYPES_FILE:-}" ]] && rm -f "$TYPES_FILE"
+    [[ -n "${FOUND_FILES:-}" ]] && rm -f "$FOUND_FILES"
+}
+trap cleanup_temp_files EXIT
+
 echo "--------------------------------------------------"
 echo "Types found:"
 cat "$TYPES_FILE"
 echo "--------------------------------------------------"
-
-# Use find_definition_files to search for Swift files containing definitions.
-FOUND_FILES=$(find_definition_files "$TYPES_FILE" "$GIT_ROOT")
 
 echo "Files:"
 sort "$FOUND_FILES" | uniq | while read -r file_path; do
