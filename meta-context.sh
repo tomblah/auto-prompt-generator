@@ -4,7 +4,7 @@ set -euo pipefail
 ##########################################
 # meta-context.sh
 #
-# This script collects the contents of all .sh, .bats, and README* files
+# This script collects the contents of all .sh and README* files
 # in the repository (excluding itself and any files in the Legacy or MockFiles folders)
 # and copies them to the clipboard.
 #
@@ -26,9 +26,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$SCRIPT_DIR")
 cd "$REPO_ROOT"
 
-# Find all .sh, .bats, and README* files in the repository,
+# Find all .sh and README* files in the repository,
 # excluding meta-context.sh itself and any files under Legacy or MockFiles directories.
-files=$(find . -type f \( -iname "*.sh" -o -iname "*.bats" -o -iname "README*" \) \
+files=$(find . -type f \( -iname "*.sh" -o -iname "README*" \) \
         -not -name "meta-context.sh" \
         -not -path "*/Legacy/*" \
         -not -path "*/MockFiles/*")

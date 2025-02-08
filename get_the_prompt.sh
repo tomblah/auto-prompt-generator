@@ -26,7 +26,7 @@ set -euo pipefail
 #   - extract_types.sh                 : Extracts potential type names from a Swift file.
 #   - find_definition_files.sh         : Finds Swift files containing definitions for the types.
 #   - filter_files.sh                  : Filters the found files in slim mode.
-#   - exclude_files.sh                 : (New) Filters out files matching user-specified exclusions.
+#   - exclude_files.sh                 : Filters out files matching user-specified exclusions.
 #   - assemble_prompt.sh               : Assembles the final prompt and copies it to the clipboard.
 #   - get_git_root.sh                  : Determines the Git repository root.
 ##########################################
@@ -68,7 +68,7 @@ source "$SCRIPT_DIR/extract_instruction_content.sh"
 source "$SCRIPT_DIR/extract_types.sh"
 source "$SCRIPT_DIR/find_definition_files.sh"
 source "$SCRIPT_DIR/filter_files.sh"      # Slim mode filtering.
-source "$SCRIPT_DIR/exclude_files.sh"       # New exclusion filtering.
+source "$SCRIPT_DIR/exclude_files.sh"       # Exclusion filtering.
 source "$SCRIPT_DIR/assemble_prompt.sh"
 source "$SCRIPT_DIR/get_git_root.sh"
 
@@ -88,6 +88,21 @@ cd "$GIT_ROOT"
 FILE_PATH=$(find_prompt_instruction "$GIT_ROOT") || exit 1
 echo "Found exactly one instruction in $FILE_PATH"
 
+# --- NEW: Determine Package Scope ---
+# Source the package root helper.
+source "$SCRIPT_DIR/get_package_root.sh"
+
+# If the TODO file is in a package (i.e. an ancestor directory contains Package.swift),
+# use that as the search scope; otherwise, continue using the Git root.
+PACKAGE_ROOT=$(get_package_root "$FILE_PATH" || true)
+if [ -n "$PACKAGE_ROOT" ]; then
+    echo "Found package root: $PACKAGE_ROOT"
+    SEARCH_ROOT="$PACKAGE_ROOT"
+else
+    SEARCH_ROOT="$GIT_ROOT"
+fi
+# --- End Package Scope ---
+
 # Extract the instruction content from the file.
 INSTRUCTION_CONTENT=$(extract_instruction_content "$FILE_PATH")
 
@@ -95,7 +110,7 @@ INSTRUCTION_CONTENT=$(extract_instruction_content "$FILE_PATH")
 TYPES_FILE=$(extract_types "$FILE_PATH")
 
 # Find Swift files containing definitions for the types.
-FOUND_FILES=$(find_definition_files "$TYPES_FILE" "$GIT_ROOT")
+FOUND_FILES=$(find_definition_files "$TYPES_FILE" "$SEARCH_ROOT")
 
 # If slim mode is enabled, filter the FOUND_FILES list.
 if [ "$SLIM" = true ]; then
