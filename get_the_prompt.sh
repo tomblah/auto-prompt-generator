@@ -10,10 +10,11 @@ set -euo pipefail
 # and then assembles a ChatGPT prompt that is copied to the clipboard.
 #
 # It sources the following components:
-#   - find_prompt_instruction.sh : Locates the unique Swift file with the TODO.
-#   - extract_types.sh           : Extracts potential type names from a Swift file.
-#   - find_definition_files.sh   : Finds Swift files containing definitions for the types.
-#   - assemble_prompt.sh         : Assembles the final prompt and copies it to the clipboard.
+#   - find_prompt_instruction.sh      : Locates the unique Swift file with the TODO.
+#   - extract_instruction_content.sh  : Extracts the TODO instruction content from the file.
+#   - extract_types.sh                : Extracts potential type names from a Swift file.
+#   - find_definition_files.sh        : Finds Swift files containing definitions for the types.
+#   - assemble_prompt.sh              : Assembles the final prompt and copies it to the clipboard.
 ##########################################
 
 # Save the directory where you invoked the script.
@@ -24,6 +25,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source external components from SCRIPT_DIR.
 source "$SCRIPT_DIR/find_prompt_instruction.sh"
+source "$SCRIPT_DIR/extract_instruction_content.sh"   # New module for extracting the TODO instruction.
 source "$SCRIPT_DIR/extract_types.sh"
 source "$SCRIPT_DIR/find_definition_files.sh"
 source "$SCRIPT_DIR/assemble_prompt.sh"
@@ -48,8 +50,8 @@ cd "$GIT_ROOT"
 FILE_PATH=$(find_prompt_instruction "$GIT_ROOT") || exit 1
 echo "Found exactly one instruction in $FILE_PATH"
 
-# Extract the instruction content from the file.
-INSTRUCTION_CONTENT=$(grep -E '// TODO: (ChatGPT: |- )' "$FILE_PATH" | head -n 1 | sed 's/^[[:space:]]*//')
+# Extract the instruction content from the file using the dedicated module.
+INSTRUCTION_CONTENT=$(extract_instruction_content "$FILE_PATH")
 
 # Use the extract_types component to get potential type names from the Swift file.
 TYPES_FILE=$(extract_types "$FILE_PATH")
