@@ -16,10 +16,13 @@ set -euo pipefail
 #   - assemble_prompt.sh         : Assembles the final prompt and copies it to the clipboard.
 ##########################################
 
+# Save the directory where you invoked the script.
+CURRENT_DIR="$(pwd)"
+
 # Determine the directory where this script resides.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Source external components.
+# Source external components from SCRIPT_DIR.
 source "$SCRIPT_DIR/find_prompt_instruction.sh"
 source "$SCRIPT_DIR/extract_types.sh"
 source "$SCRIPT_DIR/find_definition_files.sh"
@@ -27,10 +30,10 @@ source "$SCRIPT_DIR/assemble_prompt.sh"
 
 echo "--------------------------------------------------"
 
-# Change to the directory of the script.
-cd "$SCRIPT_DIR"
+# Change back to the directory where the command was invoked.
+cd "$CURRENT_DIR"
 
-# Determine the root directory of the Git repository.
+# Determine the root directory of the Git repository based on the current directory.
 GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 if [ -z "$GIT_ROOT" ]; then
     echo "Error: Not a git repository." >&2
@@ -46,7 +49,6 @@ FILE_PATH=$(find_prompt_instruction "$GIT_ROOT") || exit 1
 echo "Found exactly one instruction in $FILE_PATH"
 
 # Extract the instruction content from the file.
-# (This extracts the first matching line from the file.)
 INSTRUCTION_CONTENT=$(grep -E '// TODO: (ChatGPT: |- )' "$FILE_PATH" | head -n 1 | sed 's/^[[:space:]]*//')
 
 # Use the extract_types component to get potential type names from the Swift file.
