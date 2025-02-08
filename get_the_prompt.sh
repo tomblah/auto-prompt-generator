@@ -10,10 +10,12 @@ set -euo pipefail
 # and then assembles a ChatGPT prompt that is copied to the clipboard.
 #
 # It sources the following components:
-#   - find_prompt_instruction.sh : Locates the unique Swift file with the TODO.
-#   - extract_types.sh           : Extracts potential type names from a Swift file.
-#   - find_definition_files.sh   : Finds Swift files containing definitions for the types.
-#   - assemble_prompt.sh         : Assembles the final prompt and copies it to the clipboard.
+#   - find_prompt_instruction.sh       : Locates the unique Swift file with the TODO.
+#   - extract_instruction_content.sh   : Extracts the TODO instruction content from the file.
+#   - extract_types.sh                 : Extracts potential type names from a Swift file.
+#   - find_definition_files.sh         : Finds Swift files containing definitions for the types.
+#   - assemble_prompt.sh               : Assembles the final prompt and copies it to the clipboard.
+#   - get_git_root.sh                  : Determines the Git repository root.
 ##########################################
 
 # Save the directory where you invoked the script.
@@ -24,21 +26,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source external components from SCRIPT_DIR.
 source "$SCRIPT_DIR/find_prompt_instruction.sh"
+source "$SCRIPT_DIR/extract_instruction_content.sh"
 source "$SCRIPT_DIR/extract_types.sh"
 source "$SCRIPT_DIR/find_definition_files.sh"
 source "$SCRIPT_DIR/assemble_prompt.sh"
+source "$SCRIPT_DIR/get_git_root.sh"  # Newly extracted module
 
 echo "--------------------------------------------------"
 
 # Change back to the directory where the command was invoked.
 cd "$CURRENT_DIR"
 
-# Determine the root directory of the Git repository based on the current directory.
-GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
-if [ -z "$GIT_ROOT" ]; then
-    echo "Error: Not a git repository." >&2
-    exit 1
-fi
+# Determine the Git repository root.
+GIT_ROOT=$(get_git_root) || exit 1
 echo "Git root: $GIT_ROOT"
 
 # Move to the repository root.
@@ -48,8 +48,8 @@ cd "$GIT_ROOT"
 FILE_PATH=$(find_prompt_instruction "$GIT_ROOT") || exit 1
 echo "Found exactly one instruction in $FILE_PATH"
 
-# Extract the instruction content from the file.
-INSTRUCTION_CONTENT=$(grep -E '// TODO: (ChatGPT: |- )' "$FILE_PATH" | head -n 1 | sed 's/^[[:space:]]*//')
+# Extract the instruction content from the file using the dedicated module.
+INSTRUCTION_CONTENT=$(extract_instruction_content "$FILE_PATH")
 
 # Use the extract_types component to get potential type names from the Swift file.
 TYPES_FILE=$(extract_types "$FILE_PATH")
