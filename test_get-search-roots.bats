@@ -34,3 +34,18 @@ teardown() {
     fail "NonPackage directory should not be included in the search roots."
   fi
 }
+
+@test "get-search-roots returns only the package root when given a package root" {
+  # Create a temporary directory for a package root.
+  pkgRoot="$(mktemp -d)"
+  touch "$pkgRoot/Package.swift"
+  mkdir -p "$pkgRoot/SubPackage"
+  touch "$pkgRoot/SubPackage/Package.swift"
+
+  result="$(bash ./get-search-roots.sh "$pkgRoot")"
+  # Since the provided directory is already a package (contains Package.swift),
+  # we expect only that directory to be returned.
+  [ "$result" = "$pkgRoot" ]
+  
+  rm -rf "$pkgRoot"
+}
