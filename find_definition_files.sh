@@ -5,22 +5,22 @@
 # listed in a given types file. It looks for definitions of classes, structs, enums,
 # protocols, or typealiases matching the type names.
 #
-# Usage: find_definition_files <types_file> <git_root>
+# Usage: find_definition_files <types_file> <root>
 #
 # Output:
 #   On success: prints the path to a temporary file containing a list of Swift files
 #   where definitions were found.
 find_definition_files() {
     local types_file="$1"
-    local git_root="$2"
+    local root="$2"
 
     # Determine the directory where this script resides so we can reliably source get_search_roots.sh.
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-    # Get all search roots (the git root plus any Swift package directories)
+    # Get all search roots (the given root plus any Swift package directories)
     local search_roots
-    search_roots=$("$script_dir/get_search_roots.sh" "$git_root")
+    search_roots=$("$script_dir/get_search_roots.sh" "$root")
 
     # Create a temporary directory for intermediate results.
     local tempdir
@@ -30,8 +30,10 @@ find_definition_files() {
 
     # For each type in the types file, search in each of the search roots.
     while IFS= read -r TYPE; do
-        for root in $search_roots; do
-            grep -rwlE --include="*.swift" "\\b(class|struct|enum|protocol|typealias)\\s+$TYPE\\b" "$root" >> "$temp_found" || true
+        for sr in $search_roots; do
+            # Use find to locate *.swift files, excluding those in any .build directory
+            find "$sr" -type f -name "*.swift" -not -path "*/.build/*" \
+                -exec grep -lE "\\b(class|struct|enum|protocol|typealias)\\s+$TYPE\\b" {} \; >> "$temp_found" || true
         done
     done < "$types_file"
 
@@ -50,7 +52,7 @@ find_definition_files() {
 # Allow direct execution for a quick test.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     if [ $# -ne 2 ]; then
-        echo "Usage: $0 <types_file> <git_root>" >&2
+        echo "Usage: $0 <types_file> <root>" >&2
         exit 1
     fi
     find_definition_files "$1" "$2"
