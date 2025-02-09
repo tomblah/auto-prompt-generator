@@ -1,26 +1,26 @@
 #!/bin/bash
-# find_definition_files.sh
+# find-definition-files.sh
 #
 # This function searches for Swift files that contain definitions for each type
 # listed in a given types file. It looks for definitions of classes, structs, enums,
 # protocols, or typealiases matching the type names.
 #
-# Usage: find_definition_files <types_file> <root>
+# Usage: find-definition-files <types_file> <root>
 #
 # Output:
 #   On success: prints the path to a temporary file containing a list of Swift files
 #   where definitions were found.
-find_definition_files() {
+find-definition-files() {
     local types_file="$1"
     local root="$2"
 
-    # Determine the directory where this script resides so we can reliably source get_search_roots.sh.
+    # Determine the directory where this script resides so we can reliably source get-search-roots.sh.
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
     # Get all search roots (the given root plus any Swift package directories)
     local search_roots
-    search_roots=$("$script_dir/get_search_roots.sh" "$root")
+    search_roots=$("$script_dir/get-search-roots.sh" "$root")
 
     # Create a temporary directory for intermediate results.
     local tempdir
@@ -55,5 +55,5 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
         echo "Usage: $0 <types_file> <root>" >&2
         exit 1
     fi
-    find_definition_files "$1" "$2"
+    find-definition-files "$1" "$2"
 fi

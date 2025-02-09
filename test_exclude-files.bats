@@ -8,8 +8,8 @@ teardown() {
   rm -rf "$TMP_DIR"
 }
 
-# Load the exclude_files component.
-load "${BATS_TEST_DIRNAME}/exclude_files.sh"
+# Load the exclude-files component.
+load "${BATS_TEST_DIRNAME}/exclude-files.sh"
 
 @test "filter_excluded_files returns original list when no exclusions provided" {
   # Create a temporary file simulating a list of found files.

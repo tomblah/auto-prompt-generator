@@ -20,8 +20,8 @@ teardown() {
   rm -rf "$TMPDIR"
 }
 
-@test "get_search_roots returns both the main repo and subpackage directories" {
-  result="$(bash ./get_search_roots.sh "$TMPDIR")"
+@test "get-search-roots returns both the main repo and subpackage directories" {
+  result="$(bash ./get-search-roots.sh "$TMPDIR")"
   
   # The output should contain the main repo (TMPDIR)
   [[ "$result" == *"$TMPDIR"* ]]

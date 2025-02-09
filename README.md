@@ -1,6 +1,6 @@
-# GetThePrompt
+# Auto Prompt Generator
 
-Bash script that turns your `TODO`'s into prompts by smartly including the **surrounding context**.
+Bash script that generates AI friendly prompts from your `TODO`'s by smartly including the **surrounding context**.
 
 ## Installation
 

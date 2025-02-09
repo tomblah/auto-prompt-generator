@@ -1,14 +1,14 @@
 #!/bin/bash
-# get_package_root.sh
+# get-package-root.sh
 #
 # This function determines the root of a Swift package by looking for a Package.swift
 # in the current directory or one of its ancestors.
 #
-# Usage: get_package_root <file_path>
+# Usage: get-package-root <file_path>
 #
 # On success: prints the package root directory.
 # On failure: prints nothing (caller may then use the Git root).
-get_package_root() {
+get-package-root() {
     local file_path="$1"
     local dir
     # Start in the directory of the given file.
@@ -30,5 +30,5 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
         echo "Usage: $0 <file_path>" >&2
         exit 1
     fi
-    get_package_root "$1"
+    get-package-root "$1"
 fi

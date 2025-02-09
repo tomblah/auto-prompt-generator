@@ -1,5 +1,5 @@
 #!/bin/bash
-# find_prompt_instruction.sh
+# find-prompt-instruction.sh
 #
 # This function looks for a Swift file that contains a TODO instruction marked by either:
 #   - "// TODO: - "  OR
@@ -10,7 +10,7 @@
 # and logs a message that lists (with a separator and line breaks) the ignored TODO files by their base name
 # and their actual TODO text.
 #
-# Usage: find_prompt_instruction <search_directory>
+# Usage: find-prompt-instruction <search_directory>
 #
 # Outputs:
 #   On success: prints the file path (for further processing) of the chosen instruction.
@@ -24,7 +24,7 @@
 #   - The implementation uses macOS’s 'stat -f "%m"' for file modification times; behavior on Linux
 #     (which would require 'stat -c "%Y"') is not covered by tests.
 #
-find_prompt_instruction() {
+find-prompt-instruction() {
     local search_dir="$1"
     # Pattern matching either "// TODO: ChatGPT: " or "// TODO: - " (with trailing space)
     local grep_pattern='// TODO: (ChatGPT: |- )'
@@ -92,5 +92,5 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
         echo "Usage: $0 <search_directory>" >&2
         exit 1
     fi
-    find_prompt_instruction "$1"
+    find-prompt-instruction "$1"
 fi

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ##########################################
-# get-the-prompt.sh
+# generate-prompt.sh
 #
 # This script finds the unique Swift file that contains a
 # TODO instruction (either “// TODO: - ” or “// TODO: ChatGPT: ”),
@@ -10,7 +10,7 @@ set -euo pipefail
 # and then assembles a ChatGPT prompt that is copied to the clipboard.
 #
 # Usage:
-#   get-the-prompt.sh [--slim] [--exclude <filename>] [--exclude <another_filename>] ...
+#   generate-prompt.sh [--slim] [--exclude <filename>] [--exclude <another_filename>] ...
 #
 # Options:
 #   --slim         Only include the file that contains the TODO instruction
@@ -21,15 +21,15 @@ set -euo pipefail
 #   --exclude      Exclude any file whose basename matches the provided filename.
 #
 # It sources the following components:
-#   - find_prompt_instruction.sh       : Locates the unique Swift file with the TODO.
-#   - extract_instruction_content.sh   : Extracts the TODO instruction content from the file.
-#   - extract_types.sh                 : Extracts potential type names from a Swift file.
-#   - find_definition_files.sh         : Finds Swift files containing definitions for the types.
-#   - filter_files.sh                  : Filters the found files in slim mode.
-#   - exclude_files.sh                 : Filters out files matching user-specified exclusions.
-#   - assemble_prompt.sh               : Assembles the final prompt and copies it to the clipboard.
-#   - get_git_root.sh                  : Determines the Git repository root.
-#   - get_package_root.sh              : Determines the package root (if any) for a given file.
+#   - find-prompt-instruction.sh       : Locates the unique Swift file with the TODO.
+#   - extract-instruction-content.sh   : Extracts the TODO instruction content from the file.
+#   - extract-types.sh                 : Extracts potential type names from a Swift file.
+#   - find-definition-files.sh         : Finds Swift files containing definitions for the types.
+#   - filter-files.sh                  : Filters the found files in slim mode.
+#   - exclude-files.sh                 : Filters out files matching user-specified exclusions.
+#   - assemble-prompt.sh               : Assembles the final prompt and copies it to the clipboard.
+#   - get-git-root.sh                  : Determines the Git repository root.
+#   - get-package-root.sh              : Determines the package root (if any) for a given file.
 ##########################################
 
 # Process optional parameters.
@@ -64,14 +64,14 @@ CURRENT_DIR="$(pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source external components from SCRIPT_DIR.
-source "$SCRIPT_DIR/find_prompt_instruction.sh"
-source "$SCRIPT_DIR/extract_instruction_content.sh"
-source "$SCRIPT_DIR/extract_types.sh"
-source "$SCRIPT_DIR/find_definition_files.sh"
-source "$SCRIPT_DIR/filter_files.sh"      # Slim mode filtering.
-source "$SCRIPT_DIR/exclude_files.sh"       # Exclusion filtering.
-source "$SCRIPT_DIR/assemble_prompt.sh"
-source "$SCRIPT_DIR/get_git_root.sh"
+source "$SCRIPT_DIR/find-prompt-instruction.sh"
+source "$SCRIPT_DIR/extract-instruction-content.sh"
+source "$SCRIPT_DIR/extract-types.sh"
+source "$SCRIPT_DIR/find-definition-files.sh"
+source "$SCRIPT_DIR/filter-files.sh"      # Slim mode filtering.
+source "$SCRIPT_DIR/exclude-files.sh"       # Exclusion filtering.
+source "$SCRIPT_DIR/assemble-prompt.sh"
+source "$SCRIPT_DIR/get-git-root.sh"
 
 echo "--------------------------------------------------"
 
@@ -79,23 +79,23 @@ echo "--------------------------------------------------"
 cd "$CURRENT_DIR"
 
 # Determine the Git repository root.
-GIT_ROOT=$(get_git_root) || exit 1
+GIT_ROOT=$(get-git-root) || exit 1
 echo "Git root: $GIT_ROOT"
 
 # Move to the repository root.
 cd "$GIT_ROOT"
 
 # Use the external component to locate the file with the TODO instruction.
-FILE_PATH=$(find_prompt_instruction "$GIT_ROOT") || exit 1
+FILE_PATH=$(find-prompt-instruction "$GIT_ROOT") || exit 1
 echo "Found exactly one instruction in $FILE_PATH"
 
 # --- Determine Package Scope ---
 # Source the package root helper.
-source "$SCRIPT_DIR/get_package_root.sh"
+source "$SCRIPT_DIR/get-package-root.sh"
 
 # If the TODO file is in a package (i.e. an ancestor directory contains Package.swift),
 # use that package as the search scope; otherwise, use the entire Git repository.
-PACKAGE_ROOT=$(get_package_root "$FILE_PATH" || true)
+PACKAGE_ROOT=$(get-package-root "$FILE_PATH" || true)
 if [ -n "$PACKAGE_ROOT" ]; then
     echo "Found package root: $PACKAGE_ROOT"
     SEARCH_ROOT="$PACKAGE_ROOT"
@@ -105,13 +105,13 @@ fi
 # --- End Package Scope ---
 
 # Extract the instruction content from the file.
-INSTRUCTION_CONTENT=$(extract_instruction_content "$FILE_PATH")
+INSTRUCTION_CONTENT=$(extract-instruction-content "$FILE_PATH")
 
 # Extract potential type names from the Swift file.
-TYPES_FILE=$(extract_types "$FILE_PATH")
+TYPES_FILE=$(extract-types "$FILE_PATH")
 
 # Find Swift files containing definitions for the types.
-FOUND_FILES=$(find_definition_files "$TYPES_FILE" "$SEARCH_ROOT")
+FOUND_FILES=$(find-definition-files "$TYPES_FILE" "$SEARCH_ROOT")
 
 # NEW: Ensure the chosen TODO file is included in the found files.
 echo "$FILE_PATH" >> "$FOUND_FILES"
@@ -119,7 +119,7 @@ echo "$FILE_PATH" >> "$FOUND_FILES"
 # If slim mode is enabled, filter the FOUND_FILES list.
 if [ "$SLIM" = true ]; then
     echo "Slim mode enabled: filtering files to include only the TODO file and model files..."
-    FOUND_FILES=$(filter_files_for_slim_mode "$FILE_PATH" "$FOUND_FILES")
+    FOUND_FILES=$(filter-files_for_slim_mode "$FILE_PATH" "$FOUND_FILES")
 fi
 
 # If any exclusions were specified, filter them out.
@@ -146,7 +146,7 @@ sort "$FOUND_FILES" | uniq | while read -r file_path; do
 done
 
 # Assemble the final clipboard content and copy it to the clipboard.
-FINAL_CLIPBOARD_CONTENT=$(assemble_prompt "$FOUND_FILES" "$INSTRUCTION_CONTENT")
+FINAL_CLIPBOARD_CONTENT=$(assemble-prompt "$FOUND_FILES" "$INSTRUCTION_CONTENT")
 
 echo "--------------------------------------------------"
 echo

@@ -8,10 +8,10 @@ teardown() {
   rm -rf "$TMP_DIR"
 }
 
-# Load the filter_files component.
-load "${BATS_TEST_DIRNAME}/filter_files.sh"
+# Load the filter-files component.
+load "${BATS_TEST_DIRNAME}/filter-files.sh"
 
-@test "filter_files_for_slim_mode includes only the TODO file and allowed files" {
+@test "filter-files_for_slim_mode includes only the TODO file and allowed files" {
     # Create a temporary file simulating the list of found files.
     found_files=$(mktemp)
     
@@ -25,7 +25,7 @@ load "${BATS_TEST_DIRNAME}/filter_files.sh"
     todo_file="/path/to/TODO.swift"
     
     # Call the function.
-    filtered_file=$(filter_files_for_slim_mode "$todo_file" "$found_files")
+    filtered_file=$(filter-files_for_slim_mode "$todo_file" "$found_files")
     
     # Read the filtered result.
     result="$(cat "$filtered_file")"
@@ -40,7 +40,7 @@ load "${BATS_TEST_DIRNAME}/filter_files.sh"
     rm -f "$found_files" "$filtered_file"
 }
 
-@test "filter_files_for_slim_mode ignores duplicate TODO file entries" {
+@test "filter-files_for_slim_mode ignores duplicate TODO file entries" {
     found_files=$(mktemp)
     
     # Add duplicate TODO entries.
@@ -50,7 +50,7 @@ load "${BATS_TEST_DIRNAME}/filter_files.sh"
     
     todo_file="/path/to/TODO.swift"
     
-    filtered_file=$(filter_files_for_slim_mode "$todo_file" "$found_files")
+    filtered_file=$(filter-files_for_slim_mode "$todo_file" "$found_files")
     result="$(cat "$filtered_file")"
     
     # Expected: Only one TODO file and the valid model file.
@@ -62,13 +62,13 @@ load "${BATS_TEST_DIRNAME}/filter_files.sh"
     rm -f "$found_files" "$filtered_file"
 }
 
-@test "filter_files_for_slim_mode with empty found files list returns only the TODO file" {
+@test "filter-files_for_slim_mode with empty found files list returns only the TODO file" {
     found_files=$(mktemp)
     
     # Do not add any candidate file.
     todo_file="/path/to/TODO.swift"
     
-    filtered_file=$(filter_files_for_slim_mode "$todo_file" "$found_files")
+    filtered_file=$(filter-files_for_slim_mode "$todo_file" "$found_files")
     result="$(cat "$filtered_file")"
     
     expected="/path/to/TODO.swift"
@@ -78,7 +78,7 @@ load "${BATS_TEST_DIRNAME}/filter_files.sh"
     rm -f "$found_files" "$filtered_file"
 }
 
-@test "filter_files_for_slim_mode excludes files with new keywords" {
+@test "filter-files_for_slim_mode excludes files with new keywords" {
     found_files=$(mktemp)
     
     # Include files with the new exclusion keywords.
@@ -91,7 +91,7 @@ load "${BATS_TEST_DIRNAME}/filter_files.sh"
     
     todo_file="/path/to/TODO.swift"
     
-    filtered_file=$(filter_files_for_slim_mode "$todo_file" "$found_files")
+    filtered_file=$(filter-files_for_slim_mode "$todo_file" "$found_files")
     result="$(cat "$filtered_file")"
     
     # Expected: Only TODO.swift and ValidModel.swift are allowed.

@@ -1,17 +1,17 @@
 #!/bin/bash
-# filter_files.sh
+# filter-files.sh
 #
 # This function filters a list of Swift file paths when slim mode is enabled.
 # It always includes the TODO file and excludes files whose names match
 # certain keywords (e.g. ViewController, Manager, Presenter, Router, Interactor,
 # Configurator, DataSource, Delegate, or View).
 #
-# Usage: filter_files_for_slim_mode <todo_file> <found_files_file>
+# Usage: filter-files_for_slim_mode <todo_file> <found_files_file>
 #   <todo_file> is the file containing the TODO.
 #   <found_files_file> is a file listing paths to candidate files.
 #
 # It outputs the path to a temporary file containing the filtered list.
-filter_files_for_slim_mode() {
+filter-files_for_slim_mode() {
     local todo_file="$1"
     local found_files_file="$2"
 
