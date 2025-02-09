@@ -1,6 +1,6 @@
 # Auto Prompt Generator
 
-Bash script that generates AI friendly prompts from your `TODO`'s by smartly including the **surrounding context**.
+Bash script that turns your **TODO**'s into AI-friendly **prompts** by smartly including surrounding **context**.
 
 ## Installation
 
@@ -27,6 +27,7 @@ TBD
 
 ## Caveats
 
+- Very much a work in progress
 - Currently supports **Swift** only.
 - This script is a work in progress.
 - You must write your question in the form // TODO: - (including the hyphen) or // TODO: ChatGPT: . This prevents the script from accidentally picking up all your TODOs.
