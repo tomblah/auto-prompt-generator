@@ -17,7 +17,7 @@ filter_excluded_files() {
     # Process each file in the found files list.
     while IFS= read -r file; do
         local base
-        base=$(basename "$file")
+        base=$(basename "$file" | xargs)
         local exclude=false
         for pattern in "${exclusions[@]}"; do
             if [[ "$base" == "$pattern" ]]; then
