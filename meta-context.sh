@@ -20,7 +20,7 @@ set -euo pipefail
 #
 # At the very end of the prompt, a custom message is appended:
 #
-#   I'm improving the get_the_prompt.sh script (see README above for more context)...
+#   I'm improving the generate-prompt.sh script (see README above for more context)...
 #
 # The final prompt is then copied to the clipboard using pbcopy.
 ##########################################
@@ -85,7 +85,7 @@ done
 # Append the custom header message at the end without a final dashed line.
 {
   echo "--------------------------------------------------"
-  echo "I'm improving the get_the_prompt.sh script (see README above for more context). I'm trying to keep get_the_prompt.sh as thin as possible, so try not to propose solutions that edit it unless where it makes obvious sense to, e.g. for parsing options. But if there is an easy solution to create another file, or edit another existing file, let's prefer that. "
+  echo -e "I'm improving the generate-prompt.sh script (see README above for more context). I'm trying to keep generate-prompt.sh as thin as possible, so try not to propose solutions that edit it unless where it makes obvious sense to, e.g. for parsing options. But if there is an easy solution to create another file, or edit another existing file, let's prefer that.\n\n"
 } >> "$temp_context"
 
 # Copy the final context to the clipboard using pbcopy (macOS).
