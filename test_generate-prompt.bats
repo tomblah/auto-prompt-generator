@@ -5,7 +5,7 @@
 # They verify that (a) when a valid TODO instruction exists, the prompt is assembled
 # (and “copied” to our dummy clipboard file), (b) that the script fails when no valid
 # TODO instruction is present, (c) that the --slim and --exclude options work as expected,
-# and now (d) that the --singular option causes only the TODO file to be included.
+# and (d) that the --singular option causes only the TODO file to be included.
  
 setup() {
   # Create a temporary directory that will serve as our fake repository.
@@ -179,4 +179,42 @@ EOF
   clipboard_content=$(cat clipboard.txt)
   [[ "$clipboard_content" == *"Test.swift"* ]]
   [[ "$clipboard_content" != *"IgnoreMe.swift"* ]]
+}
+
+@test "generate-prompt.sh does not include Swift files from .build directories" {
+  # Create a Swift file inside a .build directory that should be ignored.
+  mkdir -p ".build/ThirdParty"
+  cat << 'EOF' > ".build/ThirdParty/ThirdParty.swift"
+import Foundation
+class ThirdPartyClass {}
+EOF
+
+  # Also create a normal Swift file to be processed.
+  cat << 'EOF' > Normal.swift
+import Foundation
+class NormalClass {}
+EOF
+
+  # Ensure Test.swift (with the valid TODO instruction) is reset.
+  cat << 'EOF' > Test.swift
+import Foundation
+// TODO: - Test instruction for prompt
+class TestClass {}
+EOF
+
+  # Run the main script.
+  run bash generate-prompt.sh
+  [ "$status" -eq 0 ]
+
+  # Extract the final list of files from the output.
+  final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag')
+  
+  # Assert that the list includes Normal.swift and does not include ThirdParty.swift.
+  [[ "$final_list" == *"Normal.swift"* ]]
+  [[ "$final_list" != *"ThirdParty.swift"* ]]
+
+  # Also check that the assembled prompt (in clipboard.txt) does not include ThirdParty.swift.
+  clipboard_content=$(cat clipboard.txt)
+  [[ "$clipboard_content" == *"Normal.swift"* ]]
+  [[ "$clipboard_content" != *"ThirdParty.swift"* ]]
 }

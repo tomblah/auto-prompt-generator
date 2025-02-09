@@ -10,13 +10,20 @@
 # Output: a list of directories (one per line).
 get-search-roots() {
     local root="$1"
+    
+    # If the root itself is a Swift package (contains Package.swift), return it.
     if [ -f "$root/Package.swift" ]; then
         echo "$root"
         return 0
     fi
-    # Otherwise, include the root and any subdirectories with a Package.swift.
-    echo "$root"
-    find "$root" -type f -name "Package.swift" -exec dirname {} \; | sort -u
+
+    # Otherwise, include the root if it is not a .build directory.
+    if [ "$(basename "$root")" != ".build" ]; then
+        echo "$root"
+    fi
+
+    # Find any subdirectories that contain Package.swift, but exclude those inside .build folders.
+    find "$root" -type f -name "Package.swift" -not -path "*/.build/*" -exec dirname {} \; | sort -u
 }
 
 # Allow direct execution for testing.
