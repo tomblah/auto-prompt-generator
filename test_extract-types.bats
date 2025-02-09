@@ -10,17 +10,17 @@ teardown() {
   rm -rf "$TEST_DIR"
 }
 
-# Load the extract_types component. Adjust the path if necessary.
-load "${BATS_TEST_DIRNAME}/extract_types.sh"
+# Load the extract-types component. Adjust the path if necessary.
+load "${BATS_TEST_DIRNAME}/extract-types.sh"
 
-@test "extract_types returns empty for file with no capitalized words" {
+@test "extract-types returns empty for file with no capitalized words" {
   swift_file="$TEST_DIR/empty.swift"
   cat <<'EOF' > "$swift_file"
 import foundation
 let x = 5
 EOF
 
-  run extract_types "$swift_file"
+  run extract-types "$swift_file"
   [ "$status" -eq 0 ]
   
   # The function outputs the name of a temporary file containing the types.
@@ -31,7 +31,7 @@ EOF
   [ -z "$result" ]
 }
 
-@test "extract_types extracts capitalized words from a Swift file" {
+@test "extract-types extracts capitalized words from a Swift file" {
   swift_file="$TEST_DIR/test.swift"
   cat <<'EOF' > "$swift_file"
 import Foundation
@@ -43,7 +43,7 @@ enum MyEnum {
 }
 EOF
 
-  run extract_types "$swift_file"
+  run extract-types "$swift_file"
   [ "$status" -eq 0 ]
   
   types_file="$output"
@@ -58,14 +58,14 @@ MyStruct"
   [ "$result" = "$expected" ]
 }
 
-@test "extract_types extracts type names from bracket notation" {
+@test "extract-types extracts type names from bracket notation" {
   swift_file="$TEST_DIR/test_bracket.swift"
   cat <<'EOF' > "$swift_file"
 import UIKit
 let array: [CustomType] = []
 EOF
 
-  run extract_types "$swift_file"
+  run extract-types "$swift_file"
   [ "$status" -eq 0 ]
   
   types_file="$output"

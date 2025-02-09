@@ -1,5 +1,5 @@
 #!/bin/bash
-# extract_types.sh
+# extract-types.sh
 #
 # This function extracts potential type names (classes, structs, enums, etc.)
 # from a given Swift file. It processes the file in several stages:
@@ -11,14 +11,14 @@
 #   5. Stage 3: Extract capitalized words (and types within brackets),
 #               then sort and remove duplicates.
 #
-# Usage: extract_types <swift_file>
+# Usage: extract-types <swift_file>
 #
 # Output:
 #   On success: prints the path to a temporary file containing a sorted,
 #               unique list of potential type names.
 #
 #   All intermediate temporary files (except the final output) are cleaned up.
-extract_types() {
+extract-types() {
     local swift_file="$1"
     
     # Create a temporary directory for all intermediate files.
@@ -81,5 +81,5 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
         echo "Usage: $0 <swift_file>" >&2
         exit 1
     fi
-    extract_types "$1"
+    extract-types "$1"
 fi

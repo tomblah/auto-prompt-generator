@@ -1,15 +1,15 @@
 #!/bin/bash
-# get_git_root.sh
+# get-git-root.sh
 #
 # This function determines the Git repository root directory based on the current working directory.
 # If the current directory is not within a Git repository, it outputs an error message and returns a non-zero status.
 #
-# Usage: get_git_root
+# Usage: get-git-root
 #
 # Outputs:
 #   On success: prints the Git repository root directory.
 #   On failure: prints an error message to stderr and returns a non-zero status.
-get_git_root() {
+get-git-root() {
     local git_root
     git_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
         echo "Error: Not a git repository." >&2
@@ -24,5 +24,5 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
         echo "Usage: $0" >&2
         exit 1
     fi
-    get_git_root
+    get-git-root
 fi

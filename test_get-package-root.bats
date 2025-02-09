@@ -8,9 +8,9 @@ teardown() {
   rm -rf "$TMP_DIR"
 }
 
-# Load the get_package_root component.
+# Load the get-package-root component.
 # Adjust the path if your test file is in a different directory.
-load "${BATS_TEST_DIRNAME}/get_package_root.sh"
+load "${BATS_TEST_DIRNAME}/get-package-root.sh"
 
 @test "returns package root when Package.swift is in the same directory as the file" {
   # Create a package directory with a Package.swift and a Swift file.
@@ -20,7 +20,7 @@ load "${BATS_TEST_DIRNAME}/get_package_root.sh"
 
   file_path="$TMP_DIR/package/SomeFile.swift"
 
-  run get_package_root "$file_path"
+  run get-package-root "$file_path"
   [ "$status" -eq 0 ]
   [ "$output" = "$TMP_DIR/package" ]
 }
@@ -33,7 +33,7 @@ load "${BATS_TEST_DIRNAME}/get_package_root.sh"
 
   file_path="$TMP_DIR/package/subdir/File.swift"
 
-  run get_package_root "$file_path"
+  run get-package-root "$file_path"
   [ "$status" -eq 0 ]
   [ "$output" = "$TMP_DIR/package" ]
 }
@@ -45,7 +45,7 @@ load "${BATS_TEST_DIRNAME}/get_package_root.sh"
 
   file_path="$TMP_DIR/nopackage/File.swift"
 
-  run get_package_root "$file_path"
+  run get-package-root "$file_path"
   [ "$status" -ne 0 ]
   [ -z "$output" ]
 }
@@ -55,7 +55,7 @@ load "${BATS_TEST_DIRNAME}/get_package_root.sh"
   echo "public protocol Dummy {}" > "$TMP_DIR/Standalone.swift"
   file_path="$TMP_DIR/Standalone.swift"
 
-  run get_package_root "$file_path"
+  run get-package-root "$file_path"
   [ "$status" -ne 0 ]
   [ -z "$output" ]
 }

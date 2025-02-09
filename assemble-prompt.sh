@@ -1,5 +1,5 @@
 #!/bin/bash
-# assemble_prompt.sh
+# assemble-prompt.sh
 #
 # This function assembles the final ChatGPT prompt by including:
 #   - The contents of Swift files where type definitions were found, and
@@ -11,7 +11,7 @@
 #
 # The function outputs the final assembled prompt to stdout and also copies it
 # to the clipboard using pbcopy.
-assemble_prompt() {
+assemble-prompt() {
     local found_files_file="$1"
     local instruction_content="$2"  # This parameter is no longer used.
     
@@ -50,6 +50,6 @@ assemble_prompt() {
 
 # If this file is executed directly, print usage instructions.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-    echo "Usage: source assemble_prompt.sh and call assemble_prompt <found_files_file> <instruction_content>" >&2
+    echo "Usage: source assemble-prompt.sh and call assemble-prompt <found_files_file> <instruction_content>" >&2
     exit 1
 fi

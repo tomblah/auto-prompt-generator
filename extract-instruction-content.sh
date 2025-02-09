@@ -1,14 +1,14 @@
 #!/bin/bash
-# extract_instruction_content.sh
+# extract-instruction-content.sh
 #
 # This function extracts the TODO instruction content from a given Swift file.
 # It looks for a line that matches either "// TODO: - " or "// TODO: ChatGPT: ".
 #
-# Usage: extract_instruction_content <swift_file>
+# Usage: extract-instruction-content <swift_file>
 #
 # On success: prints the extracted instruction line (trimmed).
 # On failure: prints an error message and returns a non-zero exit code.
-extract_instruction_content() {
+extract-instruction-content() {
     local swift_file="$1"
     local instruction_line
 
@@ -30,5 +30,5 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
         echo "Usage: $0 <swift_file>" >&2
         exit 1
     fi
-    extract_instruction_content "$1"
+    extract-instruction-content "$1"
 fi

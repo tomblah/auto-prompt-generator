@@ -1,25 +1,25 @@
 #!/usr/bin/env bats
-# test_find_definition_files.bats
+# test_find-definition-files.bats
 #
-# This file tests the find_definition_files function for its new behavior:
+# This file tests the find-definition-files function for its new behavior:
 # it should exclude Swift files located in any .build directory.
 
 setup() {
   # Create a temporary directory to simulate a git root.
   TEST_DIR=$(mktemp -d)
 
-  # Create a dummy get_search_roots.sh in TEST_DIR.
+  # Create a dummy get-search-roots.sh in TEST_DIR.
   # This dummy simply echoes the root directory passed to it.
-  cat << 'EOF' > "$TEST_DIR/get_search_roots.sh"
+  cat << 'EOF' > "$TEST_DIR/get-search-roots.sh"
 #!/bin/bash
-get_search_roots() {
+get-search-roots() {
   echo "$1"
 }
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-  get_search_roots "$1"
+  get-search-roots "$1"
 fi
 EOF
-  chmod +x "$TEST_DIR/get_search_roots.sh"
+  chmod +x "$TEST_DIR/get-search-roots.sh"
 
   # Create a Swift file in a normal (non-.build) directory.
   mkdir -p "$TEST_DIR/Sources"
@@ -42,19 +42,19 @@ teardown() {
   rm -rf "$TEST_DIR"
 }
 
-@test "find_definition_files excludes files in .build directory" {
+@test "find-definition-files excludes files in .build directory" {
   run bash -c '
-    # Source our dummy get_search_roots.sh so it is available.
-    source "'"$TEST_DIR"'/get_search_roots.sh"
+    # Source our dummy get-search-roots.sh so it is available.
+    source "'"$TEST_DIR"'/get-search-roots.sh"
 
-    # Define the updated find_definition_files function that excludes .build directories.
-    find_definition_files() {
+    # Define the updated find-definition-files function that excludes .build directories.
+    find-definition-files() {
       local types_file="$1"
       local root="$2"
-      # Override script_dir to our TEST_DIR so that our dummy get_search_roots.sh is used.
+      # Override script_dir to our TEST_DIR so that our dummy get-search-roots.sh is used.
       local script_dir="'"$TEST_DIR"'"
       local search_roots
-      search_roots=$("$script_dir/get_search_roots.sh" "$root")
+      search_roots=$("$script_dir/get-search-roots.sh" "$root")
       
       # (Optional) Log the search roots (sent to stderr).
       echo "Debug: Search roots:" >&2
@@ -87,7 +87,7 @@ teardown() {
     }
 
     # Run the function using our TYPES_FILE and TEST_DIR as the "git root".
-    result_file=$(find_definition_files "'"$TEST_DIR/types.txt"'" "'"$TEST_DIR"'")
+    result_file=$(find-definition-files "'"$TEST_DIR/types.txt"'" "'"$TEST_DIR"'")
     # Output the content of the result file.
     cat "$result_file"
   '

@@ -8,13 +8,13 @@ teardown() {
     rm -rf "$TEST_DIR"
 }
 
-load ./find_prompt_instruction.sh
+load ./find-prompt-instruction.sh
 
 @test "No Swift file with either TODO pattern returns error" {
     # Create a Swift file with a non-matching TODO.
     echo "// TODO: Something else entirely" > "$TEST_DIR/File.swift"
     
-    run find_prompt_instruction "$TEST_DIR"
+    run find-prompt-instruction "$TEST_DIR"
     [ "$status" -ne 0 ]
     [[ "$output" == *"Error: No Swift files found"* ]]
 }
@@ -29,7 +29,7 @@ load ./find_prompt_instruction.sh
     # Set a later modification time for File2.swift.
     touch -t 202501010000 "$TEST_DIR/File2.swift"
     
-    run find_prompt_instruction "$TEST_DIR"
+    run find-prompt-instruction "$TEST_DIR"
     [ "$status" -eq 0 ]
     # Expect that File2.swift is returned because it was modified later.
     [[ "$output" == *"File2.swift"* ]]
@@ -38,7 +38,7 @@ load ./find_prompt_instruction.sh
 @test "Single Swift file with '// TODO: - ' returns its path" {
     echo "// TODO: - Only instruction" > "$TEST_DIR/File.swift"
     
-    run find_prompt_instruction "$TEST_DIR"
+    run find-prompt-instruction "$TEST_DIR"
     [ "$status" -eq 0 ]
     [[ "$output" == *"File.swift"* ]]
 }
@@ -46,7 +46,7 @@ load ./find_prompt_instruction.sh
 @test "Single Swift file with '// TODO: ChatGPT: ' returns its path" {
     echo "// TODO: ChatGPT: Only instruction" > "$TEST_DIR/File.swift"
     
-    run find_prompt_instruction "$TEST_DIR"
+    run find-prompt-instruction "$TEST_DIR"
     [ "$status" -eq 0 ]
     [[ "$output" == *"File.swift"* ]]
 }

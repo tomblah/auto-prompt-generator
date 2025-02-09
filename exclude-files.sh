@@ -1,5 +1,5 @@
 #!/bin/bash
-# exclude_files.sh
+# exclude-files.sh
 #
 # This function removes file paths from a list (in a temporary file) if their
 # basenames match any of the exclusion patterns provided.

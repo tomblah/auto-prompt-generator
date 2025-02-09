@@ -8,8 +8,8 @@ teardown() {
   rm -rf "$TMP_DIR"
 }
 
-# Load the extract_instruction_content module.
-load "${BATS_TEST_DIRNAME}/extract_instruction_content.sh"
+# Load the extract-instruction-content module.
+load "${BATS_TEST_DIRNAME}/extract-instruction-content.sh"
 
 @test "returns error when no valid TODO instruction is found" {
   swift_file="$TMP_DIR/no_todo.swift"
@@ -20,7 +20,7 @@ func doSomething() {
 }
 EOF
 
-  run extract_instruction_content "$swift_file"
+  run extract-instruction-content "$swift_file"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Error: No valid TODO instruction found"* ]]
 }
@@ -33,7 +33,7 @@ import Foundation
 class FeatureClass {}
 EOF
 
-  run extract_instruction_content "$swift_file"
+  run extract-instruction-content "$swift_file"
   [ "$status" -eq 0 ]
   expected="// TODO: - Implement the new feature"
   [ "$output" = "$expected" ]
@@ -47,7 +47,7 @@ import Foundation
 func doWork() {}
 EOF
 
-  run extract_instruction_content "$swift_file"
+  run extract-instruction-content "$swift_file"
   [ "$status" -eq 0 ]
   expected="// TODO: ChatGPT: Resolve the error handling"
   [ "$output" = "$expected" ]
@@ -62,7 +62,7 @@ import Foundation
 func anotherFunc() {}
 EOF
 
-  run extract_instruction_content "$swift_file"
+  run extract-instruction-content "$swift_file"
   [ "$status" -eq 0 ]
   expected="// TODO: - First instruction should be picked"
   [ "$output" = "$expected" ]

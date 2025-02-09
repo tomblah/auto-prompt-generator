@@ -12,10 +12,10 @@ teardown() {
   rm -rf "$TMP_DIR"
 }
 
-# Load the assemble_prompt component. Adjust the path if needed.
-load "${BATS_TEST_DIRNAME}/assemble_prompt.sh"
+# Load the assemble-prompt component. Adjust the path if needed.
+load "${BATS_TEST_DIRNAME}/assemble-prompt.sh"
 
-@test "assemble_prompt formats output correctly with fixed instruction" {
+@test "assemble-prompt formats output correctly with fixed instruction" {
   # Create two temporary Swift files.
   file1="$TMP_DIR/File1.swift"
   file2="$TMP_DIR/File2.swift"
@@ -41,8 +41,8 @@ EOF
   # Define a sample instruction content that should be ignored.
   instruction_content="This is the instruction content that will be ignored."
 
-  # Run the assemble_prompt function.
-  run assemble_prompt "$found_files_file" "$instruction_content"
+  # Run the assemble-prompt function.
+  run assemble-prompt "$found_files_file" "$instruction_content"
   [ "$status" -eq 0 ]
 
   # Check that the output includes the headers for both files.
