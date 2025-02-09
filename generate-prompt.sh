@@ -10,7 +10,7 @@ set -euo pipefail
 # and then assembles a ChatGPT prompt that is copied to the clipboard.
 #
 # Usage:
-#   generate-prompt.sh [--slim] [--exclude <filename>] [--exclude <another_filename>] ...
+#   generate-prompt.sh [--slim] [--singular] [--exclude <filename>] [--exclude <another_filename>] ...
 #
 # Options:
 #   --slim         Only include the file that contains the TODO instruction
@@ -18,6 +18,7 @@ set -euo pipefail
 #                  keywords such as “ViewController”, “Manager”, “Presenter”,
 #                  “Configurator”, “Router”, “DataSource”, “Delegate”, or “View”
 #                  are excluded.
+#   --singular     Only include the Swift file that contains the TODO instruction.
 #   --exclude      Exclude any file whose basename matches the provided filename.
 #
 # It sources the following components:
@@ -29,11 +30,13 @@ set -euo pipefail
 #   - exclude-files.sh                 : Filters out files matching user-specified exclusions.
 #   - assemble-prompt.sh               : Assembles the final prompt and copies it to the clipboard.
 #   - get-git-root.sh                  : Determines the Git repository root.
-#   - get-package-root.sh              : Determines the package root (if any) for a given file.
+#   - get-package-root.sh               : Determines the package root (if any) for a given file.
+#   - filter-files-singular.sh         : (New) Returns only the file that contains the TODO.
 ##########################################
 
 # Process optional parameters.
 SLIM=false
+SINGULAR=false
 EXCLUDES=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -41,17 +44,21 @@ while [[ $# -gt 0 ]]; do
             SLIM=true
             shift
             ;;
+        --singular)
+            SINGULAR=true
+            shift
+            ;;
         --exclude)
             if [ -n "${2:-}" ]; then
                 EXCLUDES+=("$2")
                 shift 2
             else
-                echo "Usage: $0 [--slim] [--exclude <filename>]" >&2
+                echo "Usage: $0 [--slim] [--singular] [--exclude <filename>]" >&2
                 exit 1
             fi
             ;;
         *)
-            echo "Usage: $0 [--slim] [--exclude <filename>]" >&2
+            echo "Usage: $0 [--slim] [--singular] [--exclude <filename>]" >&2
             exit 1
             ;;
     esac
@@ -66,12 +73,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Source external components from SCRIPT_DIR.
 source "$SCRIPT_DIR/find-prompt-instruction.sh"
 source "$SCRIPT_DIR/extract-instruction-content.sh"
-source "$SCRIPT_DIR/extract-types.sh"
-source "$SCRIPT_DIR/find-definition-files.sh"
-source "$SCRIPT_DIR/filter-files.sh"      # Slim mode filtering.
-source "$SCRIPT_DIR/exclude-files.sh"       # Exclusion filtering.
 source "$SCRIPT_DIR/assemble-prompt.sh"
 source "$SCRIPT_DIR/get-git-root.sh"
+source "$SCRIPT_DIR/get-package-root.sh"
+
+if [ "$SINGULAR" = true ]; then
+    source "$SCRIPT_DIR/filter-files-singular.sh"
+else
+    source "$SCRIPT_DIR/extract-types.sh"
+    source "$SCRIPT_DIR/find-definition-files.sh"
+    source "$SCRIPT_DIR/filter-files.sh"      # Slim mode filtering.
+    source "$SCRIPT_DIR/exclude-files.sh"       # Exclusion filtering.
+fi
 
 echo "--------------------------------------------------"
 
@@ -90,9 +103,7 @@ FILE_PATH=$(find-prompt-instruction "$GIT_ROOT") || exit 1
 echo "Found exactly one instruction in $FILE_PATH"
 
 # --- Determine Package Scope ---
-# Source the package root helper.
-source "$SCRIPT_DIR/get-package-root.sh"
-
+# (Source the package root helper above.)
 # If the TODO file is in a package (i.e. an ancestor directory contains Package.swift),
 # use that package as the search scope; otherwise, use the entire Git repository.
 PACKAGE_ROOT=$(get-package-root "$FILE_PATH" || true)
@@ -107,25 +118,30 @@ fi
 # Extract the instruction content from the file.
 INSTRUCTION_CONTENT=$(extract-instruction-content "$FILE_PATH")
 
-# Extract potential type names from the Swift file.
-TYPES_FILE=$(extract-types "$FILE_PATH")
-
-# Find Swift files containing definitions for the types.
-FOUND_FILES=$(find-definition-files "$TYPES_FILE" "$SEARCH_ROOT")
-
-# NEW: Ensure the chosen TODO file is included in the found files.
-echo "$FILE_PATH" >> "$FOUND_FILES"
-
-# If slim mode is enabled, filter the FOUND_FILES list.
-if [ "$SLIM" = true ]; then
-    echo "Slim mode enabled: filtering files to include only the TODO file and model files..."
-    FOUND_FILES=$(filter-files_for_slim_mode "$FILE_PATH" "$FOUND_FILES")
-fi
-
-# If any exclusions were specified, filter them out.
-if [ "${#EXCLUDES[@]}" -gt 0 ]; then
-    echo "Excluding files matching: ${EXCLUDES[*]}"
-    FOUND_FILES=$(filter_excluded_files "$FOUND_FILES" "${EXCLUDES[@]}")
+if [ "$SINGULAR" = true ]; then
+    echo "Singular mode enabled: only including the TODO file"
+    FOUND_FILES=$(filter_files_singular "$FILE_PATH")
+else
+    # Extract potential type names from the Swift file.
+    TYPES_FILE=$(extract-types "$FILE_PATH")
+    
+    # Find Swift files containing definitions for the types.
+    FOUND_FILES=$(find-definition-files "$TYPES_FILE" "$SEARCH_ROOT")
+    
+    # Ensure the chosen TODO file is included in the found files.
+    echo "$FILE_PATH" >> "$FOUND_FILES"
+    
+    # If slim mode is enabled, filter the FOUND_FILES list.
+    if [ "$SLIM" = true ]; then
+         echo "Slim mode enabled: filtering files to include only the TODO file and model files..."
+         FOUND_FILES=$(filter-files_for_slim_mode "$FILE_PATH" "$FOUND_FILES")
+    fi
+    
+    # If any exclusions were specified, filter them out.
+    if [ "${#EXCLUDES[@]}" -gt 0 ]; then
+         echo "Excluding files matching: ${EXCLUDES[*]}"
+         FOUND_FILES=$(filter_excluded_files "$FOUND_FILES" "${EXCLUDES[@]}")
+    fi
 fi
 
 # Register a trap to clean up temporary files.
@@ -136,9 +152,11 @@ cleanup_temp_files() {
 trap cleanup_temp_files EXIT
 
 echo "--------------------------------------------------"
-echo "Types found:"
-cat "$TYPES_FILE"
-echo "--------------------------------------------------"
+if [ "${SINGULAR}" = false ]; then
+    echo "Types found:"
+    cat "$TYPES_FILE"
+    echo "--------------------------------------------------"
+fi
 
 echo "Files (final list):"
 sort "$FOUND_FILES" | uniq | while read -r file_path; do
