@@ -3,6 +3,7 @@
 #
 # This file tests the find-definition-files function for its new behavior:
 # it should exclude Swift files located in any .build directory.
+# Additional tests have been added to cover the optimized combined regex search.
 
 setup() {
   # Create a temporary directory to simulate a git root.
@@ -96,4 +97,77 @@ teardown() {
   [[ "$output" == *"/Sources/MyType.swift"* ]]
   # And assert that no file path containing ".build" appears.
   [[ "$output" != *"/.build/"* ]]
+}
+
+@test "find-definition-files returns deduplicated file list using combined regex" {
+  # Create additional Swift files in a subdirectory.
+  mkdir -p "$TEST_DIR/Combined"
+  
+  # Create a file that defines two types: TypeOne and TypeTwo.
+  cat << 'EOF' > "$TEST_DIR/Combined/BothTypes.swift"
+class TypeOne { }
+struct TypeTwo { }
+EOF
+
+  # Create a file that defines only TypeOne.
+  cat << 'EOF' > "$TEST_DIR/Combined/OnlyTypeOne.swift"
+enum TypeOne { }
+EOF
+
+  # Create a file that defines a type that is not in our list.
+  cat << 'EOF' > "$TEST_DIR/Combined/Other.swift"
+protocol OtherType { }
+EOF
+
+  # Create a new types file with multiple types.
+  NEW_TYPES_FILE="$TEST_DIR/new_types.txt"
+  echo "TypeOne" > "$NEW_TYPES_FILE"
+  echo "TypeTwo" >> "$NEW_TYPES_FILE"
+
+  run bash -c '
+    source "'"$TEST_DIR"'/get-search-roots.sh"
+    # Define the updated find-definition-files function with combined regex.
+    find-definition-files() {
+      local types_file="$1"
+      local root="$2"
+      local script_dir="'"$TEST_DIR"'"
+      local search_roots
+      search_roots=$("$script_dir/get-search-roots.sh" "$root")
+      
+      local tempdir
+      tempdir=$(mktemp -d)
+      local temp_found="$tempdir/found_files.txt"
+      touch "$temp_found"
+      
+      # Build a combined regex from the types file.
+      local types_regex
+      types_regex=$(paste -sd "|" "'"$NEW_TYPES_FILE"'")
+      
+      for sr in $search_roots; do
+         find "$sr" -type f -name "*.swift" -not -path "*/.build/*" \
+           -exec grep -lE "\\b(class|struct|enum|protocol|typealias)\\s+($types_regex)\\b" {} \; >> "$temp_found" || true
+      done
+      
+      local final_found
+      final_found=$(mktemp)
+      sort -u "$temp_found" > "$final_found"
+      rm -rf "$tempdir"
+      echo "$final_found"
+    }
+    
+    result_file=$(find-definition-files "'"$NEW_TYPES_FILE"'" "'"$TEST_DIR/Combined"'")
+    cat "$result_file"
+  '
+  
+  # Check that the output includes BothTypes.swift and OnlyTypeOne.swift
+  # and does not include Other.swift.
+  [[ "$output" == *"BothTypes.swift"* ]]
+  [[ "$output" == *"OnlyTypeOne.swift"* ]]
+  [[ "$output" != *"Other.swift"* ]]
+  
+  # Also, check that each file appears only once.
+  count_both=$(echo "$output" | grep -c "BothTypes.swift")
+  [ "$count_both" -eq 1 ]
+  count_only=$(echo "$output" | grep -c "OnlyTypeOne.swift")
+  [ "$count_only" -eq 1 ]
 }

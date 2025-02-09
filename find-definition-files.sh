@@ -1,9 +1,9 @@
 #!/bin/bash
 # find-definition-files.sh
 #
-# This function searches for Swift files that contain definitions for each type
-# listed in a given types file. It looks for definitions of classes, structs, enums,
-# protocols, or typealiases matching the type names.
+# This function searches for Swift files that contain definitions for any of the types
+# listed in a given types file. It now builds a combined regex for all types to reduce
+# the number of find/grep executions.
 #
 # Usage: find-definition-files <types_file> <root>
 #
@@ -14,42 +14,37 @@ find-definition-files() {
     local types_file="$1"
     local root="$2"
 
-    # Determine the directory where this script resides so we can reliably source get-search-roots.sh.
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-    # Get all search roots (the given root plus any Swift package directories)
+    # Get the search roots (optimized by the new get-search-roots.sh).
     local search_roots
     search_roots=$("$script_dir/get-search-roots.sh" "$root")
 
-    # Create a temporary directory for intermediate results.
-    local tempdir
-    tempdir=$(mktemp -d)
-    local temp_found="$tempdir/found_files.txt"
-    touch "$temp_found"
+    local temp_found
+    temp_found=$(mktemp)
 
-    # For each type in the types file, search in each of the search roots.
-    while IFS= read -r TYPE; do
-        for sr in $search_roots; do
-            # Use find to locate *.swift files, excluding those in any .build directory
-            find "$sr" -type f -name "*.swift" -not -path "*/.build/*" \
-                -exec grep -lE "\\b(class|struct|enum|protocol|typealias)\\s+$TYPE\\b" {} \; >> "$temp_found" || true
-        done
-    done < "$types_file"
+    # Build a combined regex: join all type names with "|"
+    # (Assumes that type names are simple and need no extra escaping.)
+    local types_regex
+    types_regex=$(paste -sd '|' "$types_file")
 
-    # Copy and deduplicate results to a new temporary file outside the temp directory.
+    # For each search root, perform one find command using the combined regex.
+    for sr in $search_roots; do
+         find "$sr" -type f -name "*.swift" -not -path "*/.build/*" \
+             -exec grep -lE "\\b(class|struct|enum|protocol|typealias)\\s+($types_regex)\\b" {} \; >> "$temp_found" || true
+    done
+
+    # Deduplicate the found files.
     local final_found
     final_found=$(mktemp)
     sort -u "$temp_found" > "$final_found"
+    rm -f "$temp_found"
 
-    # Clean up the temporary directory.
-    rm -rf "$tempdir"
-
-    # Output the path to the final file.
     echo "$final_found"
 }
 
-# Allow direct execution for a quick test.
+# Allow direct execution for testing.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     if [ $# -ne 2 ]; then
         echo "Usage: $0 <types_file> <root>" >&2
