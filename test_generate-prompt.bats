@@ -5,7 +5,8 @@
 # They verify that (a) when a valid TODO instruction exists, the prompt is assembled
 # (and “copied” to our dummy clipboard file), (b) that the script fails when no valid
 # TODO instruction is present, (c) that the --slim and --exclude options work as expected,
-# and (d) that the --singular option causes only the TODO file to be included.
+# (d) that the --singular option causes only the TODO file to be included, and now
+# (e) that the new --force-global option causes the script to ignore package boundaries.
  
 setup() {
   # Create a temporary directory that will serve as our fake repository.
@@ -129,8 +130,6 @@ EOF
   [[ "$final_list" != *"ExcludeMe.swift"* ]]
 }
  
-# --- New tests for singular mode ---
- 
 @test "generate-prompt.sh singular mode includes only the TODO file" {
   # Create an additional extra file that would normally be processed.
   cat << 'EOF' > Extra.swift
@@ -218,7 +217,7 @@ EOF
   [[ "$clipboard_content" == *"Normal.swift"* ]]
   [[ "$clipboard_content" != *"ThirdParty.swift"* ]]
 }
-
+ 
 @test "generate-prompt.sh does not include Swift files from Pods directories" {
   # Create a Swift file inside a Pods directory that should be ignored.
   mkdir -p "Pods/SubDir"
@@ -255,4 +254,41 @@ EOF
   clipboard_content=$(cat clipboard.txt)
   [[ "$clipboard_content" == *"Normal.swift"* ]]
   [[ "$clipboard_content" != *"PodsFile.swift"* ]]
+}
+ 
+# --- New tests for --force-global functionality ---
+
+@test "generate-prompt.sh uses package root when available without --force-global" {
+  # Create a subdirectory "PackageDir" and simulate a package.
+  mkdir -p "PackageDir"
+  cat << 'EOF' > PackageDir/Package.swift
+// Package.swift content
+EOF
+  # Move Test.swift into the package directory.
+  mv Test.swift PackageDir/Test.swift
+
+  # Run the script normally.
+  run bash generate-prompt.sh
+  [ "$status" -eq 0 ]
+  # Check that output contains "Found package root:" with "PackageDir"
+  [[ "$output" == *"Found package root:"* ]]
+  [[ "$output" == *"PackageDir"* ]]
+}
+
+@test "generate-prompt.sh with --force-global ignores package boundaries" {
+  # Create a subdirectory "PackageDir" and simulate a package.
+  mkdir -p "PackageDir"
+  cat << 'EOF' > PackageDir/Package.swift
+// Package.swift content
+EOF
+  # Move Test.swift into the package directory.
+  mv Test.swift PackageDir/Test.swift
+
+  # Run the script with --force-global.
+  run bash generate-prompt.sh --force-global
+  [ "$status" -eq 0 ]
+  # Check that output contains the force global enabled message.
+  [[ "$output" == *"Force global enabled: ignoring package boundaries and using Git root for context."* ]]
+  # And it should not display the package root message.
+  [[ "$output" != *"Found package root:"* ]]
 }
