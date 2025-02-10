@@ -10,7 +10,7 @@ teardown() {
 
 load ./find-prompt-instruction.sh
 
-@test "No Swift file with either TODO pattern returns error" {
+@test "No Swift file with valid TODO pattern returns error" {
     # Create a Swift file with a non-matching TODO.
     echo "// TODO: Something else entirely" > "$TEST_DIR/File.swift"
     
@@ -19,13 +19,13 @@ load ./find-prompt-instruction.sh
     [[ "$output" == *"Error: No Swift files found"* ]]
 }
 
-@test "Multiple Swift files with TODO patterns returns the most recently modified file" {
+@test "Multiple Swift files with valid TODO instructions returns the most recently modified file" {
     # Create two Swift files with TODO instructions.
     echo "// TODO: - First instruction" > "$TEST_DIR/File1.swift"
     # Set an older modification time for File1.swift.
     touch -t 200001010000 "$TEST_DIR/File1.swift"
     
-    echo "// TODO: ChatGPT: Second instruction" > "$TEST_DIR/File2.swift"
+    echo "// TODO: - Second instruction" > "$TEST_DIR/File2.swift"
     # Set a later modification time for File2.swift.
     touch -t 202501010000 "$TEST_DIR/File2.swift"
     
@@ -43,12 +43,12 @@ load ./find-prompt-instruction.sh
     [[ "$output" == *"File.swift"* ]]
 }
 
-@test "Single Swift file with '// TODO: ChatGPT: ' returns its path" {
+@test "Single Swift file with '// TODO: ChatGPT: ' returns error" {
     echo "// TODO: ChatGPT: Only instruction" > "$TEST_DIR/File.swift"
     
     run find-prompt-instruction "$TEST_DIR"
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"File.swift"* ]]
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Error:"* ]]
 }
 
 @test "Swift file in Pods directory is ignored when a valid non-Pods file exists" {

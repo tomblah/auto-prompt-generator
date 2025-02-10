@@ -39,7 +39,7 @@ EOF
   [ "$output" = "$expected" ]
 }
 
-@test "extracts instruction with '// TODO: ChatGPT: ' correctly" {
+@test "returns error when file contains only unsupported '// TODO: ChatGPT:' instruction" {
   swift_file="$TMP_DIR/todo_chatgpt.swift"
   cat <<'EOF' > "$swift_file"
 import Foundation
@@ -48,9 +48,8 @@ func doWork() {}
 EOF
 
   run extract-instruction-content "$swift_file"
-  [ "$status" -eq 0 ]
-  expected="// TODO: ChatGPT: Resolve the error handling"
-  [ "$output" = "$expected" ]
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Error: No valid TODO instruction found"* ]]
 }
 
 @test "returns the first matching instruction when multiple are present" {

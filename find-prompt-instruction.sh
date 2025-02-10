@@ -1,14 +1,12 @@
 #!/bin/bash
 # find-prompt-instruction.sh
 #
-# This function looks for a Swift file that contains a TODO instruction marked by either:
-#   - "// TODO: - "  OR
-#   - "// TODO: ChatGPT: "
+# This function looks for a Swift file that contains a TODO instruction marked by:
+#   - "// TODO: - "
 #
 # If no such file exists, it outputs an error message.
-# If more than one file contains the instruction, it chooses the file which is most recently edited
-# and logs a message that lists (with a separator and line breaks) the ignored TODO files by their base name
-# and their actual TODO text.
+# If more than one file contains the instruction, it chooses the file which is most
+# recently edited and logs a message listing the ignored TODO files.
 #
 # Usage: find-prompt-instruction <search_directory>
 #
@@ -18,15 +16,14 @@
 #
 # Note: If the global variable VERBOSE is set to "true" (for example via --verbose in generate-prompt.sh),
 # this function will output additional debug logging to stderr.
-#
 find-prompt-instruction() {
     local search_dir="$1"
     if [ "${VERBOSE:-false}" = true ]; then
        echo "[VERBOSE] Starting search in directory: $search_dir" >&2
     fi
 
-    # Pattern matching either "// TODO: ChatGPT: " or "// TODO: - " (with trailing space)
-    local grep_pattern='// TODO: (ChatGPT: |- )'
+    # Pattern matching only "// TODO: - " (with trailing space)
+    local grep_pattern='// TODO: - '
     
     # Read all matching file paths into an array.
     local files_array=()
@@ -44,7 +41,7 @@ find-prompt-instruction() {
     local file_count="${#files_array[@]}"
     
     if [ "$file_count" -eq 0 ]; then
-        echo "Error: No Swift files found containing either '// TODO: - ' or '// TODO: ChatGPT: '" >&2
+        echo "Error: No Swift files found containing '// TODO: - '" >&2
         return 1
     fi
     
