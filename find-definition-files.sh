@@ -42,7 +42,7 @@ find-definition-files() {
          if [ "${VERBOSE:-false}" = true ]; then
               echo "[VERBOSE] Running find command in directory: $sr" >&2
          fi
-         find "$sr" -type f -name "*.swift" -not -path "*/.build/*" \
+         find "$sr" -type f -name "*.swift" -not -path "*/.build/*" -not -path "*/Pods/*" \
              -exec grep -lE "\\b(class|struct|enum|protocol|typealias)\\s+($types_regex)\\b" {} \; >> "$temp_found" || true
          if [ "${VERBOSE:-false}" = true ]; then
               echo "[VERBOSE] Completed search in directory: $sr" >&2

@@ -222,3 +222,51 @@ EOF
   # And assert that no file path containing "Pods" appears.
   [[ "$output" != *"/Pods/"* ]]
 }
+
+@test "find-definition-files returns empty when only files in Pods directory exist" {
+  # Remove any non-Pods file.
+  rm -rf "$TEST_DIR/Sources"
+  rm -rf "$TEST_DIR/.build"
+  
+  # Create a Swift file only in a Pods directory.
+  mkdir -p "$TEST_DIR/Pods/SubModule"
+  cat << 'EOF' > "$TEST_DIR/Pods/SubModule/MyType.swift"
+class MyType { }
+EOF
+
+  TYPES_FILE="$TEST_DIR/types.txt"
+  echo "MyType" > "$TYPES_FILE"
+
+  run bash -c '
+    source "'"$TEST_DIR"'/get-search-roots.sh"
+    find-definition-files() {
+      local types_file="$1"
+      local root="$2"
+      local script_dir="'"$TEST_DIR"'"
+      local search_roots
+      search_roots=$("$script_dir/get-search-roots.sh" "$root")
+      
+      local tempdir
+      tempdir=$(mktemp -d)
+      local temp_found="$tempdir/found_files.txt"
+      touch "$temp_found"
+      
+      for sr in $search_roots; do
+         find "$sr" -type f -name "*.swift" -not -path "*/.build/*" -not -path "*/Pods/*" \
+           -exec grep -lE "\\b(class|struct|enum|protocol|typealias)\\s+MyType\\b" {} \; >> "$temp_found" || true
+      done
+      
+      local final_found
+      final_found=$(mktemp)
+      sort -u "$temp_found" > "$final_found"
+      rm -rf "$tempdir"
+      echo "$final_found"
+    }
+    
+    result_file=$(find-definition-files "'"$TYPES_FILE"'" "'"$TEST_DIR"'")
+    cat "$result_file"
+  '
+  
+  # The output should be empty because the only matching file is in Pods.
+  [ -z "$output" ]
+}
