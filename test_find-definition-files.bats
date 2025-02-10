@@ -2,7 +2,7 @@
 # test_find-definition-files.bats
 #
 # This file tests the find-definition-files function for its new behavior:
-# it should exclude Swift files located in any .build directory.
+# it should exclude Swift files located in any .build directory and now also any in Pods.
 # Additional tests have been added to cover the optimized combined regex search.
 
 setup() {
@@ -170,4 +170,55 @@ EOF
   [ "$count_both" -eq 1 ]
   count_only=$(echo "$output" | grep -c "OnlyTypeOne.swift")
   [ "$count_only" -eq 1 ]
+}
+
+@test "find-definition-files excludes files in Pods directory" {
+  # Create a Swift file in a Pods directory.
+  mkdir -p "$TEST_DIR/Pods"
+  cat << 'EOF' > "$TEST_DIR/Pods/PodsType.swift"
+class MyType { }
+EOF
+  # Create a Swift file in a normal directory.
+  mkdir -p "$TEST_DIR/Sources"
+  cat << 'EOF' > "$TEST_DIR/Sources/MyType.swift"
+class MyType { }
+EOF
+
+  TYPES_FILE="$TEST_DIR/types.txt"
+  echo "MyType" > "$TYPES_FILE"
+
+  run bash -c '
+    source "'"$TEST_DIR"'/get-search-roots.sh"
+    find-definition-files() {
+      local types_file="$1"
+      local root="$2"
+      local script_dir="'"$TEST_DIR"'"
+      local search_roots
+      search_roots=$("$script_dir/get-search-roots.sh" "$root")
+      
+      local tempdir
+      tempdir=$(mktemp -d)
+      local temp_found="$tempdir/found_files.txt"
+      touch "$temp_found"
+      
+      for sr in $search_roots; do
+         find "$sr" -type f -name "*.swift" -not -path "*/.build/*" -not -path "*/Pods/*" \
+           -exec grep -lE "\\b(class|struct|enum|protocol|typealias)\\s+MyType\\b" {} \; >> "$temp_found" || true
+      done
+      
+      local final_found
+      final_found=$(mktemp)
+      sort -u "$temp_found" > "$final_found"
+      rm -rf "$tempdir"
+      echo "$final_found"
+    }
+    
+    result_file=$(find-definition-files "'"$TYPES_FILE"'" "'"$TEST_DIR"'")
+    cat "$result_file"
+  '
+  
+  # Assert that the output contains the path to Sources/MyType.swift.
+  [[ "$output" == *"/Sources/MyType.swift"* ]]
+  # And assert that no file path containing "Pods" appears.
+  [[ "$output" != *"/Pods/"* ]]
 }

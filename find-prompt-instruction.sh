@@ -33,7 +33,7 @@ find-prompt-instruction() {
     local files_array=()
     while IFS= read -r line; do
         files_array+=("$line")
-    done < <(grep -rlE "$grep_pattern" --include "*.swift" "$search_dir" 2>/dev/null)
+    done < <(grep -rlE "$grep_pattern" --exclude-dir=Pods --include "*.swift" "$search_dir" 2>/dev/null)
     
     local file_count="${#files_array[@]}"
     
