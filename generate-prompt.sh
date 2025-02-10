@@ -10,7 +10,7 @@ set -euo pipefail
 # and then assembles a ChatGPT prompt that is copied to the clipboard.
 #
 # Usage:
-#   generate-prompt.sh [--slim] [--singular] [--exclude <filename>] [--exclude <another_filename>] ...
+#   generate-prompt.sh [--slim] [--singular] [--exclude <filename>] [--verbose] [--exclude <another_filename>] ...
 #
 # Options:
 #   --slim         Only include the file that contains the TODO instruction
@@ -20,6 +20,7 @@ set -euo pipefail
 #                  are excluded.
 #   --singular     Only include the Swift file that contains the TODO instruction.
 #   --exclude      Exclude any file whose basename matches the provided filename.
+#   --verbose      Enable verbose console logging for debugging purposes.
 #
 # It sources the following components:
 #   - find-prompt-instruction.sh       : Locates the unique Swift file with the TODO.
@@ -37,6 +38,7 @@ set -euo pipefail
 # Process optional parameters.
 SLIM=false
 SINGULAR=false
+VERBOSE=false
 EXCLUDES=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -57,12 +59,19 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             ;;
+        --verbose)
+            VERBOSE=true
+            shift
+            ;;
         *)
             echo "Usage: $0 [--slim] [--singular] [--exclude <filename>]" >&2
             exit 1
             ;;
     esac
 done
+
+# Export VERBOSE so that helper scripts can use it for debugging output.
+export VERBOSE
 
 # Save the directory where you invoked the script.
 CURRENT_DIR="$(pwd)"
