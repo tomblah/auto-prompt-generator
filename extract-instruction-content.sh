@@ -2,7 +2,7 @@
 # extract-instruction-content.sh
 #
 # This function extracts the TODO instruction content from a given Swift file.
-# It looks for a line that matches either "// TODO: - " or "// TODO: ChatGPT: ".
+# It looks for a line that matches the marker "// TODO: - ".
 #
 # Usage: extract-instruction-content <swift_file>
 #
@@ -13,7 +13,7 @@ extract-instruction-content() {
     local instruction_line
 
     # Search for the matching TODO instruction.
-    instruction_line=$(grep -E '// TODO: (ChatGPT: |- )' "$swift_file" | head -n 1)
+    instruction_line=$(grep -E '// TODO: - ' "$swift_file" | head -n 1)
     
     if [ -z "$instruction_line" ]; then
         echo "Error: No valid TODO instruction found in $swift_file" >&2

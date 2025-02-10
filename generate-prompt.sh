@@ -5,7 +5,7 @@ set -euo pipefail
 # generate-prompt.sh
 #
 # This script finds the unique Swift file that contains a
-# TODO instruction (either “// TODO: - ” or “// TODO: ChatGPT: ”),
+# TODO instruction (specifically “// TODO: - ”),
 # processes it along with related type definitions in the repository,
 # and then assembles a ChatGPT prompt that is copied to the clipboard.
 #
@@ -22,6 +22,9 @@ set -euo pipefail
 #   --force-global Use the entire Git repository for context inclusion, even if the TODO file is in a package.
 #   --exclude      Exclude any file whose basename matches the provided filename.
 #   --verbose      Enable verbose console logging for debugging purposes.
+#
+# Note:
+#   You must write your question in the form // TODO: - (including the hyphen).
 #
 # It sources the following components:
 #   - find-prompt-instruction.sh       : Locates the unique Swift file with the TODO.
