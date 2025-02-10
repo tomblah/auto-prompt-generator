@@ -50,3 +50,27 @@ load ./find-prompt-instruction.sh
     [ "$status" -eq 0 ]
     [[ "$output" == *"File.swift"* ]]
 }
+
+@test "Swift file in Pods directory is ignored when a valid non-Pods file exists" {
+    # Create a TODO file inside Pods.
+    mkdir -p "$TEST_DIR/Pods"
+    echo "// TODO: - Pods instruction" > "$TEST_DIR/Pods/PodsFile.swift"
+    # Create a valid TODO file outside of Pods.
+    echo "// TODO: - Valid instruction" > "$TEST_DIR/Valid.swift"
+    touch -t 202501010000 "$TEST_DIR/Valid.swift"
+    
+    run find-prompt-instruction "$TEST_DIR"
+    [ "$status" -eq 0 ]
+    # Expect that the returned file is Valid.swift and not the Pods file.
+    [[ "$output" == *"Valid.swift"* ]]
+    [[ "$output" != *"PodsFile.swift"* ]]
+}
+
+@test "Swift file only in Pods directory is ignored and returns error" {
+    mkdir -p "$TEST_DIR/Pods"
+    echo "// TODO: - Only Pods instruction" > "$TEST_DIR/Pods/OnlyPods.swift"
+    
+    run find-prompt-instruction "$TEST_DIR"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Error:"* ]]
+}

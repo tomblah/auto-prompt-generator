@@ -49,3 +49,24 @@ teardown() {
   
   rm -rf "$pkgRoot"
 }
+
+@test "get-search-roots excludes directories under .build" {
+  # Create a .build directory with a Package.swift file in it.
+  mkdir -p "$TMPDIR/.build/ThirdParty"
+  touch "$TMPDIR/.build/ThirdParty/Package.swift"
+  
+  result="$(bash ./get-search-roots.sh "$TMPDIR")"
+  
+  # The result should not include any paths with .build in them.
+  if echo "$result" | grep -q "/.build/"; then
+    fail ".build directories should not be included in the search roots."
+  fi
+}
+
+@test "get-search-roots does not return the .build directory itself" {
+  # Create a .build directory in TMPDIR.
+  mkdir -p "$TMPDIR/.build"
+  
+  result="$(bash ./get-search-roots.sh "$TMPDIR/.build")"
+  [ -z "$result" ]
+}
