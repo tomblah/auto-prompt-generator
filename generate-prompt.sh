@@ -10,7 +10,7 @@ set -euo pipefail
 # and then assembles a ChatGPT prompt that is copied to the clipboard.
 #
 # Usage:
-#   generate-prompt.sh [--slim] [--singular] [--exclude <filename>] [--verbose] [--exclude <another_filename>] ...
+#   generate-prompt.sh [--slim] [--singular] [--force-global] [--exclude <filename>] [--verbose] [--exclude <another_filename>] ...
 #
 # Options:
 #   --slim         Only include the file that contains the TODO instruction
@@ -19,6 +19,7 @@ set -euo pipefail
 #                  “Configurator”, “Router”, “DataSource”, “Delegate”, or “View”
 #                  are excluded.
 #   --singular     Only include the Swift file that contains the TODO instruction.
+#   --force-global Use the entire Git repository for context inclusion, even if the TODO file is in a package.
 #   --exclude      Exclude any file whose basename matches the provided filename.
 #   --verbose      Enable verbose console logging for debugging purposes.
 #
@@ -39,6 +40,7 @@ set -euo pipefail
 SLIM=false
 SINGULAR=false
 VERBOSE=false
+FORCE_GLOBAL=false
 EXCLUDES=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -50,12 +52,16 @@ while [[ $# -gt 0 ]]; do
             SINGULAR=true
             shift
             ;;
+        --force-global)
+            FORCE_GLOBAL=true
+            shift
+            ;;
         --exclude)
             if [ -n "${2:-}" ]; then
                 EXCLUDES+=("$2")
                 shift 2
             else
-                echo "Usage: $0 [--slim] [--singular] [--exclude <filename>]" >&2
+                echo "Usage: $0 [--slim] [--singular] [--force-global] [--exclude <filename>]" >&2
                 exit 1
             fi
             ;;
@@ -64,7 +70,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         *)
-            echo "Usage: $0 [--slim] [--singular] [--exclude <filename>]" >&2
+            echo "Usage: $0 [--slim] [--singular] [--force-global] [--exclude <filename>]" >&2
             exit 1
             ;;
     esac
@@ -112,11 +118,11 @@ FILE_PATH=$(find-prompt-instruction "$GIT_ROOT") || exit 1
 echo "Found exactly one instruction in $FILE_PATH"
 
 # --- Determine Package Scope ---
-# (Source the package root helper above.)
-# If the TODO file is in a package (i.e. an ancestor directory contains Package.swift),
-# use that package as the search scope; otherwise, use the entire Git repository.
 PACKAGE_ROOT=$(get-package-root "$FILE_PATH" || true)
-if [ -n "$PACKAGE_ROOT" ]; then
+if [ "${FORCE_GLOBAL}" = true ]; then
+    echo "Force global enabled: ignoring package boundaries and using Git root for context."
+    SEARCH_ROOT="$GIT_ROOT"
+elif [ -n "$PACKAGE_ROOT" ]; then
     echo "Found package root: $PACKAGE_ROOT"
     SEARCH_ROOT="$PACKAGE_ROOT"
 else
