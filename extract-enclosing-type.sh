@@ -5,6 +5,10 @@
 # (class, struct, or enum) from a given Swift file. It scans until
 # it reaches the TODO instruction and returns the last encountered type.
 #
+# If no enclosing type is found (i.e. if the TODO is outside any type),
+# it falls back to using the file’s basename (without the .swift extension)
+# as the type name.
+#
 # Usage (when sourcing):
 #   extract_enclosing_type <swift_file>
 #
@@ -12,7 +16,9 @@
 
 extract_enclosing_type() {
     local swift_file="$1"
-    awk '
+    local extracted_type
+
+    extracted_type=$(awk '
        BEGIN { regex="(class|struct|enum)[[:space:]]+" }
        /\/\/ TODO: -/ { exit }
        {
@@ -26,7 +32,14 @@ extract_enclosing_type() {
            }
        }
        END { if (type != "") print type }
-    ' "$swift_file"
+    ' "$swift_file")
+
+    # Fallback: if no type was found, use the file's basename (without .swift)
+    if [ -z "$extracted_type" ]; then
+         extracted_type=$(basename "$swift_file" .swift)
+    fi
+
+    echo "$extracted_type"
 }
 
 # Allow direct execution for testing.
