@@ -92,7 +92,7 @@ teardown() {
     # Output the content of the result file.
     cat "$result_file"
   '
-
+  
   # Assert that the output contains the path to the Swift file in Sources.
   [[ "$output" == *"/Sources/MyType.swift"* ]]
   # And assert that no file path containing ".build" appears.
@@ -269,4 +269,21 @@ EOF
   
   # The output should be empty because the only matching file is in Pods.
   [ -z "$output" ]
+}
+
+# --- New test: Objective-C header and implementation files ---
+
+@test "find-definition-files includes Objective-C header and implementation files" {
+  # Create an Objective-C subdirectory.
+  mkdir -p "$TEST_DIR/ObjC"
+  # Create a header file and an implementation file defining MyType.
+  echo "class MyType { }" > "$TEST_DIR/ObjC/MyType.h"
+  echo "class MyType { }" > "$TEST_DIR/ObjC/MyType.m"
+  # Ensure the types file contains MyType.
+  echo "MyType" > "$TEST_DIR/types.txt"
+  
+  run bash -c 'source "'"${BATS_TEST_DIRNAME}/find-definition-files.sh"'" ; source "'"$TEST_DIR"'/get-search-roots.sh"; find-definition-files "'"$TEST_DIR/types.txt"'" "'"$TEST_DIR"'"'
+  result=$(cat "$output")
+  [[ "$result" == *"MyType.h"* ]]
+  [[ "$result" == *"MyType.m"* ]]
 }
