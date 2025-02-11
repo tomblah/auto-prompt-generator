@@ -34,7 +34,7 @@ EOF
   [ "$output" = "OnlyEnum" ]
 }
 
-@test "extract-enclosing-type outputs nothing if no type is defined before the TODO" {
+@test "extract-enclosing-type returns the filename if no type is defined before the TODO" {
   file="$TMP_DIR/test.swift"
   cat <<EOF > "$file"
 // A comment line
@@ -43,8 +43,9 @@ EOF
 
   run bash -c "source ./extract-enclosing-type.sh; extract_enclosing_type \"$file\""
   [ "$status" -eq 0 ]
-  # Expect no output because no type was defined before the TODO.
-  [ -z "$output" ]
+  # With the fallback logic, if no type is defined before the TODO,
+  # the function returns the file's basename (without the .swift extension).
+  [ "$output" = "test" ]
 }
 
 @test "extract-enclosing-type ignores any types defined after the TODO" {
