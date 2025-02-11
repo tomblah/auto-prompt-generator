@@ -74,3 +74,16 @@ EOF
   referencing_file_list=$(cat "$output")
   [ -z "$referencing_file_list" ]
 }
+
+# --- New test: Objective-C header and implementation files ---
+
+@test "find-referencing-files includes Objective-C header and implementation files" {
+  echo "let instance = MyType()" > "$TMP_DIR/Ref.h"
+  echo "let instance = MyType()" > "$TMP_DIR/Ref.m"
+  run bash -c "source ./find-referencing-files.sh; find_referencing_files \"MyType\" \"$TMP_DIR\""
+  [ "$status" -eq 0 ]
+  refList=$(cat "$output")
+  [[ "$refList" == *"Ref.h"* ]]
+  [[ "$refList" == *"Ref.m"* ]]
+  rm "$TMP_DIR/Ref.h" "$TMP_DIR/Ref.m" "$output"
+}
