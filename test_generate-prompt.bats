@@ -292,3 +292,162 @@ EOF
   # And it should not display the package root message.
   [[ "$output" != *"Found package root:"* ]]
 }
+
+@test "generate-prompt.sh outputs correct file list and success message with realistic file content" {
+# Remove any default Swift files created by the standard setup.
+rm -f Test.swift Another.swift
+
+# Create the directory structure matching your repository layout.
+mkdir -p MockFiles/Model
+mkdir -p MockFiles/TramTracker
+mkdir -p MockFiles/ViewModel
+
+# Create a realistic TramTrackerViewModel.swift file in MockFiles/ViewModel/
+# (This file contains the unique TODO instruction that the script should select.)
+cat << 'EOF' > MockFiles/ViewModel/TramTrackerViewModel.swift
+//
+//  TramTrackerViewModel.swift
+//  TramTrackerSwiftUI
+//
+//  Created on 17/3/2024.
+//
+
+import Foundation
+
+@MainActor
+class TramTrackerViewModel: ObservableObject {
+ 
+ // MARK: - Published properties
+ 
+ @Published var northBoundPredictedArrivals: [PredictedArrival]?
+ @Published var southBoundPredictedArrivals: [PredictedArrival]?
+ 
+ var hasLoaded: Bool { northBoundPredictedArrivals != nil && southBoundPredictedArrivals != nil }
+ 
+ @Published var isLoading: Bool = false
+ @Published var errorMessage: String?
+ 
+ // MARK: - Properties
+ 
+ private let useCase: TramTrackerUseCasing
+ 
+ // MARK: - Constants
+ 
+ private enum StopIdentifier {
+     static let north = "4055"
+     static let south = "4155"
+ }
+ 
+ // MARK: - Life-cycle
+ 
+ init(useCase: TramTrackerUseCasing = TramTrackerUseCase()) {
+     self.useCase = useCase
+ }
+ 
+ // MARK: - Public functions
+ 
+ func loadPredictedArrivals() {
+     self.isLoading = true
+     self.errorMessage = nil
+     
+     Task {
+         do {
+             // TODO: - fetch these in parallel and populate the respective published varss
+             async let fetchedNorthBoundPredictedArrivals = try useCase.fetchUpcomingPredictedArrivals(forStopId: StopIdentifier.north)
+             async let fetchedSouthBoundPredictedArrivals = try useCase.fetchUpcomingPredictedArrivals(forStopId: StopIdentifier.south)
+             // (Rest of implementation omitted for brevity)
+         } catch {
+             self.errorMessage = "⚠️\nCould not load upcoming trams, please try again"
+             self.isLoading = false
+         }
+     }
+ }
+ 
+ func clearPredictedArrivals() {
+     self.northBoundPredictedArrivals = nil
+     self.southBoundPredictedArrivals = nil
+ }
+}
+EOF
+
+# Create a realistic TramTrackerUseCase.swift file in MockFiles/TramTracker/
+# (This file contains an alternate TODO that should be ignored.)
+cat << 'EOF' > MockFiles/TramTracker/TramTrackerUseCase.swift
+//
+//  TramTrackerUseCase.swift
+//  TramTrackerSwiftUI
+//
+//  Created on 17/3/2024.
+//
+
+import Foundation
+
+// TODO: - Can you produce unit tests for this class
+
+protocol TramTrackerUseCasing {
+ func fetchUpcomingPredictedArrivals(forStopId stopId: String) async throws -> [PredictedArrival]
+}
+
+class TramTrackerUseCase: TramTrackerUseCasing {
+ 
+ private let tramTrackerManager: TramTrackerManaging
+ private let tramTrackerController: TramTrackerControlling
+ 
+ init(
+     tramTrackerManager: TramTrackerManaging = TramTrackerManager.sharedInstance,
+     tramTrackerController: TramTrackerControlling = TramTrackerController()
+ ) {
+     self.tramTrackerManager = tramTrackerManager
+     self.tramTrackerController = tramTrackerController
+ }
+ 
+ func fetchUpcomingPredictedArrivals(forStopId stopId: String) async throws -> [PredictedArrival] {
+     // Minimal stub implementation for testing.
+     return []
+ }
+}
+EOF
+
+# Create a realistic PredictedArrival.swift file in MockFiles/Model/
+cat << 'EOF' > MockFiles/Model/PredictedArrival.swift
+//
+//  PredictedArrival.swift
+//  TramTrackerSwiftUI
+//
+//  Created on 17/3/2024.
+//
+
+import Foundation
+
+struct Tram {
+ let vehicleNumber: Int
+ let isAirConditioned: Bool
+}
+
+struct PredictedArrival {
+ let tram: Tram
+ let routeNumber: String
+ let predictedArrivalDateTime: Date
+}
+EOF
+
+# Ensure that the TramTrackerViewModel.swift file is the most recently modified.
+sleep 1
+touch MockFiles/ViewModel/TramTrackerViewModel.swift
+
+# Run the generate-prompt.sh script (the script uses the Git root, which is our TMP_DIR).
+run bash generate-prompt.sh
+[ "$status" -eq 0 ]
+
+# Extract the final list of file basenames from the output.
+final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag' | tr -d '\r')
+
+# Define the expected final list.
+expected_list=$(echo -e "PredictedArrival.swift\nTramTrackerUseCase.swift\nTramTrackerViewModel.swift" | sort)
+final_list_sorted=$(echo "$final_list" | sort)
+
+[ "$final_list_sorted" = "$expected_list" ]
+
+# Assert that the success section includes the expected TODO instruction.
+[[ "$output" == *"// TODO: - fetch these in parallel and populate the respective published varss"* ]]
+}
