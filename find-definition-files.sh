@@ -1,15 +1,19 @@
 #!/bin/bash
 # find-definition-files.sh
 #
-# This function searches for Swift files that contain definitions for any of the types
+# This function searches for files that contain definitions for any of the types
 # listed in a given types file. It now builds a combined regex for all types to reduce
 # the number of find/grep executions.
 #
 # Usage: find-definition-files <types_file> <root>
 #
 # Output:
-#   On success: prints the path to a temporary file containing a list of Swift files
+#   On success: prints the path to a temporary file containing a list of files
 #   where definitions were found.
+
+# Source file-types.sh to import the allowed file expressions.
+source "$(dirname "${BASH_SOURCE[0]}")/file-types.sh"
+
 find-definition-files() {
     local types_file="$1"
     local root="$2"
@@ -42,7 +46,8 @@ find-definition-files() {
          if [ "${VERBOSE:-false}" = true ]; then
               echo "[VERBOSE] Running find command in directory: $sr" >&2
          fi
-         find "$sr" -type f -name "*.swift" -not -path "*/.build/*" -not -path "*/Pods/*" \
+         find "$sr" -type f \( "${ALLOWED_FIND_EXPR[@]}" \) \
+             -not -path "*/.build/*" -not -path "*/Pods/*" \
              -exec grep -lE "\\b(class|struct|enum|protocol|typealias)\\s+($types_regex)\\b" {} \; >> "$temp_found" || true
          if [ "${VERBOSE:-false}" = true ]; then
               echo "[VERBOSE] Completed search in directory: $sr" >&2
