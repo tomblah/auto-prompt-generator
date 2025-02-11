@@ -59,19 +59,22 @@ extract_types() {
          echo "[DEBUG] Running SourceKitten on $swift_file" >&2
     fi
 
-    # Use SourceKitten to get the structure, then use jq to:
+    # Use SourceKitten to get the structure of the Swift file,
+    # then use jq to:
     #   - Recurse through the JSON hierarchy
     #   - Select items where key.kind indicates a class, struct, enum, or protocol
-    #   - Extract the key.name field, then sort and remove duplicates.
+    #   - Extract the key.name field, sort the names, and remove duplicates.
     sourcekitten structure --file "$swift_file" | \
       jq -r '
         recurse(.substructure[]?) |
-        select(.key.kind? | test("^source.lang.swift.decl\\.(class|struct|enum|protocol)$")) |
+        select((.key.kind // "") | test("^source.lang.swift.decl\\.(class|struct|enum|protocol)$")) |
         .key.name
       ' | sort -u > "$output_file"
 
     if [ "${VERBOSE:-false}" = true ]; then
          echo "[DEBUG] Types extracted and saved to: $output_file" >&2
+         echo "[DEBUG] Extracted types:" >&2
+         cat "$output_file" >&2
     fi
 
     echo "$output_file"
