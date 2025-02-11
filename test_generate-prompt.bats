@@ -1,4 +1,7 @@
 #!/usr/bin/env bats
+load 'test/bats-support/load'
+load 'test/bats-assert/load'
+
 # test_generate-prompt.bats
 #
 # These tests run the main generate-prompt.sh script in a simulated Git repository.
@@ -294,17 +297,17 @@ EOF
 }
 
 @test "generate-prompt.sh outputs correct file list and success message with realistic file content" {
-# Remove any default Swift files created by the standard setup.
-rm -f Test.swift Another.swift
+  # Remove any default Swift files created by the standard setup.
+  rm -f Test.swift Another.swift
 
-# Create the directory structure matching your repository layout.
-mkdir -p MockFiles/Model
-mkdir -p MockFiles/TramTracker
-mkdir -p MockFiles/ViewModel
+  # Create the directory structure matching your repository layout.
+  mkdir -p MockFiles/Model
+  mkdir -p MockFiles/TramTracker
+  mkdir -p MockFiles/ViewModel
 
-# Create a realistic TramTrackerViewModel.swift file in MockFiles/ViewModel/
-# (This file contains the unique TODO instruction that the script should select.)
-cat << 'EOF' > MockFiles/ViewModel/TramTrackerViewModel.swift
+  # Create a realistic TramTrackerViewModel.swift file in MockFiles/ViewModel/
+  # (This file contains the unique TODO instruction that the script should select.)
+  cat << 'EOF' > MockFiles/ViewModel/TramTrackerViewModel.swift
 //
 //  TramTrackerViewModel.swift
 //  TramTrackerSwiftUI
@@ -370,9 +373,9 @@ class TramTrackerViewModel: ObservableObject {
 }
 EOF
 
-# Create a realistic TramTrackerUseCase.swift file in MockFiles/TramTracker/
-# (This file contains an alternate TODO that should be ignored.)
-cat << 'EOF' > MockFiles/TramTracker/TramTrackerUseCase.swift
+  # Create a realistic TramTrackerUseCase.swift file in MockFiles/TramTracker/
+  # (This file contains an alternate TODO that should be ignored.)
+  cat << 'EOF' > MockFiles/TramTracker/TramTrackerUseCase.swift
 //
 //  TramTrackerUseCase.swift
 //  TramTrackerSwiftUI
@@ -408,8 +411,8 @@ class TramTrackerUseCase: TramTrackerUseCasing {
 }
 EOF
 
-# Create a realistic PredictedArrival.swift file in MockFiles/Model/
-cat << 'EOF' > MockFiles/Model/PredictedArrival.swift
+  # Create a realistic PredictedArrival.swift file in MockFiles/Model/
+  cat << 'EOF' > MockFiles/Model/PredictedArrival.swift
 //
 //  PredictedArrival.swift
 //  TramTrackerSwiftUI
@@ -431,25 +434,26 @@ struct PredictedArrival {
 }
 EOF
 
-# Ensure that the TramTrackerViewModel.swift file is the most recently modified.
-sleep 1
-touch MockFiles/ViewModel/TramTrackerViewModel.swift
+  # Ensure that the TramTrackerViewModel.swift file is the most recently modified.
+  sleep 1
+  touch MockFiles/ViewModel/TramTrackerViewModel.swift
 
-# Run the generate-prompt.sh script (the script uses the Git root, which is our TMP_DIR).
-run bash generate-prompt.sh
-[ "$status" -eq 0 ]
+  # Run the generate-prompt.sh script (the script uses the Git root, which is our TMP_DIR).
+  run bash generate-prompt.sh
+  [ "$status" -eq 0 ]
 
-# Extract the final list of file basenames from the output.
-final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag' | tr -d '\r')
+  # Extract the final list of file basenames from the output.
+  final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag' | tr -d '\r')
 
-# Define the expected final list.
-expected_list=$(echo -e "PredictedArrival.swift\nTramTrackerUseCase.swift\nTramTrackerViewModel.swift" | sort)
-final_list_sorted=$(echo "$final_list" | sort)
+  # Define the expected final list.
+  expected_list=$(echo -e "PredictedArrival.swift\nTramTrackerUseCase.swift\nTramTrackerViewModel.swift" | sort)
+  final_list_sorted=$(echo "$final_list" | sort)
 
-[ "$final_list_sorted" = "$expected_list" ]
+  # Use bats-assert to show a diff if these do not match.
+  assert_equal "$expected_list" "$final_list_sorted"
 
-# Assert that the success section includes the expected TODO instruction.
-[[ "$output" == *"// TODO: - fetch these in parallel and populate the respective published varss"* ]]
+  # Assert that the success section includes the expected TODO instruction.
+  [[ "$output" == *"// TODO: - fetch these in parallel and populate the respective published varss"* ]]
 }
 
 @test "generate-prompt.sh outputs only the expected files when many extra files exist with realistic content" {
@@ -632,7 +636,7 @@ EOF
 //  TramTrackerSwiftUIApp.swift
 //  TramTrackerSwiftUI
 //
-//  Created on 16/3/2024.
+//  Created on 16/3/2024
 //
 
 import SwiftUI
@@ -654,7 +658,7 @@ EOF
 //  DeviceTokenResponse.swift
 //  TramTrackerSwiftUI
 //
-//  Created on 16/3/2024.
+//  Created on 16/3/2024
 //
 
 import Foundation
@@ -685,7 +689,7 @@ EOF
 //  NextPredictedRoutesCollectionResponse.swift
 //  TramTrackerSwiftUI
 //
-//  Created on 16/3/2024.
+//  Created on 16/3/2024
 //
 
 import Foundation
@@ -722,7 +726,7 @@ EOF
 //  TramTrackerService.swift
 //  TramTrackerSwiftUI
 //
-//  Created on 16/3/2024.
+//  Created on 16/3/2024
 //
 
 import Foundation
@@ -778,7 +782,7 @@ EOF
 //  HTTPClient.swift
 //  TramTrackerSwiftUI
 //
-//  Created on 16/3/2024.
+//  Created on 16/3/2024
 //
 
 import Foundation
@@ -852,7 +856,7 @@ EOF
 //  TramTrackerController.swift
 //  TramTrackerSwiftUI
 //
-//  Created on 17/3/2024.
+//  Created on 17/3/2024
 //
 
 import Foundation
@@ -931,7 +935,7 @@ EOF
 //  TramTrackerManager.swift
 //  TramTrackerSwiftUI
 //
-//  Created on 17/3/2024.
+//  Created on 17/3/2024
 //
 
 import Foundation
@@ -977,7 +981,7 @@ EOF
 //  Array Extensions.swift
 //  TramTrackerSwiftUI
 //
-//  Created on 17/3/2024.
+//  Created on 17/3/2024
 //
 
 import Foundation
@@ -995,7 +999,7 @@ EOF
 //  Tram.swift
 //  TramTrackerSwiftUI
 //
-//  Created on 17/3/2024.
+//  Created on 17/3/2024
 //
 
 import Foundation
@@ -1012,7 +1016,7 @@ EOF
 //  ContentView.swift
 //  TramTrackerSwiftUI
 //
-//  Created on 16/3/2024.
+//  Created on 16/3/2024
 //
 
 import SwiftUI
@@ -1230,7 +1234,8 @@ EOF
   expected_list=$(echo -e "PredictedArrival.swift\nTramTrackerUseCase.swift\nTramTrackerViewModel.swift" | sort)
   final_list_sorted=$(echo "$final_list" | sort)
   
-  [ "$final_list_sorted" = "$expected_list" ]
+  # Use bats-assert to compare the expected vs. actual, showing a diff on failure.
+  assert_equal "$expected_list" "$final_list_sorted"
 
   # Assert that the success section includes the expected unique TODO instruction.
   [[ "$output" == *"// TODO: - fetch these in parallel and populate the respective published varss"* ]]
