@@ -451,3 +451,787 @@ final_list_sorted=$(echo "$final_list" | sort)
 # Assert that the success section includes the expected TODO instruction.
 [[ "$output" == *"// TODO: - fetch these in parallel and populate the respective published varss"* ]]
 }
+
+@test "generate-prompt.sh outputs only the expected files when many extra files exist with realistic content" {
+  # Remove any default Swift files created by setup.
+  rm -f Test.swift Another.swift
+
+  # --- Create the minimal required files ---
+
+  # Create directory structure for the expected files.
+  mkdir -p MockFiles/Model
+  mkdir -p MockFiles/TramTracker
+  mkdir -p MockFiles/ViewModel
+
+  # Create TramTrackerViewModel.swift (expected file with unique TODO).
+  cat << 'EOF' > MockFiles/ViewModel/TramTrackerViewModel.swift
+//
+//  TramTrackerViewModel.swift
+//  TramTrackerSwiftUI
+//
+//  Created on 17/3/2024.
+//
+
+import Foundation
+
+@MainActor
+class TramTrackerViewModel: ObservableObject {
+    
+    // MARK: - Published properties
+    
+    @Published var northBoundPredictedArrivals: [PredictedArrival]?
+    @Published var southBoundPredictedArrivals: [PredictedArrival]?
+    
+    var hasLoaded: Bool { northBoundPredictedArrivals != nil && southBoundPredictedArrivals != nil }
+    
+    @Published var isLoading: Bool = false
+    @Published var errorMessage: String?
+    
+    var northStopIdentifier: String { StopIdentifier.north }
+    var southStopIdentifier: String { StopIdentifier.south }
+    
+    // MARK: - Properties
+    
+    private let useCase: TramTrackerUseCasing
+    
+    // MARK: - Constants
+    
+    private enum StopIdentifier {
+        static let north = "4055"
+        static let south = "4155"
+    }
+    
+    // MARK: -  Life-cycle
+    
+    init(useCase: TramTrackerUseCasing = TramTrackerUseCase()) {
+        self.useCase = useCase
+    }
+    
+    // MARK: - Public functions
+    
+    func loadPredictedArrivals() {
+        self.isLoading = true
+        self.errorMessage = nil
+        
+        Task {
+            do {
+                // TODO: - fetch these in parallel and populate the respective published varss
+                // Fetch both north and south and only update UI once both have loaded
+                async let fetchedNorthBoundPredictedArrivals = try useCase.fetchUpcomingPredictedArrivals(forStopId: StopIdentifier.north)
+                async let fetchedSouthBoundPredictedArrivals = try useCase.fetchUpcomingPredictedArrivals(forStopId: StopIdentifier.south)
+                
+            } catch {
+                self.errorMessage = "⚠️\nCould not load upcoming trams, please try again"
+                self.isLoading = false
+            }
+        }
+    }
+    
+    func clearPredictedArrivals() {
+        self.northBoundPredictedArrivals = nil
+        self.southBoundPredictedArrivals = nil
+    }
+    
+}
+EOF
+
+  # Create TramTrackerUseCase.swift (expected file with its TODO comment).
+  cat << 'EOF' > MockFiles/TramTracker/TramTrackerUseCase.swift
+//
+//  TramTrackerUseCase.swift
+//  TramTrackerSwiftUI
+//
+//  Created on 17/3/2024.
+//
+
+enum FormError: Error {
+    case badCapture
+}
+
+import Foundation
+
+// TODO: - Can you produce unit tests for this class
+
+protocol TramTrackerUseCasing {
+    func fetchUpcomingPredictedArrivals(forStopId stopId: String) async throws -> [PredictedArrival]
+}
+
+class TramTrackerUseCase {
+    
+    // MARK: - Properties
+    
+    private let tramTrackerManager: TramTrackerManaging
+    private let tramTrackerController: TramTrackerControlling
+    
+    // MARK: - Initialisation
+    
+    init(
+        tramTrackerManager: TramTrackerManaging = TramTrackerManager.sharedInstance,
+        tramTrackerController: TramTrackerControlling = TramTrackerController()
+    ) {
+        self.tramTrackerManager = tramTrackerManager
+        self.tramTrackerController = tramTrackerController
+    }
+    
+}
+
+// MARK: - TramTrackerUseCasing
+
+extension TramTrackerUseCase: TramTrackerUseCasing {
+    
+    func fetchUpcomingPredictedArrivals(forStopId stopId: String) async throws -> [PredictedArrival] {
+        try await tramTrackerManager.authenticateIfNeeded()
+        guard let token = tramTrackerManager.deviceToken else {
+            fatalError("Invalid state: no device token after authentication")
+        }
+        let capturedUsername = "foo"
+        let capturedPassword = "bar"
+        
+        if capturedUsername == capturedPassword {
+            throw FormError.badCapture
+        }
+                
+        if capturedUsername == capturedPassword {
+            print("Although the captured username is actually the captured password, we are knowingly going to show it as plain text") // This is unethical and possibly illegal
+        }
+        
+        return try await tramTrackerController.fetchPredictedArrivals(forStopId: stopId, token: token)
+    }
+    
+}
+EOF
+
+  # Create PredictedArrival.swift (expected file).
+  cat << 'EOF' > MockFiles/Model/PredictedArrival.swift
+//
+//  PredictedArrival.swift
+//  TramTrackerSwiftUI
+//
+//  Created on 17/3/2024.
+//
+
+import Foundation
+
+struct PredictedArrival {
+    let tram: Tram
+    let routeNumber: String
+    let predictedArrivalDateTime: Date
+}
+EOF
+
+  # Ensure TramTrackerViewModel.swift is the most recently modified.
+  sleep 1
+  touch MockFiles/ViewModel/TramTrackerViewModel.swift
+
+  # --- Create extra Swift files that should NOT be included ---
+
+  # Create an App file.
+  mkdir -p MockFiles/App
+  cat << 'EOF' > MockFiles/App/TramTrackerSwiftUIApp.swift
+//
+//  TramTrackerSwiftUIApp.swift
+//  TramTrackerSwiftUI
+//
+//  Created on 16/3/2024.
+//
+
+import SwiftUI
+
+@main
+struct TramTrackerSwiftUIApp: App {
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}
+EOF
+
+  # Create DeviceTokenResponse.swift.
+  mkdir -p MockFiles/Network
+  cat << 'EOF' > MockFiles/Network/DeviceTokenResponse.swift
+//
+//  DeviceTokenResponse.swift
+//  TramTrackerSwiftUI
+//
+//  Created on 16/3/2024.
+//
+
+import Foundation
+
+struct DeviceTokenResponse: Codable {
+    let errorMessage: String?
+    let hasError: Bool
+    let hasResponse: Bool
+    let timeRequested: String
+    let timeResponded: String
+    let webMethodCalled: String
+    
+    let responseObject: [DeviceTokenInfo]
+}
+
+struct DeviceTokenInfo: Codable {
+    let deviceToken: String
+    
+    enum CodingKeys: String, CodingKey {
+        case deviceToken = "DeviceToken"
+    }
+}
+EOF
+
+  # Create NextPredictedRoutesCollectionResponse.swift.
+  cat << 'EOF' > MockFiles/Network/NextPredictedRoutesCollectionResponse.swift
+//
+//  NextPredictedRoutesCollectionResponse.swift
+//  TramTrackerSwiftUI
+//
+//  Created on 16/3/2024.
+//
+
+import Foundation
+
+struct NextPredictedRoutesCollectionResponse: Codable {
+    let errorMessage: String?
+    let hasError: Bool
+    let hasResponse: Bool
+    let timeRequested: String
+    let timeResponded: String
+    let webMethodCalled: String
+    
+    let responseObject: [NextPredictedRouteInfo]
+}
+
+struct NextPredictedRouteInfo: Codable {
+    let routeNo: String
+    let predictedArrivalDateTime: String
+    let vehicleNo: Int
+    let airConditioned: Bool
+    
+    enum CodingKeys: String, CodingKey {
+        case routeNo = "RouteNo"
+        case predictedArrivalDateTime = "PredictedArrivalDateTime"
+        case vehicleNo = "VehicleNo"
+        case airConditioned = "AirConditioned"
+    }
+}
+EOF
+
+  # Create TramTrackerService.swift.
+  cat << 'EOF' > MockFiles/TramTracker/TramTrackerService.swift
+//
+//  TramTrackerService.swift
+//  TramTrackerSwiftUI
+//
+//  Created on 16/3/2024.
+//
+
+import Foundation
+
+protocol TramTrackerServicing {
+    func getDeviceToken() async throws -> String
+    func getNextPredictedRoutesCollection(forStopId stopId: String, token: String) async throws -> NextPredictedRoutesCollectionResponse
+}
+
+class TramTrackerService {
+    
+    // MARK: - Properties
+    
+    private let httpClient: HttpClienting
+    private let baseUrlString = "https://ws3.tramtracker.com.au/TramTracker/RestService"
+    
+    // MARK: - Initialisation
+    
+    init(httpClient: HttpClienting = HttpClient()) {
+        self.httpClient = httpClient
+    }
+    
+}
+
+// MARK: - TramTrackerServicing
+
+extension TramTrackerService: TramTrackerServicing {
+    
+    func getDeviceToken() async throws -> String {
+        guard let url = URL(string: "\(baseUrlString)/GetDeviceToken/?aid=TTIOSJSON&devInfo=HomeTime") else {
+            fatalError("Invalid URL for getDeviceToken")
+        }
+        
+        let tokenResponse: DeviceTokenResponse = try await httpClient.fetch(from: url)
+        return tokenResponse.responseObject[0].deviceToken
+    }
+    
+    func getNextPredictedRoutesCollection(forStopId stopId: String, token: String) async throws -> NextPredictedRoutesCollectionResponse {
+        guard let url = URL(string: "\(baseUrlString)/GetNextPredictedRoutesCollection/\(stopId)/78/false/?aid=TTIOSJSON&cid=2&tkn=\(token)") else {
+            throw HttpError.badURL
+        }
+        
+        let nextPredictedRoutesCollectionResponse: NextPredictedRoutesCollectionResponse = try await httpClient.fetch(from: url)
+        return nextPredictedRoutesCollectionResponse
+    }
+    
+}
+EOF
+
+  # Create HTTPClient.swift.
+  cat << 'EOF' > MockFiles/Network/HTTPClient.swift
+//
+//  HTTPClient.swift
+//  TramTrackerSwiftUI
+//
+//  Created on 16/3/2024.
+//
+
+import Foundation
+
+// MARK: - URLSessionProvider
+
+protocol URLSessionProvider {
+    func data(for request: URLRequest, delegate: (any URLSessionTaskDelegate)?) async throws -> (Data, URLResponse)
+}
+
+extension URLSessionProvider {
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        return try await data(for: request, delegate: nil)
+    }
+}
+
+extension URLSession: URLSessionProvider {
+    func data(for request: URLRequest, delegate: (any URLSessionTaskDelegate)?) async throws -> (Data, URLResponse) {
+        let (data, response) = try await data(for: request)
+        return (data, response)
+    }
+}
+
+enum HttpError: Error {
+    case badURL, badResponse, errorDecodingData
+}
+
+protocol HttpClienting {
+    func fetch<T: Codable>(from url: URL) async throws -> T
+}
+
+class HttpClient {
+    
+    // MARK: - Properties
+    
+    private let urlSession: URLSessionProvider
+    
+    // MARK: - Initialization
+    
+    init(urlSession: URLSessionProvider = URLSession.shared) {
+        self.urlSession = urlSession
+    }
+    
+}
+
+// MARK: - HttpClienting
+
+extension HttpClient: HttpClienting {
+    
+    func fetch<T: Codable>(from url: URL) async throws -> T {
+        let (data, response) = try await urlSession.data(from: url)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw HttpError.badResponse
+        }
+        
+        do {
+            let decodedObject = try JSONDecoder().decode(T.self, from: data)
+            return decodedObject
+        } catch {
+            throw HttpError.errorDecodingData
+        }
+    }
+    
+}
+EOF
+
+  # Create TramTrackerController.swift.
+  cat << 'EOF' > MockFiles/TramTracker/TramTrackerController.swift
+//
+//  TramTrackerController.swift
+//  TramTrackerSwiftUI
+//
+//  Created on 17/3/2024.
+//
+
+import Foundation
+
+enum TramTrackerControllerError: Error {
+    case errorDecodingData
+}
+
+protocol TramTrackerControlling {
+    func fetchDeviceToken() async throws -> String
+    func fetchPredictedArrivals(forStopId stopId: String, token: String) async throws -> [PredictedArrival]
+}
+
+class TramTrackerController {
+    
+    // MARK: - Properties
+    
+    private let tramTrackerService: TramTrackerServicing
+    
+    // MARK: - Initialisation
+    
+    init(tramTrackerService: TramTrackerServicing = TramTrackerService()) {
+        self.tramTrackerService = tramTrackerService
+    }
+    
+}
+
+// MARK: - TramTrackerControlling
+
+extension TramTrackerController: TramTrackerControlling {
+    
+    func fetchDeviceToken() async throws -> String {
+        return try await tramTrackerService.getDeviceToken()
+    }
+    
+    func fetchPredictedArrivals(forStopId stopId: String, token: String) async throws -> [PredictedArrival] {
+        let nextPredictedRoutesCollectionResponse = try await tramTrackerService.getNextPredictedRoutesCollection(forStopId: stopId, token: token)
+        
+        // TODO: check errors by directly having a look at the JSON, e.g. there's a field "hasError"
+        
+        // Map responses into business objects
+        let predictedArrivals = try nextPredictedRoutesCollectionResponse.responseObject.map { nextPredictedRouteInfo in
+            let tram = Tram(vehicleNumber: nextPredictedRouteInfo.vehicleNo, isAirConditioned: nextPredictedRouteInfo.airConditioned)
+            guard let predictedArrivalDateTime = self.dateFromDotNetFormattedDateString(nextPredictedRouteInfo.predictedArrivalDateTime) else {
+                throw TramTrackerControllerError.errorDecodingData
+            }
+            let predictedArrival = PredictedArrival(tram: tram, routeNumber: nextPredictedRouteInfo.routeNo, predictedArrivalDateTime: predictedArrivalDateTime)
+            return predictedArrival
+        }
+        
+        return predictedArrivals
+    }
+    
+}
+
+// MARK: - Private functions
+
+private extension TramTrackerController {
+    
+    func dateFromDotNetFormattedDateString(_ string: String) -> Date? {
+        guard let startRange = string.range(of: "("), let endRange = string.range(of: "+") else { return nil }
+        let lowBound = string.index(startRange.lowerBound, offsetBy: 1)
+        let range = lowBound..<endRange.lowerBound
+        let dateAsString = string[range]
+        guard let time = Double(dateAsString) else { return nil }
+        let unixTimeInterval = time / 1000
+        return Date(timeIntervalSince1970: unixTimeInterval)
+    }
+    
+}
+EOF
+
+  # Create TramTrackerManager.swift.
+  cat << 'EOF' > MockFiles/TramTracker/TramTrackerManager.swift
+//
+//  TramTrackerManager.swift
+//  TramTrackerSwiftUI
+//
+//  Created on 17/3/2024.
+//
+
+import Foundation
+
+protocol TramTrackerManaging {
+    var deviceToken: String? { get }
+    func authenticateIfNeeded() async throws
+}
+
+class TramTrackerManager {
+    
+    // MARK: - Properties
+    
+    static let sharedInstance = TramTrackerManager()
+    
+    private let tramTrackerController: TramTrackerControlling
+    private(set) var deviceToken: String?
+    
+    // MARK: - Initialisation
+    
+    init(tramTrackerController: TramTrackerControlling = TramTrackerController()) {
+        self.tramTrackerController = tramTrackerController
+    }
+    
+}
+
+// MARK: - TramTrackerManaging
+
+extension TramTrackerManager: TramTrackerManaging {
+    
+    func authenticateIfNeeded() async throws {
+        guard deviceToken == nil else { return }
+        deviceToken = try await tramTrackerController.fetchDeviceToken()
+    }
+    
+}
+EOF
+
+  # Create Array Extensions.swift.
+  mkdir -p MockFiles/Extensions
+  cat << 'EOF' > "MockFiles/Extensions/Array Extensions.swift"
+//
+//  Array Extensions.swift
+//  TramTrackerSwiftUI
+//
+//  Created on 17/3/2024.
+//
+
+import Foundation
+
+extension Array {
+    func safeElement(at index: Index) -> Element? {
+        return indices.contains(index) ? self[index] : nil
+    }
+}
+EOF
+
+  # Create Tram.swift.
+  cat << 'EOF' > MockFiles/Model/Tram.swift
+//
+//  Tram.swift
+//  TramTrackerSwiftUI
+//
+//  Created on 17/3/2024.
+//
+
+import Foundation
+
+struct Tram {
+    let vehicleNumber: Int // TODO: maybe make String b/c not going to do mathematics on it
+    let isAirConditioned: Bool
+}
+EOF
+
+  # Create ContentView.swift.
+  cat << 'EOF' > MockFiles/ContentView.swift
+//
+//  ContentView.swift
+//  TramTrackerSwiftUI
+//
+//  Created on 16/3/2024.
+//
+
+import SwiftUI
+
+struct ContentView: View {
+    @StateObject private var viewModel = TramTrackerViewModel()
+    
+    var body: some View {
+        NavigationView {
+            VStack {
+                if let errorMessage = viewModel.errorMessage {
+                    ErrorView(errorMessage: errorMessage)
+                } else if viewModel.isLoading {
+                    LoadingView()
+                } else if let northBoundPredictedArrivals = viewModel.northBoundPredictedArrivals,
+                            let southBoundPredictedArrivals = viewModel.southBoundPredictedArrivals {
+                    TramArrivalsListView(
+                        northBoundPredictedArrivals: northBoundPredictedArrivals,
+                        southBoundPredictedArrivals: southBoundPredictedArrivals,
+                        northStopIdentifier: viewModel.northStopIdentifier,
+                        southStopIdentifier: viewModel.southStopIdentifier
+                    )
+                } else {
+                    InformationView()
+                }
+            }
+            .padding()
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Clear") {
+                        viewModel.clearPredictedArrivals()
+                    }
+                    .disabled(!viewModel.hasLoaded || viewModel.isLoading)
+                    .tint(Color.red)
+                    .accessibilityLabel("Clear Arrivals")
+                    .accessibilityHint("Clears the list of predicted upcoming tram arrivals.")
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Load") {
+                        viewModel.loadPredictedArrivals()
+                    }
+                    .disabled(viewModel.isLoading)
+                    .tint(Color.accentColor)
+                    .accessibilityLabel("Load Upcoming Tram Arrivals")
+                    .accessibilityHint("Loads and shows the predicted upcoming tram arrivals.")
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Lifecycle Views
+
+struct InformationView: View {
+    var body: some View {
+        Text("💡 Press \"Load\" to show upcoming arrivals")
+            .foregroundColor(.secondary)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding()
+            .multilineTextAlignment(.center)
+            .lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityLabel("Information")
+            .accessibilityValue("Press Load to show upcoming arrivals")
+            .accessibilityHint("Pressing the 'Load' button, located in the top right-hand corner of the screen, will load and show the times when trams are expected to arrive. Use the navigation bar at the top to find the 'Load' button.")
+    }
+}
+
+struct LoadingView: View {
+    var body: some View {
+        ProgressView()
+            .progressViewStyle(CircularProgressViewStyle())
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding()
+            .accessibilityLabel("Loading")
+            .accessibilityHint("Indicates that tram arrival times are currently loading.")
+    }
+}
+
+struct ErrorView: View {
+    let errorMessage: String
+
+    var body: some View {
+        Text(errorMessage)
+            .foregroundColor(.red)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding()
+            .multilineTextAlignment(.center)
+            .lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityLabel("Error Message")
+            .accessibilityValue(errorMessage)
+            .accessibilityHint("Displays an error message related to tram arrival times.")
+    }
+}
+
+// MARK: - Main View Components
+
+struct TramArrivalsListView: View {
+    let northBoundPredictedArrivals: [PredictedArrival]
+    let southBoundPredictedArrivals: [PredictedArrival]
+    
+    let northStopIdentifier: String
+    let southStopIdentifier: String
+
+    var body: some View {
+        List {
+            Section(header: TramArrivalSectionHeaderView(title: "Northbound Trams (Stop \(northStopIdentifier))")) {
+                ForEach(northBoundPredictedArrivals) { arrival in
+                    TramArrivalView(arrival: arrival)
+                }
+            }
+            Section(header: TramArrivalSectionHeaderView(title: "Southbound Trams (Stop \(southStopIdentifier))")) {
+                ForEach(southBoundPredictedArrivals) { arrival in
+                    TramArrivalView(arrival: arrival)
+                }
+            }
+        }
+        .listStyle(PlainListStyle())
+        .background(Color.clear)
+    }
+}
+
+struct TramArrivalSectionHeaderView: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.headline)
+            .padding(.top)
+            .accessibilityHint("Header for a section showing upcoming tram arrivals.")
+    }
+}
+
+struct TramArrivalView: View {
+    let arrival: PredictedArrival
+    
+    var formattedArrivalTime: String {
+        let arrivalFormatter = DateFormatter()
+        arrivalFormatter.dateFormat = "h:mm a"
+        arrivalFormatter.amSymbol = "am"
+        arrivalFormatter.pmSymbol = "pm"
+        return arrivalFormatter.string(from: arrival.predictedArrivalDateTime).lowercased()
+    }
+    
+    var timeDifferenceString: String {
+        let now = Date()
+        let calendar = Calendar.current
+        let diff = calendar.dateComponents([.minute], from: now, to: arrival.predictedArrivalDateTime)
+        
+        if let minute = diff.minute, minute < 60 {
+            if minute == 1 {
+                return "in one minute"
+            } else {
+                return "in \(minute) minutes"
+            }
+        } else if let minute = diff.minute {
+            let hour = minute / 60
+            let remainingMinutes = minute % 60
+            if hour == 1 && remainingMinutes == 0 {
+                return "in one hour"
+            } else if hour > 1 && remainingMinutes == 0 {
+                return "in \(hour) hours"
+            } else if hour == 1 {
+                return "in 1 hour and \(remainingMinutes) minutes"
+            } else {
+                return "in \(hour) hours and \(remainingMinutes) minutes"
+            }
+        } else {
+            return "Unknown arrival"
+        }
+    }
+    
+    var accessibilityText: String {
+        "Route \(arrival.routeNumber), arriving \(timeDifferenceString) at \(formattedArrivalTime)."
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading) {
+            Text("Route \(arrival.routeNumber)")
+                .font(.subheadline)
+            
+            Text("Arriving \(timeDifferenceString) @ \(formattedArrivalTime)")
+                .font(.footnote)
+                .foregroundColor(.secondary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityHint("Shows the arrival time and route number for a tram.")
+    }
+}
+
+// MARK: - Convenience
+
+extension PredictedArrival: Identifiable {
+    var id: String { "\(routeNumber) \(tram.vehicleNumber) \(predictedArrivalDateTime.timeIntervalSinceReferenceDate)" }
+}
+
+#Preview {
+    ContentView()
+}
+EOF
+
+  # --- Run the generate-prompt.sh script and assert results ---
+
+  run bash generate-prompt.sh
+  [ "$status" -eq 0 ]
+
+  # Extract the final list of file basenames (printed between "Files (final list):" and the next separator).
+  final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag' | tr -d '\r')
+  
+  # The expected final list should be exactly these three files.
+  expected_list=$(echo -e "PredictedArrival.swift\nTramTrackerUseCase.swift\nTramTrackerViewModel.swift" | sort)
+  final_list_sorted=$(echo "$final_list" | sort)
+  
+  [ "$final_list_sorted" = "$expected_list" ]
+
+  # Assert that the success section includes the expected unique TODO instruction.
+  [[ "$output" == *"// TODO: - fetch these in parallel and populate the respective published varss"* ]]
+}
