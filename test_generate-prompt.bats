@@ -2,11 +2,15 @@
 # test_generate-prompt.bats
 #
 # These tests run the main generate-prompt.sh script in a simulated Git repository.
-# They verify that (a) when a valid TODO instruction exists, the prompt is assembled
-# (and “copied” to our dummy clipboard file), (b) that the script fails when no valid
-# TODO instruction is present, (c) that the --slim and --exclude options work as expected,
-# (d) that the --singular option causes only the TODO file to be included, and now
-# (e) that the new --force-global option causes the script to ignore package boundaries.
+# They verify that:
+#   (a) when a valid TODO instruction exists, the prompt is assembled
+#       (and “copied” to our dummy clipboard file),
+#   (b) the script fails when no valid TODO instruction is present,
+#   (c) the --slim and --exclude options work as expected,
+#   (d) the --singular option causes only the TODO file to be included,
+#   (e) the new --force-global option causes the script to ignore package boundaries,
+#   (f) the normal (non-singular) mode includes both the TODO file and type definitions,
+#   (g) and when multiple TODO files exist the most-recently modified one is chosen.
  
 setup() {
   # Create a temporary directory that will serve as our fake repository.
@@ -52,8 +56,9 @@ import Foundation
 class TestClass {}
 EOF
  
-  # Create an extra Swift file that would normally be discovered for type definitions.
+  # Create a Swift file that defines a type referenced by Test.swift.
   cat << 'EOF' > Another.swift
+import Foundation
 struct AnotherStruct {}
 EOF
 }
@@ -63,15 +68,12 @@ teardown() {
 }
  
 @test "generate-prompt.sh outputs success message and assembles prompt with fixed instruction" {
-  # Run the main script.
   run bash generate-prompt.sh
   [ "$status" -eq 0 ]
  
-  # Check that the output includes a success message and the fixed instruction.
   [[ "$output" == *"Success:"* ]]
   [[ "$output" == *"Can you do the TODO:- in the above code?"* ]]
  
-  # Check that our dummy pbcopy created a clipboard file and that it contains prompt details.
   [ -f "clipboard.txt" ]
   clipboard_content=$(cat clipboard.txt)
   [[ "$clipboard_content" == *"The contents of Test.swift is as follows:"* ]]
@@ -97,11 +99,10 @@ import UIKit
 class ViewController {}
 EOF
  
-  # Run the script with the --slim flag.
   run bash generate-prompt.sh --slim
   [ "$status" -eq 0 ]
  
-  # The section showing the final list of files should not list ViewController.swift.
+  # The final file list should not include ViewController.swift.
   [[ "$output" != *"ViewController.swift"* ]]
   [[ "$output" == *"Success:"* ]]
 }
@@ -113,44 +114,30 @@ import Foundation
 class ExcludeMe {}
 EOF
  
-  # Run the script with --exclude option.
   run bash generate-prompt.sh --exclude ExcludeMe.swift
   [ "$status" -eq 0 ]
  
-  # Debugging output: print the complete output for inspection.
-  echo "DEBUG OUTPUT:"
-  echo "$output"
- 
   # Extract the final list of files from the output.
-  # This extracts the lines between "Files (final list):" and the next separator line.
   final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag')
-  echo "DEBUG: Final list of files:" "$final_list" >&2
- 
-  # Verify that the final list of files does not include ExcludeMe.swift.
+  # Verify that the final list does not include ExcludeMe.swift.
   [[ "$final_list" != *"ExcludeMe.swift"* ]]
 }
  
 @test "generate-prompt.sh singular mode includes only the TODO file" {
-  # Create an additional extra file that would normally be processed.
+  # Create an additional file that would normally be processed.
   cat << 'EOF' > Extra.swift
 import Foundation
 struct ExtraStruct {}
 EOF
  
-  # Run the script with the --singular flag.
   run bash generate-prompt.sh --singular
   [ "$status" -eq 0 ]
  
-  # Check that the output indicates singular mode.
   [[ "$output" == *"Singular mode enabled: only including the TODO file"* ]]
  
-  # Extract the final list of file basenames.
   final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag' | tr -d '\r')
- 
-  # In singular mode, only the TODO file (Test.swift) should be listed.
   [ "$final_list" = "Test.swift" ]
  
-  # Verify that the clipboard content (from dummy pbcopy) includes only Test.swift.
   [ -f "clipboard.txt" ]
   clipboard_content=$(cat clipboard.txt)
   [[ "$clipboard_content" == *"The contents of Test.swift is as follows:"* ]]
@@ -165,15 +152,12 @@ import Foundation
 class IgnoreMe {}
 EOF
  
-  # Run the script with the --singular flag.
   run bash generate-prompt.sh --singular
   [ "$status" -eq 0 ]
  
-  # Verify that the final file list printed includes only Test.swift.
   final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag' | tr -d '\r')
   [ "$final_list" = "Test.swift" ]
  
-  # Also check that the assembled prompt in clipboard.txt does not mention IgnoreMe.swift.
   [ -f "clipboard.txt" ]
   clipboard_content=$(cat clipboard.txt)
   [[ "$clipboard_content" == *"Test.swift"* ]]
@@ -181,14 +165,12 @@ EOF
 }
  
 @test "generate-prompt.sh does not include Swift files from .build directories" {
-  # Create a Swift file inside a .build directory that should be ignored.
   mkdir -p ".build/ThirdParty"
   cat << 'EOF' > ".build/ThirdParty/ThirdParty.swift"
 import Foundation
 class ThirdPartyClass {}
 EOF
 
-  # Also create a normal Swift file to be processed.
   cat << 'EOF' > Normal.swift
 import Foundation
 class NormalClass {}
@@ -201,94 +183,107 @@ import Foundation
 class TestClass {}
 EOF
 
-  # Run the main script.
   run bash generate-prompt.sh
   [ "$status" -eq 0 ]
 
-  # Extract the final list of files from the output.
   final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag')
   
-  # Assert that the list includes Normal.swift and does not include ThirdParty.swift.
   [[ "$final_list" == *"Normal.swift"* ]]
   [[ "$final_list" != *"ThirdParty.swift"* ]]
 
-  # Also check that the assembled prompt (in clipboard.txt) does not include ThirdParty.swift.
   clipboard_content=$(cat clipboard.txt)
   [[ "$clipboard_content" == *"Normal.swift"* ]]
   [[ "$clipboard_content" != *"ThirdParty.swift"* ]]
 }
  
 @test "generate-prompt.sh does not include Swift files from Pods directories" {
-  # Create a Swift file inside a Pods directory that should be ignored.
   mkdir -p "Pods/SubDir"
   cat << 'EOF' > "Pods/SubDir/PodsFile.swift"
 import Foundation
 class PodsClass {}
 EOF
 
-  # Also create a normal Swift file to be processed.
   cat << 'EOF' > Normal.swift
 import Foundation
 class NormalClass {}
 EOF
 
-  # Ensure Test.swift (with the valid TODO instruction) is reset.
   cat << 'EOF' > Test.swift
 import Foundation
 // TODO: - Test instruction for prompt
 class TestClass {}
 EOF
 
-  # Run the main script.
   run bash generate-prompt.sh
   [ "$status" -eq 0 ]
 
-  # Extract the final list of files from the output.
   final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag')
   
-  # Assert that the list includes Normal.swift and does not include PodsFile.swift.
   [[ "$final_list" == *"Normal.swift"* ]]
   [[ "$final_list" != *"PodsFile.swift"* ]]
 
-  # Also check that the assembled prompt (in clipboard.txt) does not include PodsFile.swift.
   clipboard_content=$(cat clipboard.txt)
   [[ "$clipboard_content" == *"Normal.swift"* ]]
   [[ "$clipboard_content" != *"PodsFile.swift"* ]]
 }
  
-# --- New tests for --force-global functionality ---
-
 @test "generate-prompt.sh uses package root when available without --force-global" {
-  # Create a subdirectory "PackageDir" and simulate a package.
   mkdir -p "PackageDir"
   cat << 'EOF' > PackageDir/Package.swift
 // Package.swift content
 EOF
-  # Move Test.swift into the package directory.
   mv Test.swift PackageDir/Test.swift
 
-  # Run the script normally.
   run bash generate-prompt.sh
   [ "$status" -eq 0 ]
-  # Check that output contains "Found package root:" with "PackageDir"
   [[ "$output" == *"Found package root:"* ]]
   [[ "$output" == *"PackageDir"* ]]
 }
-
+ 
 @test "generate-prompt.sh with --force-global ignores package boundaries" {
-  # Create a subdirectory "PackageDir" and simulate a package.
   mkdir -p "PackageDir"
   cat << 'EOF' > PackageDir/Package.swift
 // Package.swift content
 EOF
-  # Move Test.swift into the package directory.
   mv Test.swift PackageDir/Test.swift
 
-  # Run the script with --force-global.
   run bash generate-prompt.sh --force-global
   [ "$status" -eq 0 ]
-  # Check that output contains the force global enabled message.
   [[ "$output" == *"Force global enabled: ignoring package boundaries and using Git root for context."* ]]
-  # And it should not display the package root message.
   [[ "$output" != *"Found package root:"* ]]
+}
+ 
+# --- Additional tests to increase coverage ---
+ 
+@test "generate-prompt.sh normal mode includes both TODO file and type definition files" {
+  # In normal mode (without --singular), both the TODO file and files
+  # containing type definitions should be processed.
+  run bash generate-prompt.sh
+  [ "$status" -eq 0 ]
+ 
+  final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag')
+  # Expect both Test.swift (the file with the TODO) and Another.swift (for the type definition)
+  [[ "$final_list" == *"Test.swift"* ]]
+  [[ "$final_list" == *"Another.swift"* ]]
+}
+ 
+@test "generate-prompt.sh chooses the most recently modified TODO file when multiple exist" {
+  # Create a second file with a valid TODO instruction.
+  cat << 'EOF' > SecondTest.swift
+import Foundation
+// TODO: - Second test instruction for prompt
+class SecondTestClass {}
+EOF
+  # Ensure SecondTest.swift is more recent than Test.swift.
+  sleep 1
+  touch SecondTest.swift
+ 
+  run bash generate-prompt.sh
+  [ "$status" -eq 0 ]
+ 
+  # The script should report that it found exactly one instruction in the most recent file.
+  [[ "$output" == *"Found exactly one instruction in SecondTest.swift"* ]]
+  # And it should log that the other TODO file (Test.swift) was ignored.
+  [[ "$output" == *"Ignored file:"* ]]
+  [[ "$output" == *"Test.swift"* ]]
 }
