@@ -38,6 +38,8 @@ EOF
   cp "${BATS_TEST_DIRNAME}/get-package-root.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/get-search-roots.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/filter-files-singular.sh" "$TMP_DIR/"
+  cp "${BATS_TEST_DIRNAME}/extract-enclosing-type.sh" "$TMP_DIR/"
+  cp "${BATS_TEST_DIRNAME}/find-referencing-files.sh" "$TMP_DIR/"
  
   # Change to TMP_DIR (this will become our repository root).
   cd "$TMP_DIR"
@@ -1235,3 +1237,51 @@ EOF
   # Assert that the success section includes the expected unique TODO instruction.
   [[ "$output" == *"// TODO: - fetch these in parallel and populate the respective published varss"* ]]
 }
+
+# --- New tests for the added --include-references functionality and its helper functions ---
+
+@test "extract-enclosing-type helper extracts the correct type from a Swift file" {
+    # Create a temporary file with a type definition and a TODO instruction.
+    echo "class MySpecialClass {}" > tempTodo.swift
+    echo "// TODO: - Implement feature" >> tempTodo.swift
+    run bash -c 'source "./extract-enclosing-type.sh"; extract_enclosing_type "tempTodo.swift"'
+    [ "$status" -eq 0 ]
+    [ "$output" = "MySpecialClass" ]
+    rm tempTodo.swift
+}
+
+@test "find-referencing-files helper finds referencing files for a given type" {
+    # Create two files: one that references the type and one that does not.
+    echo "let instance = MySpecialClass()" > tempRef.swift
+    echo "print(\"No reference here\")" > tempNonRef.swift
+    run bash -c 'source "./find-referencing-files.sh"; find_referencing_files "MySpecialClass" "."'
+    [ "$status" -eq 0 ]
+    refList=$(cat "$output")
+    [[ "$refList" == *"tempRef.swift"* ]]
+    [[ "$refList" != *"tempNonRef.swift"* ]]
+    rm tempRef.swift tempNonRef.swift "$output"
+}
+
+@test "generate-prompt.sh with --include-references includes referencing files" {
+    # Remove any default Test.swift so that our new TODO file is the only valid one.
+    rm -f Test.swift
+    # Create a new TODO file that defines a type.
+    cat << 'EOF' > Todo.swift
+import Foundation
+// TODO: - Implement special feature
+class MyTodoClass {}
+EOF
+    # Create a referencing file that mentions MyTodoClass.
+    cat << 'EOF' > Reference.swift
+import Foundation
+let ref = MyTodoClass()
+EOF
+    run bash generate-prompt.sh --include-references
+    [ "$status" -eq 0 ]
+    final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag' | tr -d '\r')
+    [[ "$final_list" == *"Todo.swift"* ]]
+    [[ "$final_list" == *"Reference.swift"* ]]
+    # Clean up the temporary files.
+    rm Todo.swift Reference.swift
+}
+

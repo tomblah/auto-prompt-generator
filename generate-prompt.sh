@@ -10,7 +10,7 @@ set -euo pipefail
 # and then assembles a ChatGPT prompt that is copied to the clipboard.
 #
 # Usage:
-#   generate-prompt.sh [--slim] [--singular] [--force-global] [--exclude <filename>] [--verbose] [--exclude <another_filename>] ...
+#   generate-prompt.sh [--slim] [--singular] [--force-global] [--include-references] [--exclude <filename>] [--verbose] [--exclude <another_filename>] ...
 #
 # Options:
 #   --slim         Only include the file that contains the TODO instruction
@@ -20,6 +20,8 @@ set -euo pipefail
 #                  are excluded.
 #   --singular     Only include the Swift file that contains the TODO instruction.
 #   --force-global Use the entire Git repository for context inclusion, even if the TODO file is in a package.
+#   --include-references
+#                  Additionally include files that reference the enclosing type.
 #   --exclude      Exclude any file whose basename matches the provided filename.
 #   --verbose      Enable verbose console logging for debugging purposes.
 #
@@ -35,8 +37,12 @@ set -euo pipefail
 #   - exclude-files.sh                 : Filters out files matching user-specified exclusions.
 #   - assemble-prompt.sh               : Assembles the final prompt and copies it to the clipboard.
 #   - get-git-root.sh                  : Determines the Git repository root.
-#   - get-package-root.sh               : Determines the package root (if any) for a given file.
-#   - filter-files-singular.sh         : (New) Returns only the file that contains the TODO.
+#   - get-package-root.sh              : Determines the package root (if any) for a given file.
+#   - filter-files-singular.sh         : Returns only the file that contains the TODO.
+#
+# New for reference inclusion:
+#   - extract-enclosing-type.sh        : Extracts the enclosing type from the TODO file.
+#   - find-referencing-files.sh        : Finds files that reference the enclosing type.
 ##########################################
 
 # Process optional parameters.
@@ -44,6 +50,7 @@ SLIM=false
 SINGULAR=false
 VERBOSE=false
 FORCE_GLOBAL=false
+INCLUDE_REFERENCES=false
 EXCLUDES=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -59,12 +66,16 @@ while [[ $# -gt 0 ]]; do
             FORCE_GLOBAL=true
             shift
             ;;
+        --include-references)
+            INCLUDE_REFERENCES=true
+            shift
+            ;;
         --exclude)
             if [ -n "${2:-}" ]; then
                 EXCLUDES+=("$2")
                 shift 2
             else
-                echo "Usage: $0 [--slim] [--singular] [--force-global] [--exclude <filename>]" >&2
+                echo "Usage: $0 [--slim] [--singular] [--force-global] [--include-references] [--exclude <filename>]" >&2
                 exit 1
             fi
             ;;
@@ -73,7 +84,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         *)
-            echo "Usage: $0 [--slim] [--singular] [--force-global] [--exclude <filename>]" >&2
+            echo "Usage: $0 [--slim] [--singular] [--force-global] [--include-references] [--exclude <filename>]" >&2
             exit 1
             ;;
     esac
@@ -102,6 +113,11 @@ else
     source "$SCRIPT_DIR/find-definition-files.sh"
     source "$SCRIPT_DIR/filter-files.sh"      # Slim mode filtering.
     source "$SCRIPT_DIR/exclude-files.sh"       # Exclusion filtering.
+fi
+
+if [ "${INCLUDE_REFERENCES:-false}" = true ]; then
+    source "$SCRIPT_DIR/extract-enclosing-type.sh"
+    source "$SCRIPT_DIR/find-referencing-files.sh"
 fi
 
 echo "--------------------------------------------------"
@@ -161,6 +177,23 @@ else
          FOUND_FILES=$(filter_excluded_files "$FOUND_FILES" "${EXCLUDES[@]}")
     fi
 fi
+
+# --- Include referencing files if requested ---
+if [ "${INCLUDE_REFERENCES:-false}" = true ]; then
+    echo "Including files that reference the enclosing type..."
+    # Extract the enclosing type from the TODO file using the helper function.
+    enclosing_type=$(extract_enclosing_type "$FILE_PATH")
+    if [ -n "$enclosing_type" ]; then
+        echo "Found enclosing type: $enclosing_type"
+        referencing_files=$(find_referencing_files "$enclosing_type" "$SEARCH_ROOT")
+        # Append the referencing files to the FOUND_FILES list.
+        cat "$referencing_files" >> "$FOUND_FILES"
+        rm -f "$referencing_files"
+    else
+        echo "No enclosing type found in $FILE_PATH, skipping reference search."
+    fi
+fi
+# --- End reference inclusion ---
 
 # Register a trap to clean up temporary files.
 cleanup_temp_files() {
