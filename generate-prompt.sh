@@ -184,7 +184,7 @@ if [ "${INCLUDE_REFERENCES:-false}" = true ]; then
     # Extract the enclosing type from the TODO file using the helper function.
     enclosing_type=$(extract_enclosing_type "$FILE_PATH")
     if [ -n "$enclosing_type" ]; then
-        echo "Found enclosing type: $enclosing_type"
+        echo "Found enclosing type '$enclosing_type'. Searching for files that reference '$enclosing_type' in: $SEARCH_ROOT"
         referencing_files=$(find_referencing_files "$enclosing_type" "$SEARCH_ROOT")
         # Append the referencing files to the FOUND_FILES list.
         cat "$referencing_files" >> "$FOUND_FILES"
