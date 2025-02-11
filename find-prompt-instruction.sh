@@ -18,30 +18,30 @@
 # this function will output additional debug logging to stderr.
 find-prompt-instruction() {
     local search_dir="$1"
+    local grep_pattern='// TODO: - '
+
     if [ "${VERBOSE:-false}" = true ]; then
-       echo "[VERBOSE] Starting search in directory: $search_dir" >&2
+       echo "[VERBOSE] Searching in directory: $search_dir" >&2
+       echo "[VERBOSE] Looking for pattern: '$grep_pattern'" >&2
     fi
 
-    # Pattern matching only "// TODO: - " (with trailing space)
-    local grep_pattern='// TODO: - '
-    
     # Read all matching file paths into an array.
     local files_array=()
     while IFS= read -r line; do
         files_array+=("$line")
+        if [ "${VERBOSE:-false}" = true ]; then
+            echo "[VERBOSE] Found matching file: $line" >&2
+        fi
     done < <(grep -rlE "$grep_pattern" --exclude-dir=Pods --include "*.swift" "$search_dir" 2>/dev/null)
     
     if [ "${VERBOSE:-false}" = true ]; then
-       echo "[VERBOSE] Found ${#files_array[@]} file(s) matching TODO pattern." >&2
-       for file in "${files_array[@]}"; do
-            echo "[VERBOSE] Matched file: $file" >&2
-       done
+       echo "[VERBOSE] Total files found: ${#files_array[@]}" >&2
     fi
     
     local file_count="${#files_array[@]}"
     
     if [ "$file_count" -eq 0 ]; then
-        echo "Error: No Swift files found containing '// TODO: - '" >&2
+        echo "Error: No Swift files found containing '$grep_pattern'" >&2
         return 1
     fi
     
@@ -87,9 +87,7 @@ find-prompt-instruction() {
     if [ "${VERBOSE:-false}" = true ]; then
        echo "[VERBOSE] Ignoring the following files:" >&2
        for file in "${ignored_files[@]}"; do
-           local base
-           base=$(basename "$file")
-           echo "[VERBOSE] Ignored file: $base" >&2
+           echo "[VERBOSE] Ignored file: $(basename "$file")" >&2
        done
     fi
     

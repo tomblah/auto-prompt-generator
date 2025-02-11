@@ -29,7 +29,7 @@ set -euo pipefail
 # It sources the following components:
 #   - find-prompt-instruction.sh       : Locates the unique Swift file with the TODO.
 #   - extract-instruction-content.sh   : Extracts the TODO instruction content from the file.
-#   - extract-types.sh                 : Extracts potential type names from a Swift file.
+#   - extract-types.sh                 : (Updated) Extracts potential type names from a Swift file using SourceKitten.
 #   - find-definition-files.sh         : Finds Swift files containing definitions for the types.
 #   - filter-files.sh                  : Filters the found files in slim mode.
 #   - exclude-files.sh                 : Filters out files matching user-specified exclusions.
@@ -98,6 +98,7 @@ source "$SCRIPT_DIR/get-package-root.sh"
 if [ "$SINGULAR" = true ]; then
     source "$SCRIPT_DIR/filter-files-singular.sh"
 else
+    # Now using the updated extract-types.sh which defines extract_types.
     source "$SCRIPT_DIR/extract-types.sh"
     source "$SCRIPT_DIR/find-definition-files.sh"
     source "$SCRIPT_DIR/filter-files.sh"      # Slim mode filtering.
@@ -140,8 +141,8 @@ if [ "$SINGULAR" = true ]; then
     echo "Singular mode enabled: only including the TODO file"
     FOUND_FILES=$(filter_files_singular "$FILE_PATH")
 else
-    # Extract potential type names from the Swift file.
-    TYPES_FILE=$(extract-types "$FILE_PATH")
+    # Extract potential type names from the Swift file using our new function.
+    TYPES_FILE=$(extract_types "$FILE_PATH")
     
     # Find Swift files containing definitions for the types.
     FOUND_FILES=$(find-definition-files "$TYPES_FILE" "$SEARCH_ROOT")
