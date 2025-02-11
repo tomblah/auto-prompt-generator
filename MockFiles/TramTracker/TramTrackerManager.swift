@@ -1,3 +1,10 @@
+//
+//  TramTrackerManager.swift
+//  TramTrackerSwiftUI
+//
+//  Created on 17/3/2024.
+//
+
 import Foundation
 
 protocol TramTrackerManaging {

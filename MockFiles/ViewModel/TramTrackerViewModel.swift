@@ -1,6 +1,12 @@
+//
+//  TramTrackerViewModel.swift
+//  TramTrackerSwiftUI
+//
+//  Created on 17/3/2024.
+//
+
 import Foundation
 
-// TODO: - can you have a look at how to improve the threading here?
 @MainActor
 class TramTrackerViewModel: ObservableObject {
     
@@ -37,26 +43,20 @@ class TramTrackerViewModel: ObservableObject {
     // MARK: - Public functions
     
     func loadPredictedArrivals() {
+        self.isLoading = true
+        self.errorMessage = nil
+        
         Task {
-            self.isLoading = true
-            self.errorMessage = nil
-            
             do {
+                // TODO: - fetch these in parallel and populate the respective published varss
                 // Fetch both north and south and only update UI once both have loaded
-                let fetchedNorthBoundPredictedArrivals = try await useCase.fetchUpcomingPredictedArrivals(forStopId: StopIdentifier.north)
-                let fetchedSouthBoundPredictedArrivals = try await useCase.fetchUpcomingPredictedArrivals(forStopId: StopIdentifier.south)
+                async let fetchedNorthBoundPredictedArrivals = try useCase.fetchUpcomingPredictedArrivals(forStopId: StopIdentifier.north)
+                async let fetchedSouthBoundPredictedArrivals = try useCase.fetchUpcomingPredictedArrivals(forStopId: StopIdentifier.south)
                 
-                await MainActor.run {
-                    self.northBoundPredictedArrivals = fetchedNorthBoundPredictedArrivals
-                    self.southBoundPredictedArrivals = fetchedSouthBoundPredictedArrivals
-                    self.isLoading = false
-                }
+
             } catch {
-                await MainActor.run {
-                    // TODO: have an enum for error messages
-                    self.errorMessage = "⚠️\nCould not load upcoming trams, please try again"
-                    self.isLoading = false
-                }
+                self.errorMessage = "⚠️\nCould not load upcoming trams, please try again"
+                self.isLoading = false
             }
         }
     }
