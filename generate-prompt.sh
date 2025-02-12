@@ -105,10 +105,11 @@ source "$SCRIPT_DIR/extract-instruction-content.sh"
 source "$SCRIPT_DIR/assemble-prompt.sh"
 source "$SCRIPT_DIR/get-git-root.sh"
 source "$SCRIPT_DIR/get-package-root.sh"
+# Always source the singular helper so that filter_files_singular is defined.
+source "$SCRIPT_DIR/filter-files-singular.sh"
 
-if [ "$SINGULAR" = true ]; then
-    source "$SCRIPT_DIR/filter-files-singular.sh"
-else
+# If not in singular mode already, load the additional helpers.
+if [ "$SINGULAR" = false ]; then
     source "$SCRIPT_DIR/extract-types.sh"
     source "$SCRIPT_DIR/find-definition-files.sh"
     source "$SCRIPT_DIR/filter-files.sh"      # Slim mode filtering.
@@ -135,6 +136,14 @@ cd "$GIT_ROOT"
 # Use the external component to locate the file with the TODO instruction.
 FILE_PATH=$(find-prompt-instruction "$GIT_ROOT") || exit 1
 echo "Found exactly one instruction in $FILE_PATH"
+
+# --- Enforce singular mode for JavaScript files (beta support) ---
+if [[ "$FILE_PATH" == *.js ]]; then
+    if [ "$SINGULAR" = false ]; then
+        echo "WARNING: JavaScript support is currently in beta. Singular mode will be enforced, so only the file containing the TODO instruction will be used for context." >&2
+        SINGULAR=true
+    fi
+fi
 
 # --- Check for --include-references ---
 if [ "$INCLUDE_REFERENCES" = true ]; then
@@ -211,7 +220,7 @@ cleanup_temp_files() {
 trap cleanup_temp_files EXIT
 
 echo "--------------------------------------------------"
-if [ "${SINGULAR}" = false ]; then
+if [ "$SINGULAR" = false ]; then
     echo "Types found:"
     cat "$TYPES_FILE"
     echo "--------------------------------------------------"
