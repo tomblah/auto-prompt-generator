@@ -11,6 +11,11 @@
 #
 # The function outputs the final assembled prompt to stdout and also copies it
 # to the clipboard using pbcopy.
+#
+# Note: This script relies on the helper "filter-substring-markers.sh" to process
+# file contents. That helper should be updated so that whenever it needs to insert
+# a placeholder it outputs a blank line, then "// ...", then another blank line.
+# (For example, by using a placeholder defined as "\n// ...\n".)
 
 # Source the helper for substring marker filtering.
 source "$(dirname "${BASH_SOURCE[0]}")/filter-substring-markers.sh"
