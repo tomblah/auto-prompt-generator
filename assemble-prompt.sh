@@ -2,7 +2,7 @@
 # assemble-prompt.sh
 #
 # This function assembles the final ChatGPT prompt by including:
-#   - The contents of Swift files where type definitions were found, and
+#   - The contents of Swift files where type definitions were found (optionally filtered by substring markers), and
 #   - A fixed instruction (instead of the extracted TODO).
 #
 # It takes two parameters:
@@ -11,6 +11,14 @@
 #
 # The function outputs the final assembled prompt to stdout and also copies it
 # to the clipboard using pbcopy.
+
+# Determine the directory where this script resides.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source the helper that filters file content based on substring markers.
+# IMPORTANT: Ensure that filter-substring-markers.sh uses regexes without "\b".
+source "$SCRIPT_DIR/filter-substring-markers.sh"
+
 assemble-prompt() {
     local found_files_file="$1"
     local instruction_content="$2"  # This parameter is no longer used.
@@ -21,21 +29,25 @@ assemble-prompt() {
     
     local clipboard_content=""
     
-    # Process each Swift file and format its content.
+    # Process each file and format its content.
     while IFS= read -r file_path; do
         local file_basename
         file_basename=$(basename "$file_path")
         local file_content
-        file_content=$(cat "$file_path")
+        # Check if the file contains substring markers (an opening marker "// v").
+        if grep -qE '^[[:space:]]*//[[:space:]]*v' "$file_path"; then
+            file_content=$(filter_substring_markers "$file_path")
+        else
+            file_content=$(cat "$file_path")
+        fi
     
-        # Prepend a newline so that the header appears on its own line.
         clipboard_content+=$(printf "\nThe contents of %s is as follows:\n\n%s\n\n--------------------------------------------------\n" "$file_basename" "$file_content")
     done <<< "$unique_found_files"
     
-    # Removed the massaging of "// TODO: - " into "// TODO: ChatGPT: "
+    # (The extracted TODO instruction is now ignored.)
     local modified_clipboard_content="$clipboard_content"
     
-    # Instead of appending the actual TODO instruction, use the fixed instruction:
+    # Use the fixed instruction instead.
     local fixed_instruction="Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen"
     
     local final_clipboard_content

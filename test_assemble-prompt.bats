@@ -60,3 +60,50 @@ EOF
   fixed_instruction="Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen"
   [[ "$output" == *"$fixed_instruction"* ]]
 }
+
+@test "assemble-prompt processes files with substring markers correctly" {
+  # Create a temporary Swift file that includes substring markers.
+  file_with_markers="$TMP_DIR/MarkedFile.swift"
+  cat <<'EOF' > "$file_with_markers"
+import Foundation
+// v
+func secretFunction() {
+    print("This is inside the markers.")
+}
+// ^
+func publicFunction() {
+    print("This is outside the markers.")
+}
+EOF
+
+  # Create a temporary file listing the file path.
+  found_files_file="$TMP_DIR/found_files_markers.txt"
+  echo "$file_with_markers" > "$found_files_file"
+
+  # Run the assemble-prompt function.
+  run assemble-prompt "$found_files_file" "ignored instruction"
+  [ "$status" -eq 0 ]
+
+  # Check that the output includes a header for MarkedFile.swift.
+  [[ "$output" == *"The contents of MarkedFile.swift is as follows:"* ]]
+
+  # Based on our filter-substring-markers.sh behavior (see its own tests), the expected
+  # filtered output should include only the content between the markers (with placeholder blocks).
+  # For example, if filter_substring_markers outputs:
+  #
+  #   (blank line)
+  #   // ...
+  #   (blank line)
+  #   func secretFunction() {
+  #       print("This is inside the markers.")
+  #   }
+  #   (blank line)
+  #   // ...
+  #   (blank line)
+  #
+  # then we can check that:
+  [[ "$output" == *"func secretFunction() {"* ]]
+  [[ "$output" == *"print(\"This is inside the markers.\")"* ]]
+  # And importantly, it should NOT include the content outside the markers:
+  [[ "$output" != *"func publicFunction() {"* ]]
+}
