@@ -11,6 +11,10 @@
 #
 # The function outputs the final assembled prompt to stdout and also copies it
 # to the clipboard using pbcopy.
+
+# Source the helper for substring marker filtering.
+source "$(dirname "${BASH_SOURCE[0]}")/filter-substring-markers.sh"
+
 assemble-prompt() {
     local found_files_file="$1"
     local instruction_content="$2"  # This parameter is no longer used.
@@ -25,8 +29,9 @@ assemble-prompt() {
     while IFS= read -r file_path; do
         local file_basename
         file_basename=$(basename "$file_path")
+        # Instead of using 'cat' directly, filter the file content using substring markers.
         local file_content
-        file_content=$(cat "$file_path")
+        file_content=$(filter_substring_markers "$file_path")
     
         # Prepend a newline so that the header appears on its own line.
         clipboard_content+=$(printf "\nThe contents of %s is as follows:\n\n%s\n\n--------------------------------------------------\n" "$file_basename" "$file_content")
