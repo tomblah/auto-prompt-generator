@@ -136,6 +136,12 @@ cd "$GIT_ROOT"
 FILE_PATH=$(find-prompt-instruction "$GIT_ROOT") || exit 1
 echo "Found exactly one instruction in $FILE_PATH"
 
+# --- Added check for --include-references on non-Swift files ---
+if [ "$INCLUDE_REFERENCES" = true ] && [[ "$FILE_PATH" != *.swift ]]; then
+    echo "Error: The --include-references option is currently only supported for Swift files. The TODO instruction was found in a non-Swift file: $(basename "$FILE_PATH")" >&2
+    exit 1
+fi
+
 # --- Determine Package Scope ---
 PACKAGE_ROOT=$(get-package-root "$FILE_PATH" || true)
 if [ "${FORCE_GLOBAL}" = true ]; then
