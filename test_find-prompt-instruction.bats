@@ -16,7 +16,8 @@ load ./find-prompt-instruction.sh
     
     run find-prompt-instruction "$TEST_DIR"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"Error: No Swift files found"* ]]
+    # Adjusted expectation: our script now outputs "Error: No files found containing '// TODO: - '"
+    [[ "$output" == *"Error: No files found containing '// TODO: - '"* ]]
 }
 
 @test "Multiple Swift files with valid TODO instructions returns the most recently modified file" {
@@ -73,4 +74,30 @@ load ./find-prompt-instruction.sh
     run find-prompt-instruction "$TEST_DIR"
     [ "$status" -ne 0 ]
     [[ "$output" == *"Error:"* ]]
+}
+
+# --- New tests for Objective-C files ---
+
+@test "Single Objective-C header file with valid TODO returns its path" {
+    echo "// TODO: - Header instruction" > "$TEST_DIR/Header.h"
+    run find-prompt-instruction "$TEST_DIR"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Header.h"* ]]
+}
+
+@test "Single Objective-C implementation file with valid TODO returns its path" {
+    echo "// TODO: - Implementation instruction" > "$TEST_DIR/Impl.m"
+    run find-prompt-instruction "$TEST_DIR"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Impl.m"* ]]
+}
+
+@test "When both Swift and Objective-C files with valid TODO exist, the most recently modified is returned" {
+    echo "// TODO: - Swift instruction" > "$TEST_DIR/SwiftFile.swift"
+    touch -t 200001010000 "$TEST_DIR/SwiftFile.swift"
+    echo "// TODO: - ObjC instruction" > "$TEST_DIR/ObjCFile.h"
+    touch -t 202501010000 "$TEST_DIR/ObjCFile.h"
+    run find-prompt-instruction "$TEST_DIR"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ObjCFile.h"* ]]
 }

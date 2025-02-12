@@ -1,8 +1,11 @@
 #!/bin/bash
 # find-prompt-instruction.sh
 #
-# This function looks for a Swift file that contains a TODO instruction marked by:
+# This function looks for a file that contains a TODO instruction marked by:
 #   - "// TODO: - "
+#
+# It supports multiple file types (Swift, Objective-C header, and Objective-C implementation)
+# by using the allowed file type filters defined in file-types.sh.
 #
 # If no such file exists, it outputs an error message.
 # If more than one file contains the instruction, it chooses the file which is most
@@ -16,6 +19,10 @@
 #
 # Note: If the global variable VERBOSE is set to "true" (for example via --verbose in generate-prompt.sh),
 # this function will output additional debug logging to stderr.
+
+# Source file-types.sh to include allowed file extensions.
+source "$(dirname "${BASH_SOURCE[0]}")/file-types.sh"
+
 find-prompt-instruction() {
     local search_dir="$1"
     if [ "${VERBOSE:-false}" = true ]; then
@@ -24,27 +31,27 @@ find-prompt-instruction() {
 
     # Pattern matching only "// TODO: - " (with trailing space)
     local grep_pattern='// TODO: - '
-    
+
     # Read all matching file paths into an array.
     local files_array=()
     while IFS= read -r line; do
         files_array+=("$line")
-    done < <(grep -rlE "$grep_pattern" --exclude-dir=Pods --include "*.swift" "$search_dir" 2>/dev/null)
-    
+    done < <(grep -rlE "$grep_pattern" --exclude-dir=Pods "${ALLOWED_GREP_INCLUDES[@]}" "$search_dir" 2>/dev/null)
+
     if [ "${VERBOSE:-false}" = true ]; then
        echo "[VERBOSE] Found ${#files_array[@]} file(s) matching TODO pattern." >&2
        for file in "${files_array[@]}"; do
             echo "[VERBOSE] Matched file: $file" >&2
        done
     fi
-    
+
     local file_count="${#files_array[@]}"
-    
+
     if [ "$file_count" -eq 0 ]; then
-        echo "Error: No Swift files found containing '// TODO: - '" >&2
+        echo "Error: No files found containing '// TODO: - '" >&2
         return 1
     fi
-    
+
     if [ "$file_count" -eq 1 ]; then
         if [ "${VERBOSE:-false}" = true ]; then
            echo "[VERBOSE] Only one matching file found: ${files_array[0]}" >&2
@@ -52,7 +59,7 @@ find-prompt-instruction() {
         echo "${files_array[0]}"
         return 0
     fi
-    
+
     # More than one file: determine the one with the most recent modification time.
     local chosen_file="${files_array[0]}"
     local chosen_mod_time
@@ -60,7 +67,7 @@ find-prompt-instruction() {
     if [ "${VERBOSE:-false}" = true ]; then
        echo "[VERBOSE] Initial chosen file: $chosen_file with modification time $chosen_mod_time" >&2
     fi
-    
+
     for file in "${files_array[@]}"; do
         local mod_time
         mod_time=$(stat -f "%m" "$file")
@@ -75,7 +82,7 @@ find-prompt-instruction() {
             fi
         fi
     done
-    
+
     # Build a list of files that were not chosen.
     local ignored_files=()
     for file in "${files_array[@]}"; do
@@ -83,7 +90,7 @@ find-prompt-instruction() {
             ignored_files+=("$file")
         fi
     done
-    
+
     if [ "${VERBOSE:-false}" = true ]; then
        echo "[VERBOSE] Ignoring the following files:" >&2
        for file in "${ignored_files[@]}"; do
@@ -92,7 +99,7 @@ find-prompt-instruction() {
            echo "[VERBOSE] Ignored file: $base" >&2
        done
     fi
-    
+
     echo "--------------------------------------------------" >&2
     echo "Multiple TODO instructions found (${file_count} files), the following TODO files were IGNORED:" >&2
     for file in "${ignored_files[@]}"; do
@@ -104,7 +111,7 @@ find-prompt-instruction() {
         echo "  - ${base}: ${todo_text}" >&2
         echo "--------------------------------------------------" >&2
     done
-    
+
     echo "$chosen_file"
 }
 
