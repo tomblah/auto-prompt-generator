@@ -107,3 +107,30 @@ EOF
   # And importantly, it should NOT include the content outside the markers:
   [[ "$output" != *"func publicFunction() {"* ]]
 }
+
+@test "assemble-prompt includes diff output when DIFF_WITH_BRANCH is set" {
+  # Create a temporary Swift file.
+  file1="$TMP_DIR/FileDiff.swift"
+  echo "class Dummy {}" > "$file1"
+
+  # Create a temporary file listing the file path.
+  found_files_file="$TMP_DIR/found_files_diff.txt"
+  echo "$file1" > "$found_files_file"
+
+  # Set DIFF_WITH_BRANCH so that diff logic is activated.
+  export DIFF_WITH_BRANCH="dummy-branch"
+
+  # Override get_diff_with_branch to simulate a diff.
+  get_diff_with_branch() {
+    echo "Dummy diff output for $(basename "$1")"
+  }
+
+  # Run assemble-prompt.
+  run assemble-prompt "$found_files_file" "ignored"
+  [ "$status" -eq 0 ]
+  # Check that the output contains the simulated diff output.
+  [[ "$output" == *"Dummy diff output for FileDiff.swift"* ]]
+  [[ "$output" == *"against branch dummy-branch"* ]]
+
+  unset DIFF_WITH_BRANCH
+}
