@@ -68,7 +68,7 @@ teardown() {
   echo "// Added comment" >> Test.swift
   
   # Run generate-prompt.sh with the --diff-with option.
-  run bash generate-prompt.sh --diff-with main
+  run bash generate-prompt.sh --diff-with main --verbose
   [ "$status" -eq 0 ]
   
   # Assert that the output (or clipboard content) includes a diff header for Test.swift.
