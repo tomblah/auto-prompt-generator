@@ -35,7 +35,9 @@ assemble-prompt() {
     # Sort and filter out duplicate file paths.
     local unique_found_files
     unique_found_files=$(sort "$found_files_file" | uniq)
-    
+    echo "[DEBUG] Unique found files:" >&2
+    echo "$unique_found_files" >&2
+
     local clipboard_content=""
     
     # Process each file and format its content.
@@ -44,8 +46,10 @@ assemble-prompt() {
         file_basename=$(basename "$file_path")
         
         if grep -qE '^[[:space:]]*//[[:space:]]*v' "$file_path"; then
+            echo "[DEBUG] Using filter_substring_markers for $file_basename" >&2
             file_content=$(filter_substring_markers "$file_path")
         else
+            echo "[DEBUG] Reading entire file content for $file_basename" >&2
             file_content=$(cat "$file_path")
         fi
         
@@ -57,7 +61,9 @@ ${file_content}
 "
         # If DIFF_WITH_BRANCH is set, append a diff report (if there are changes).
         if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
+            echo "[DEBUG] Calling get_diff_with_branch for $file_basename" >&2
             diff_output=$(get_diff_with_branch "$file_path")
+            echo "[DEBUG] diff_output for ${file_basename}: '$diff_output'" >&2
             if [ -n "$diff_output" ]; then
                 clipboard_content="${clipboard_content}
 --------------------------------------------------
@@ -66,6 +72,8 @@ The diff for ${file_basename} (against branch ${DIFF_WITH_BRANCH}) is as follows
 ${diff_output}
 
 "
+            else
+                echo "[DEBUG] No diff output for $file_basename" >&2
             fi
         fi
         
@@ -82,6 +90,8 @@ ${diff_output}
 ${fixed_instruction}"
     
     # Copy the assembled prompt to the clipboard and print it.
+    echo "[DEBUG] Final assembled prompt:" >&2
+    echo "$final_clipboard_content" >&2
     echo "$final_clipboard_content" | pbcopy
     echo "$final_clipboard_content"
 }

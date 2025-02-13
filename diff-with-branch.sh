@@ -13,11 +13,16 @@ get_diff_with_branch() {
     
     # Check if the file is tracked in Git.
     if ! git ls-files --error-unmatch "$file" >/dev/null 2>&1; then
+        echo "[DEBUG] File '$file' is not tracked by Git." >&2
         return 0
     fi
 
     # Get the diff between the file in the current branch and the given branch.
-    git diff "$branch" -- "$file"
+    local git_diff
+    git_diff=$(git diff "$branch" -- "$file")
+    echo "[DEBUG] git diff for '$file' (against '$branch'):" >&2
+    echo "[DEBUG] $git_diff" >&2
+    echo "$git_diff"
 }
 
 # Allow direct testing.
