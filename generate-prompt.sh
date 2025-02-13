@@ -10,7 +10,7 @@ set -euo pipefail
 # and then assembles a ChatGPT prompt that is copied to the clipboard.
 #
 # Usage:
-#   generate-prompt.sh [--slim] [--singular] [--force-global] [--include-references] [--exclude <filename>] [--verbose] [--exclude <another_filename>] ...
+#   generate-prompt.sh [--slim] [--singular] [--force-global] [--include-references] [--diff-with <branch>] [--exclude <filename>] [--verbose] [--exclude <another_filename>] ...
 #
 # Options:
 #   --slim         Only include the file that contains the TODO instruction
@@ -22,6 +22,9 @@ set -euo pipefail
 #   --force-global Use the entire Git repository for context inclusion, even if the TODO file is in a package.
 #   --include-references
 #                  Additionally include files that reference the enclosing type.
+#   --diff-with <branch>
+#                  For each included file that differs from the specified branch,
+#                  include a diff report. (e.g. --diff-with main or --diff-with develop)
 #   --exclude      Exclude any file whose basename matches the provided filename.
 #   --verbose      Enable verbose console logging for debugging purposes.
 #
@@ -43,6 +46,10 @@ set -euo pipefail
 # New for reference inclusion:
 #   - extract-enclosing-type.sh        : Extracts the enclosing type from the TODO file.
 #   - find-referencing-files.sh        : Finds files that reference the enclosing type.
+#
+# New for diff inclusion:
+#   --diff-with <branch>              For each included file that differs from the
+#                                     specified branch, include a diff report.
 ##########################################
 
 # Process optional parameters.
@@ -51,6 +58,7 @@ SINGULAR=false
 VERBOSE=false
 FORCE_GLOBAL=false
 INCLUDE_REFERENCES=false
+# DIFF_WITH_BRANCH will be set by the --diff-with option.
 EXCLUDES=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -70,12 +78,21 @@ while [[ $# -gt 0 ]]; do
             INCLUDE_REFERENCES=true
             shift
             ;;
+        --diff-with)
+            if [ -n "${2:-}" ]; then
+                export DIFF_WITH_BRANCH="$2"
+                shift 2
+            else
+                echo "Usage: $0 [--diff-with <branch>]" >&2
+                exit 1
+            fi
+            ;;
         --exclude)
             if [ -n "${2:-}" ]; then
                 EXCLUDES+=("$2")
                 shift 2
             else
-                echo "Usage: $0 [--slim] [--singular] [--force-global] [--include-references] [--exclude <filename>]" >&2
+                echo "Usage: $0 [--exclude <filename>]" >&2
                 exit 1
             fi
             ;;
@@ -84,13 +101,13 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         *)
-            echo "Usage: $0 [--slim] [--singular] [--force-global] [--include-references] [--exclude <filename>]" >&2
+            echo "Usage: $0 [--slim] [--singular] [--force-global] [--include-references] [--diff-with <branch>] [--exclude <filename>] [--verbose]" >&2
             exit 1
             ;;
     esac
 done
 
-# Export VERBOSE so that helper scripts can use it for debugging output.
+# Export VERBOSE so that helper scripts can use it.
 export VERBOSE
 
 # Save the directory where you invoked the script.
