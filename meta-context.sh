@@ -108,7 +108,7 @@ done
 if $TESTS_ONLY; then
     {
       echo "--------------------------------------------------"
-      echo -e "Can you look through these tests and add unit tests to cover the functionality we've added in.\n\nLet's lean towards appending to existing files where it makes sense to do so. And be sure to echo out the entire test file with the added test cases."
+      echo -e "Can you look through these tests and add unit tests to cover the functionality we've added in.\n\nLet's lean towards appending to existing files where it makes sense to do so (e.g. when we've added a file, it'll make sense to add a new bats file for it). And be sure to echo out the entire test file with the added test cases."
     } >> "$temp_context"
 else
     {
