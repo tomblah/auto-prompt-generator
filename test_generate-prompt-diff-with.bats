@@ -31,7 +31,6 @@ EOF
   cp "${BATS_TEST_DIRNAME}/get-git-root.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/get-package-root.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/get-search-roots.sh" "$TMP_DIR/"
-  cp "${BATS_TEST_DIRNAME}/filter-files-singular.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/extract-enclosing-type.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/find-referencing-files.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/file-types.sh" "$TMP_DIR/"
