@@ -9,6 +9,9 @@ set -euo pipefail
 # in the repository (excluding itself and any files in the Legacy or MockFiles folders)
 # and copies them to the clipboard.
 #
+# Additionally, it now includes all Rust source files (i.e. .rs files) located under
+# rust recursively.
+#
 # Usage:
 #   ./meta-context.sh [--include-tests] [--tests-only]
 #
@@ -81,6 +84,13 @@ else
             -not -name "meta-context.sh" \
             -not -path "*/Legacy/*" \
             -not -path "*/MockFiles/*")
+fi
+
+# Additionally, include all Rust source files in rust recursively.
+if [ -d "rust" ]; then
+    echo "Including Rust source files from rust in the context."
+    rust_files=$(find rust/filter_files_singular/src -type f -iname "*.rs")
+    files="$files $rust_files"
 fi
 
 echo "--------------------------------------------------"
