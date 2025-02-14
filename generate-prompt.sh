@@ -122,8 +122,6 @@ source "$SCRIPT_DIR/extract-instruction-content.sh"
 source "$SCRIPT_DIR/assemble-prompt.sh"
 source "$SCRIPT_DIR/get-git-root.sh"
 source "$SCRIPT_DIR/get-package-root.sh"
-# Always source the singular helper so that filter_files_singular is defined.
-source "$SCRIPT_DIR/filter-files-singular.sh"
 
 # If not in singular mode already, load the additional helpers.
 if [ "$SINGULAR" = false ]; then
@@ -188,7 +186,7 @@ INSTRUCTION_CONTENT=$(extract-instruction-content "$FILE_PATH")
 
 if [ "$SINGULAR" = true ]; then
     echo "Singular mode enabled: only including the TODO file"
-    FOUND_FILES=$(filter_files_singular "$FILE_PATH")
+    FOUND_FILES=$("$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/rust/filter_files_singular/target/release/filter_files_singular" "$FILE_PATH")
 else
     # Extract potential type names from the Swift file.
     TYPES_FILE=$(extract-types "$FILE_PATH")
