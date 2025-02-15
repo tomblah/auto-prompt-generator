@@ -43,7 +43,6 @@ set -euo pipefail
 #   - filter-files-singular.sh         : Returns only the file that contains the TODO.
 #
 # New for reference inclusion:
-#   - extract-enclosing-type.sh        : Extracts the enclosing type from the TODO file.
 #   - find-referencing-files.sh        : Finds files that reference the enclosing type.
 #
 # New for diff inclusion:
@@ -130,7 +129,6 @@ if [ "$SINGULAR" = false ]; then
 fi
 
 if [ "${INCLUDE_REFERENCES:-false}" = true ]; then
-    source "$SCRIPT_DIR/extract-enclosing-type.sh"
     source "$SCRIPT_DIR/find-referencing-files.sh"
 fi
 
@@ -213,8 +211,8 @@ fi
 # --- Include referencing files if requested ---
 if [ "${INCLUDE_REFERENCES:-false}" = true ]; then
     echo "Including files that reference the enclosing type..."
-    # Extract the enclosing type from the TODO file using the helper function.
-    enclosing_type=$(extract_enclosing_type "$FILE_PATH")
+    # Use the new Rust binary to extract the enclosing type.
+    enclosing_type=$("$SCRIPT_DIR/rust/target/release/extract_enclosing_type" "$FILE_PATH")
     if [ -n "$enclosing_type" ]; then
         echo "Found enclosing type '$enclosing_type'. Searching for files that reference '$enclosing_type' in: $SEARCH_ROOT"
         referencing_files=$(find_referencing_files "$enclosing_type" "$SEARCH_ROOT")

@@ -5,4 +5,11 @@ members = [
     "filter_substring_markers",
     "extract_enclosing_function",
     "log_file_sizes",
-    "filter_excluded_files"]
+    "filter_excluded_files",
+    "extract_enclosing_type"
+]
+resolver = "2"
+
+[workspace.dependencies]
+regex = "1.7"
+tempfile = "3.3"

@@ -2,5 +2,3 @@
 name = "check_prompt_size"
 version = "0.1.0"
 edition = "2021"
-
-[dependencies]
