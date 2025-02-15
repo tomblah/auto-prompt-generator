@@ -2,7 +2,7 @@
 # assemble-prompt.sh
 #
 # This function assembles the final ChatGPT prompt by including:
-#   - The contents of Swift (or other allowed) files where type definitions were found
+#   - The contents of files where type definitions were found
 #     (optionally filtered by substring markers), and
 #   - A fixed instruction (ignoring the extracted TODO instruction).
 #
@@ -10,12 +10,10 @@
 #   1. <found_files_file>: A file (typically temporary) containing a list of file paths.
 #   2. <instruction_content>: The TODO instruction content (now ignored).
 #
-# The function outputs the final assembled prompt to stdout and also copies it
-# to the clipboard using pbcopy.
+# The final prompt is copied to the clipboard via pbcopy.
 #
-# If the environment variable DIFF_WITH_BRANCH is set (for example by running:
-#   generate-prompt.sh --diff-with develop
-# then for each file that differs from that branch, a diff report is appended after the file's content.
+# If DIFF_WITH_BRANCH is set (e.g. --diff-with develop),
+# for each file that differs from that branch a diff report is appended.
 
 # Determine the directory where this script resides.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,7 +41,7 @@ assemble-prompt() {
     local found_files_file="$1"
     local instruction_content="$2"  # This parameter is now ignored.
     
-    # Sort and filter out duplicate file paths.
+    # Sort and remove duplicate file paths.
     local unique_found_files
     unique_found_files=$(sort "$found_files_file" | uniq)
     
@@ -54,81 +52,68 @@ assemble-prompt() {
         local file_basename file_content diff_output
         file_basename=$(basename "$file_path")
         
-        # If the file contains a line that is exactly the substring marker opening ("// v"),
+        # If the file contains a line exactly matching the substring marker ("// v"),
         # then process it with the Rust binary.
         if grep -qE '^[[:space:]]*//[[:space:]]*v[[:space:]]*$' "$file_path"; then
             file_content=$("$RUST_FILTER_SUBSTR" "$file_path")
+            # If this is the TODO file, attempt to extract its enclosing function context.
+            if [ "$file_basename" = "$TODO_FILE_BASENAME" ]; then
+                extra_context=$("$SCRIPT_DIR/rust/target/release/extract_enclosing_function" "$file_path")
+                if [ -n "$extra_context" ]; then
+                    file_content="${file_content}"$'\n\n// Enclosing function context:\n'"${extra_context}"
+                fi
+            fi
         else
             file_content=$(cat "$file_path")
         fi
         
-        clipboard_content="${clipboard_content}
-The contents of ${file_basename} is as follows:
-
-${file_content}
-
-"
+        clipboard_content="${clipboard_content}"$'\nThe contents of '"${file_basename}"' is as follows:\n\n'"${file_content}"$'\n\n'
         # If DIFF_WITH_BRANCH is set, append a diff report (if there are changes).
         if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
             diff_output=$(get_diff_with_branch "$file_path")
             if [ -n "$diff_output" ]; then
-                clipboard_content="${clipboard_content}
---------------------------------------------------
-The diff for ${file_basename} (against branch ${DIFF_WITH_BRANCH}) is as follows:
-
-${diff_output}
-
-"
+                clipboard_content="${clipboard_content}"$'\n--------------------------------------------------\nThe diff for '"${file_basename}"' (against branch '"${DIFF_WITH_BRANCH}"') is as follows:\n\n'"${diff_output}"$'\n\n'
             fi
         fi
         
-        clipboard_content="${clipboard_content}
---------------------------------------------------
-"
+        clipboard_content="${clipboard_content}"$'\n--------------------------------------------------\n'
     done <<< "$unique_found_files"
     
-    # Fixed instruction that will be appended.
+    # Fixed instruction to be appended.
     local fixed_instruction="Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen"
     
-    local final_clipboard_content="${clipboard_content}
-
-${fixed_instruction}"
+    local final_clipboard_content="${clipboard_content}"$'\n\n'"${fixed_instruction}"
     
     # Check prompt size using the Rust binary.
-    # Use printf with a subshell that ignores SIGPIPE to prevent broken-pipe errors.
     warning_output=$( (trap '' SIGPIPE; printf "%s" "$final_clipboard_content") | "$RUST_CHECK_SIZE" 2>&1 || true )
     if [ -n "$warning_output" ]; then
         echo "$warning_output"
     fi
 
-    # Additional debug logging for prompt size check.
+    # Additional debug logging for prompt size.
     local prompt_length
     prompt_length=$(printf "%s" "$final_clipboard_content" | wc -m | tr -d ' ')
     local max_length=100000
     if [ "$prompt_length" -gt "$max_length" ]; then
         echo -e "\nConsider excluding files:" >&2
-        # Save the list of unique file paths into a temporary file.
         local temp_files
         temp_files=$(mktemp)
         echo "$unique_found_files" > "$temp_files"
-        # Call the Rust binary to log file sizes.
         local sorted_output
         sorted_output=$("$SCRIPT_DIR/rust/target/release/log_file_sizes" "$temp_files")
-        # Transform the output into exclusion suggestions.
         echo "$sorted_output" | awk -v curr="$prompt_length" -v max="$max_length" -v todo="$TODO_FILE_BASENAME" '{
   gsub(/\(/,"", $2);
   gsub(/\)/,"", $2);
-  if ($1 == todo) next;  # Skip the TODO file
+  if ($1 == todo) next;
   file_size = $2;
   projected = curr - file_size;
   percentage = int((projected / max) * 100);
   print " --exclude " $1 " (will get you to " percentage "% of threshold)";
 }' >&2
-
-echo "$sorted_output" | awk -v curr="$prompt_length" -v max="$max_length" -v todo="$TODO_FILE_BASENAME" '{
+        echo "$sorted_output" | awk -v curr="$prompt_length" -v max="$max_length" -v todo="$TODO_FILE_BASENAME" '{
   gsub(/\(/,"", $2);
   gsub(/\)/,"", $2);
-  if ($1 == todo) next;  # Skip the TODO file
+  if ($1 == todo) next;
   file_size = $2;
   projected = curr - file_size;
   percentage = int((projected / max) * 100);

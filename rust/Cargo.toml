@@ -3,5 +3,6 @@ members = [
     "check_prompt_size",
     "filter_files_singular",
     "filter_substring_markers",
+    "extract_enclosing_function",
     "log_file_sizes"
     ]
