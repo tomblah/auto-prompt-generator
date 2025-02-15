@@ -1,0 +1,17 @@
+--- assemble-prompt.sh.orig	2025-02-15 12:00:00.000000000 +0000
++++ assemble-prompt.sh	2025-02-15 12:00:00.000000000 +0000
+@@
+-# Source the helper that checks prompt size.
+-source "$SCRIPT_DIR/check-prompt-size.sh"
++## Use the Rust binary for checking prompt size.
++# Set the path to the check_prompt_size binary (adjust the relative path if needed)
++RUST_CHECK_SIZE="$SCRIPT_DIR/../rust/target/release/check_prompt_size"
++if [ ! -x "$RUST_CHECK_SIZE" ]; then
++    echo "Error: Rust check_prompt_size binary not found. Please build it with 'cargo build --release'." >&2
++    exit 1
++fi
+@@
+-    # Check if the prompt is too large and print a warning if so.
+-    check_prompt_size "$final_clipboard_content"
++    # Check prompt size using the Rust binary.
++    echo "$final_clipboard_content" | "$RUST_CHECK_SIZE"
