@@ -40,7 +40,6 @@ EOF
   cp "${BATS_TEST_DIRNAME}/extract-enclosing-type.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/find-referencing-files.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/file-types.sh" "$TMP_DIR/"
-  cp "${BATS_TEST_DIRNAME}/filter-substring-markers.sh" "$TMP_DIR/"
   cp -r "${BATS_TEST_DIRNAME}/rust" "$TMP_DIR/"
  
   # Change to TMP_DIR (this will become our repository root).
