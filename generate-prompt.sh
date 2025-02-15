@@ -152,6 +152,8 @@ cd "$GIT_ROOT"
 FILE_PATH=$(find-prompt-instruction "$GIT_ROOT") || exit 1
 echo "Found exactly one instruction in $FILE_PATH"
 
+export TODO_FILE_BASENAME=$(basename "$FILE_PATH")
+
 # --- Enforce singular mode for JavaScript files (beta support) ---
 if [[ "$FILE_PATH" == *.js ]]; then
     if [ "$SINGULAR" = false ]; then
@@ -186,7 +188,7 @@ INSTRUCTION_CONTENT=$(extract-instruction-content "$FILE_PATH")
 
 if [ "$SINGULAR" = true ]; then
     echo "Singular mode enabled: only including the TODO file"
-    FOUND_FILES=$("$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/rust/filter_files_singular/target/release/filter_files_singular" "$FILE_PATH")
+    FOUND_FILES=$("$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/rust/target/release/filter_files_singular" "$FILE_PATH")
 else
     # Extract potential type names from the Swift file.
     TYPES_FILE=$(extract-types "$FILE_PATH")

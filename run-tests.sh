@@ -1,8 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
-# Run rust tests
-cargo test --manifest-path rust/filter_files_singular/Cargo.toml
+# Run Rust tests for all packages in the rust directory.
+# This loop finds every Cargo.toml under "rust" and runs its tests.
+while IFS= read -r -d '' manifest; do
+    package_dir=$(dirname "$manifest")
+    echo "Running tests in package: $package_dir"
+    cargo test --manifest-path "$manifest"
+done < <(find rust -name Cargo.toml -print0)
 
 # Check if bats is installed.
 if ! command -v bats >/dev/null 2>&1; then
