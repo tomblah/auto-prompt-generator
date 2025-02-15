@@ -20,11 +20,14 @@
 # Determine the directory where this script resides.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Source the helper that filters file content based on substring markers.
-source "$SCRIPT_DIR/filter-substring-markers.sh"
+## Use the Rust binary for filtering substring markers.
+RUST_FILTER_SUBSTR="$SCRIPT_DIR/rust/target/release/filter_substring_markers"
+if [ ! -x "$RUST_FILTER_SUBSTR" ]; then
+    echo "Error: Rust filter_substring_markers binary not found. Please build it with 'cargo build --release'." >&2
+    exit 1
+fi
 
 ## Use the Rust binary for checking prompt size.
-# Set the path to the check_prompt_size binary (adjust the relative path if needed)
 RUST_CHECK_SIZE="$SCRIPT_DIR/rust/target/release/check_prompt_size"
 if [ ! -x "$RUST_CHECK_SIZE" ]; then
     echo "Error: Rust check_prompt_size binary not found. Please build it with 'cargo build --release'." >&2
@@ -51,8 +54,10 @@ assemble-prompt() {
         local file_basename file_content diff_output
         file_basename=$(basename "$file_path")
         
-        if grep -qE '^[[:space:]]*//[[:space:]]*v' "$file_path"; then
-            file_content=$(filter_substring_markers "$file_path")
+        # If the file contains a line that is exactly the substring marker opening ("// v"),
+        # then process it with the Rust binary.
+        if grep -qE '^[[:space:]]*//[[:space:]]*v[[:space:]]*$' "$file_path"; then
+            file_content=$("$RUST_FILTER_SUBSTR" "$file_path")
         else
             file_content=$(cat "$file_path")
         fi

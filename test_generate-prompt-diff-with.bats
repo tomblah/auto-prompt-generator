@@ -34,7 +34,6 @@ EOF
   cp "${BATS_TEST_DIRNAME}/extract-enclosing-type.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/find-referencing-files.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/file-types.sh" "$TMP_DIR/"
-  cp "${BATS_TEST_DIRNAME}/filter-substring-markers.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/diff-with-branch.sh" "$TMP_DIR/"
   cp -R "${BATS_TEST_DIRNAME}/rust" "$TMP_DIR/"
   

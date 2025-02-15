@@ -11,5 +11,9 @@ name = "filter_files_singular"
 version = "0.1.0"
 
 [[package]]
+name = "filter_substring_markers"
+version = "0.1.0"
+
+[[package]]
 name = "log_file_sizes"
 version = "0.1.0"
