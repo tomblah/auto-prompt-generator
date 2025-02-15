@@ -90,6 +90,14 @@ else
     fi
 fi
 
+# --------------------------------------------------
+# Include rust/Cargo.toml if it exists.
+if [ -f "rust/Cargo.toml" ]; then
+    echo "Including rust/Cargo.toml in the context."
+    files="$files rust/Cargo.toml"
+fi
+# --------------------------------------------------
+
 # Display the collected files.
 echo "--------------------------------------------------"
 echo "Files to include in the meta-context prompt:"
