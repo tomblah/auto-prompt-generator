@@ -4,5 +4,5 @@ members = [
     "filter_files_singular",
     "filter_substring_markers",
     "extract_enclosing_function",
-    "log_file_sizes"
-    ]
+    "log_file_sizes",
+    "filter_excluded_files"]
