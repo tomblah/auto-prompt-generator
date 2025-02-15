@@ -34,28 +34,44 @@ pub fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
     marker_depth > 0
 }
 
-/// Finds the index of the enclosing function definition that should contain the TODO.
+/// Finds the index of the enclosing function (or computed property) definition that should contain the TODO.
 ///
 /// This function now limits its primary search to the last 20 lines before the TODO,
 /// looking for a line that contains one of the following:
 /// - an assignment‑style function header ("= function(")
 /// - a cloud code header ("Parse.Cloud.define(")
 /// - an async function header ("async function")
+/// - a Swift function header ("func ")
+/// - a Swift computed property header. We now check if the trimmed line starts with one of:
+///   "var ", "private var ", "public var ", "internal var ", or "fileprivate var ",
+///   and that it contains "{" and does not contain "=".
 ///
 /// If none is found in that window, it falls back to scanning backwards using a regex.
 pub fn find_enclosing_function_start(content: &str, todo_idx: usize) -> Option<usize> {
     let lines: Vec<&str> = content.lines().collect();
-    // Limit search to the last 20 lines before the TODO.
     let start_search = if todo_idx >= 20 { todo_idx - 20 } else { 0 };
     if let Some(idx) = lines[start_search..=todo_idx].iter().rposition(|line| {
-        line.contains("= function(")
-            || line.contains("Parse.Cloud.define(")
-            || line.contains("async function")
+        let trimmed = line.trim_start();
+        trimmed.contains("= function(")
+            || trimmed.contains("Parse.Cloud.define(")
+            || trimmed.contains("async function")
+            || trimmed.contains("func ")
+            || (
+                (trimmed.starts_with("var ")
+                    || trimmed.starts_with("private var ")
+                    || trimmed.starts_with("public var ")
+                    || trimmed.starts_with("internal var ")
+                    || trimmed.starts_with("fileprivate var "))
+                && line.contains("{")
+                && !line.contains("=")
+            )
     }) {
         return Some(start_search + idx);
     }
-    // Otherwise, fall back to scanning backwards using a regex.
-    let re = Regex::new(r"(?i)(function\b|=>|Parse\.Cloud\.define\s*\()").expect("Invalid regex");
+    // Fallback regex: allow for Swift computed properties with optional modifiers.
+    let re = Regex::new(
+        r"(?i)(function\b|=>|Parse\.Cloud\.define\s*\(|func\b|(?:(?:private|public|internal|fileprivate)\s+)?var\s+\w+\s*:\s*[\w<>, ?]+\s*\{)"
+    ).expect("Invalid regex");
     for i in (0..=todo_idx).rev() {
         if re.is_match(lines[i]) {
             return Some(i);
@@ -163,6 +179,20 @@ async function generateRecentInteractionsString(nonPremiumParticipants, premiumC
 }
 "#;
 
+    const SWIFT_FUNCTION: &str = r#"
+func generateRecentInteractionsString(nonPremiumParticipants: [String], premiumCount: Int, person: Person, mostExchangesShortConversation: Bool) -> String {
+    // TODO: - handle swift function todo example
+    return "result"
+}
+"#;
+
+    const SWIFT_COMPUTED_PROPERTY: &str = r#"
+private var appDelegate: AppDelegate? {
+    // TODO: - computed property todo example
+    appManager.appDelegate
+}
+"#;
+
     const NO_MARKERS: &str = r#"
 function someOtherFunction() {
     // Some code
@@ -173,8 +203,6 @@ function someOtherFunction() {
 
     #[test]
     fn test_find_enclosing_function_start_for_cloud() {
-        // In the following, the TODO is in the isUsernameAvailable function.
-        // The search should pick up the header for "isUsernameAvailable", not the earlier getGlobalSettings.
         let content = CLOUD_GLOBAL_SETTINGS;
         let todo_idx = todo_index(content).unwrap();
         let start_idx = find_enclosing_function_start(content, todo_idx).unwrap();
@@ -203,5 +231,30 @@ function someOtherFunction() {
         let lines: Vec<&str> = content.lines().collect();
         let start_line = lines[start_idx];
         assert!(start_line.contains("async function"));
+    }
+
+    #[test]
+    fn test_find_enclosing_function_start_for_swift() {
+        let content = SWIFT_FUNCTION;
+        let todo_idx = todo_index(content).unwrap();
+        let start_idx = find_enclosing_function_start(content, todo_idx).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        let start_line = lines[start_idx];
+        assert!(start_line.contains("func generateRecentInteractionsString"),
+                "Expected a Swift function header, got: {}", start_line);
+    }
+
+    #[test]
+    fn test_find_enclosing_function_start_for_swift_computed_property() {
+        let content = SWIFT_COMPUTED_PROPERTY;
+        let todo_idx = todo_index(content).unwrap();
+        let start_idx = find_enclosing_function_start(content, todo_idx).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        let start_line = lines[start_idx];
+        // Now, even with a modifier ("private var") the computed property header should be detected.
+        assert!(start_line.trim_start().starts_with("private var")
+                && start_line.contains("{")
+                && !start_line.contains("="),
+                "Expected a computed property header, got: {}", start_line);
     }
 }
