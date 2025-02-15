@@ -1,2 +1,2 @@
 **/.DS_Store
-rust/filter_files_singular/target/
+rust/**/target/
