@@ -90,48 +90,10 @@ ${diff_output}
 ${fixed_instruction}"
     
     # Check prompt size using the Rust binary.
-    # Use printf with a subshell that ignores SIGPIPE to prevent broken-pipe errors.
+    # The Rust binary now handles any warnings about prompt size.
     warning_output=$( (trap '' SIGPIPE; printf "%s" "$final_clipboard_content") | "$RUST_CHECK_SIZE" 2>&1 || true )
     if [ -n "$warning_output" ]; then
         echo "$warning_output"
-    fi
-
-    # Additional debug logging for prompt size check.
-    local prompt_length
-    prompt_length=$(printf "%s" "$final_clipboard_content" | wc -m | tr -d ' ')
-    local max_length=100000
-    if [ "$prompt_length" -gt "$max_length" ]; then
-        echo -e "\nConsider excluding files:" >&2
-        # Save the list of unique file paths into a temporary file.
-        local temp_files
-        temp_files=$(mktemp)
-        echo "$unique_found_files" > "$temp_files"
-        # Source and call the helper to log file sizes.
-        source "$SCRIPT_DIR/log-file-sizes.sh"
-        # Capture the output from log_file_sizes.
-        local sorted_output
-        sorted_output=$(log_file_sizes "$temp_files")
-        # Transform the output into exclusion suggestions.
-        echo "$sorted_output" | awk -v curr="$prompt_length" -v max="$max_length" -v todo="$TODO_FILE_BASENAME" '{
-  gsub(/\(/,"", $2);
-  gsub(/\)/,"", $2);
-  if ($1 == todo) next;  # Skip the TODO file
-  file_size = $2;
-  projected = curr - file_size;
-  percentage = int((projected / max) * 100);
-  print " --exclude " $1 " (will get you to " percentage "% of threshold)";
-}' >&2
-
-echo "$sorted_output" | awk -v curr="$prompt_length" -v max="$max_length" -v todo="$TODO_FILE_BASENAME" '{
-  gsub(/\(/,"", $2);
-  gsub(/\)/,"", $2);
-  if ($1 == todo) next;  # Skip the TODO file
-  file_size = $2;
-  projected = curr - file_size;
-  percentage = int((projected / max) * 100);
-  print " --exclude " $1 " (will get you to " percentage "% of threshold)";
-}'
-        rm -f "$temp_files"
     fi
 
     # Copy the assembled prompt to the clipboard and print it.
