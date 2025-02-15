@@ -129,7 +129,7 @@ if $TESTS_ONLY; then
 elif ! $RUST_ONLY; then
     {
       echo "--------------------------------------------------"
-      echo -e "I'm improving the generate-prompt.sh script (see README above for more context). I'm trying to keep generate-prompt.sh as thin as possible, so try not to propose solutions that edit it unless where it makes obvious sense to, e.g. for parsing options. But if there is an easy solution to create another file, or edit another existing file, let's prefer that.\n\n"
+      echo -e "I'm improving the generate-prompt.sh functionality (see README above for more context). I'm trying to keep generate-prompt.sh as thin as possible, so try not to propose solutions that edit it unless where it makes obvious sense to, e.g. for parsing options. But if there is an easy solution to create another file, or edit another existing file, let's prefer that. For any new files we create, let's do it rust, not bash.\n\n"
     } >> "$temp_context"
 fi
 
