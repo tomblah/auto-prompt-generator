@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "check_prompt_size",
+    "filter_files_singular",
+    "log_file_sizes"
+    ]

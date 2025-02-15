@@ -4,38 +4,28 @@ set -euo pipefail
 ##########################################
 # meta-context.sh
 #
-# This script collects the contents of all .sh and README* files,
-# and optionally .bats files (if --include-tests or --tests-only is passed)
-# in the repository (excluding itself and any files in the Legacy or MockFiles folders)
-# and copies them to the clipboard.
+# This script collects the contents of various files in the repository and copies them to the clipboard.
 #
-# Additionally, it now includes all Rust source files (i.e. .rs files) located under
-# rust recursively.
+# It includes:
+# - All .sh and README* files
+# - Optionally .bats files (if --include-tests or --tests-only is passed)
+# - Optionally only Rust source files (if --rust-only is passed)
 #
 # Usage:
-#   ./meta-context.sh [--include-tests] [--tests-only]
+#   ./meta-context.sh [--include-tests] [--tests-only] [--rust-only]
 #
-# When the --include-tests option is used, .bats files will be included along with .sh and README* files.
-# When the --tests-only option is used, only .bats files will be included and a different final message is appended.
+# Options:
+#   --include-tests  : Includes .bats test files along with .sh and README* files.
+#   --tests-only     : Includes only .bats files.
+#   --rust-only      : Includes only Rust source files (.rs) under the rust directory.
 #
-# Before each file's content, a header is added in the following format:
-#
-#   The contents of <filename> is as follows:
-#
-# At the very end of the prompt, a custom message is appended:
-#
-#   (Normal run:)
-#   "I'm improving the generate-prompt.sh script (see README above for more context). I'm trying to keep generate-prompt.sh as thin as possible, so try not to propose solutions that edit it unless where it makes obvious sense to, e.g. for parsing options. But if there is an easy solution to create another file, or edit another existing file, let's prefer that."
-#
-#   (--tests-only:)
-#   "Can you look through these tests and add unit tests to cover the functionality we've added"
-#
-# The final prompt is then copied to the clipboard using pbcopy.
 ##########################################
 
 # Parse command-line options
 INCLUDE_TESTS=false
 TESTS_ONLY=false
+RUST_ONLY=false
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --include-tests)
@@ -46,6 +36,10 @@ while [[ $# -gt 0 ]]; do
             TESTS_ONLY=true
             shift
             ;;
+        --rust-only)
+            RUST_ONLY=true
+            shift
+            ;;
         *)
             echo "Unknown option: $1" >&2
             exit 1
@@ -53,9 +47,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Ensure that --include-tests and --tests-only are not used together.
-if $INCLUDE_TESTS && $TESTS_ONLY; then
-  echo "Error: Cannot use --include-tests and --tests-only together." >&2
+# Ensure mutually exclusive options are not used together.
+if { $INCLUDE_TESTS || $TESTS_ONLY; } && $RUST_ONLY; then
+  echo "Error: Cannot use --rust-only with --include-tests or --tests-only." >&2
   exit 1
 fi
 
@@ -67,7 +61,10 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$SCRIPT_DIR")
 cd "$REPO_ROOT"
 
 # Build the find command based on the options provided.
-if $TESTS_ONLY; then
+if $RUST_ONLY; then
+    echo "Including only Rust source files in the context."
+    files=$(find rust -type f -iname "*.rs")
+elif $TESTS_ONLY; then
     echo "Including only .bats test files in the context."
     files=$(find . -type f -iname "*.bats" \
             -not -name "meta-context.sh" \
@@ -84,15 +81,16 @@ else
             -not -name "meta-context.sh" \
             -not -path "*/Legacy/*" \
             -not -path "*/MockFiles/*")
+    
+    # Additionally, include Rust source files if the rust directory exists.
+    if [ -d "rust" ]; then
+        echo "Including Rust source files from rust in the context."
+        rust_files=$(find rust -type f -iname "*.rs")
+        files="$files $rust_files"
+    fi
 fi
 
-# Additionally, include all Rust source files in rust recursively.
-if [ -d "rust" ]; then
-    echo "Including Rust source files from rust in the context."
-    rust_files=$(find rust/filter_files_singular/src -type f -iname "*.rs")
-    files="$files $rust_files"
-fi
-
+# Display the collected files.
 echo "--------------------------------------------------"
 echo "Files to include in the meta-context prompt:"
 for file in $files; do
@@ -107,7 +105,7 @@ temp_context=$(mktemp)
 for file in $files; do
     {
       echo "--------------------------------------------------"
-      echo "The contents of $(basename "$file") is as follows:"
+      echo "The contents of $file is as follows:"
       echo "--------------------------------------------------"
       cat "$file"
       echo -e "\n"
@@ -118,9 +116,9 @@ done
 if $TESTS_ONLY; then
     {
       echo "--------------------------------------------------"
-      echo -e "Can you look through these tests and add unit tests to cover the functionality we've added in.\n\nLet's lean towards appending to existing files where it makes sense to do so (e.g. when we've added a file, it'll make sense to add a new bats file for it). And be sure to echo out the entire test file with the added test cases."
+      echo -e "Can you look through these tests and add unit tests to cover the functionality we've added.\n\nLet's lean towards appending to existing files where it makes sense to do so. However, if we've created a new script, it might make sense to create a new test file for it. And be sure to echo out the entire test file with the added test cases."
     } >> "$temp_context"
-else
+elif ! $RUST_ONLY; then
     {
       echo "--------------------------------------------------"
       echo -e "I'm improving the generate-prompt.sh script (see README above for more context). I'm trying to keep generate-prompt.sh as thin as possible, so try not to propose solutions that edit it unless where it makes obvious sense to, e.g. for parsing options. But if there is an easy solution to create another file, or edit another existing file, let's prefer that.\n\n"
