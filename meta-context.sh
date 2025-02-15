@@ -10,6 +10,7 @@ set -euo pipefail
 # - All .sh and README* files
 # - Optionally .bats files (if --include-tests or --tests-only is passed)
 # - Optionally only Rust source files (if --rust-only is passed)
+# - All Cargo.toml files in the repository
 #
 # Usage:
 #   ./meta-context.sh [--include-tests] [--tests-only] [--rust-only]
@@ -81,7 +82,7 @@ else
             -not -name "meta-context.sh" \
             -not -path "*/Legacy/*" \
             -not -path "*/MockFiles/*")
-    
+
     # Additionally, include Rust source files if the rust directory exists.
     if [ -d "rust" ]; then
         echo "Including Rust source files from rust in the context."
@@ -91,10 +92,11 @@ else
 fi
 
 # --------------------------------------------------
-# Include rust/Cargo.toml if it exists.
-if [ -f "rust/Cargo.toml" ]; then
-    echo "Including rust/Cargo.toml in the context."
-    files="$files rust/Cargo.toml"
+# Include all Cargo.toml files across the repository
+cargo_files=$(find . -type f -name "Cargo.toml")
+if [ -n "$cargo_files" ]; then
+    echo "Including all Cargo.toml files in the context."
+    files="$files $cargo_files"
 fi
 # --------------------------------------------------
 
@@ -129,7 +131,7 @@ if $TESTS_ONLY; then
 elif ! $RUST_ONLY; then
     {
       echo "--------------------------------------------------"
-      echo -e "I'm improving the generate-prompt.sh functionality (see README above for more context). I'm trying to keep generate-prompt.sh as thin as possible, so try not to propose solutions that edit it unless where it makes obvious sense to, e.g. for parsing options. But if there is an easy solution to create another file, or edit another existing file, let's prefer that. For any new files we create, let's do it rust, not bash.\n\n"
+      echo -e "I'm improving the generate-prompt.sh functionality (see README above for more context). I'm trying to keep generate-prompt.sh as thin as possible, so try not to propose solutions that edit it unless where it makes obvious sense to, e.g. for parsing options. But if there is an easy solution to create another file, or edit another existing file, let's prefer that. For any new files we create, let's do it in Rust, not Bash.\n\n"
     } >> "$temp_context"
 fi
 
