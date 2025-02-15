@@ -37,7 +37,6 @@ set -euo pipefail
 #   - extract-types.sh                 : Extracts potential type names from a Swift file.
 #   - find-definition-files.sh         : Finds Swift files containing definitions for the types.
 #   - filter-files.sh                  : Filters the found files in slim mode.
-#   - exclude-files.sh                 : Filters out files matching user-specified exclusions.
 #   - assemble-prompt.sh               : Assembles the final prompt and copies it to the clipboard.
 #   - get-git-root.sh                  : Determines the Git repository root.
 #   - get-package-root.sh              : Determines the package root (if any) for a given file.
@@ -128,7 +127,6 @@ if [ "$SINGULAR" = false ]; then
     source "$SCRIPT_DIR/extract-types.sh"
     source "$SCRIPT_DIR/find-definition-files.sh"
     source "$SCRIPT_DIR/filter-files.sh"      # Slim mode filtering.
-    source "$SCRIPT_DIR/exclude-files.sh"       # Exclusion filtering.
 fi
 
 if [ "${INCLUDE_REFERENCES:-false}" = true ]; then
@@ -205,10 +203,10 @@ else
          FOUND_FILES=$(filter-files_for_slim_mode "$FILE_PATH" "$FOUND_FILES")
     fi
     
-    # If any exclusions were specified, filter them out.
+    # If any exclusions were specified, filter them out using the new Rust binary.
     if [ "${#EXCLUDES[@]}" -gt 0 ]; then
          echo "Excluding files matching: ${EXCLUDES[*]}"
-         FOUND_FILES=$(filter_excluded_files "$FOUND_FILES" "${EXCLUDES[@]}")
+         FOUND_FILES=$("$SCRIPT_DIR/rust/target/release/filter_excluded_files" "$FOUND_FILES" "${EXCLUDES[@]}")
     fi
 fi
 

@@ -23,6 +23,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "filter_excluded_files"
+version = "0.1.0"
+
+[[package]]
 name = "filter_files_singular"
 version = "0.1.0"
 
