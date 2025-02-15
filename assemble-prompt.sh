@@ -89,12 +89,17 @@ ${diff_output}
 
 ${fixed_instruction}"
     
+    # Create a temporary file to hold the list of unique file paths.
+    temp_file=$(mktemp)
+    echo "$unique_found_files" > "$temp_file"
+    
     # Check prompt size using the Rust binary.
-    # The Rust binary now handles any warnings about prompt size.
-    warning_output=$( (trap '' SIGPIPE; printf "%s" "$final_clipboard_content") | "$RUST_CHECK_SIZE" 2>&1 || true )
+    # Pass the file list via the --file-list option.
+    warning_output=$( (trap '' SIGPIPE; printf "%s" "$final_clipboard_content") | "$RUST_CHECK_SIZE" --file-list "$temp_file" 2>&1 || true )
     if [ -n "$warning_output" ]; then
         echo "$warning_output"
     fi
+    rm -f "$temp_file"
 
     # Copy the assembled prompt to the clipboard and print it.
     echo "$final_clipboard_content" | pbcopy
