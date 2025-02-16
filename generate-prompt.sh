@@ -32,7 +32,6 @@ set -euo pipefail
 #   You must write your question in the form // TODO: - (including the hyphen).
 #
 # It sources the following components:
-#   - assemble-prompt.sh               : Assembles the final prompt and copies it to the clipboard.
 #   - get-git-root.sh                  : Determines the Git repository root.
 #
 # If not in singular mode already, load the additional helpers.
@@ -114,7 +113,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source external components from SCRIPT_DIR.
 # Note: The find-prompt-instruction functionality is now handled by a Rust binary.
-source "$SCRIPT_DIR/assemble-prompt.sh"
 source "$SCRIPT_DIR/get-git-root.sh"
 
 # If not in singular mode already, load the additional helpers.
@@ -236,7 +234,7 @@ sort "$FOUND_FILES" | uniq | while read -r file_path; do
 done
 
 # Assemble the final clipboard content and copy it to the clipboard.
-FINAL_CLIPBOARD_CONTENT=$(assemble-prompt "$FOUND_FILES" "$INSTRUCTION_CONTENT")
+FINAL_CLIPBOARD_CONTENT=$("$SCRIPT_DIR/rust/target/release/assemble_prompt" "$FOUND_FILES" "$INSTRUCTION_CONTENT")
 
 echo "--------------------------------------------------"
 echo

@@ -1,0 +1,9 @@
+[package]
+name = "assemble_prompt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[dev-dependencies]
+tempfile = { workspace = true }
