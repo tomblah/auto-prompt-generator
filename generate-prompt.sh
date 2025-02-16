@@ -36,7 +36,6 @@ set -euo pipefail
 #
 # If not in singular mode already, load the additional helpers.
 #   - find-definition-files.sh         : Finds Swift files containing definitions for the types.
-#   - filter-files.sh                  : Filters the found files in slim mode.
 #
 # New for reference inclusion:
 #   --include-references
@@ -118,7 +117,7 @@ source "$SCRIPT_DIR/get-git-root.sh"
 # If not in singular mode already, load the additional helpers.
 if [ "$SINGULAR" = false ]; then
     source "$SCRIPT_DIR/find-definition-files.sh"
-    source "$SCRIPT_DIR/filter-files.sh"      # Slim mode filtering.
+    # Note: The old filter-files.sh is no longer sourced, as its logic is now provided by the Rust binary.
 fi
 
 echo "--------------------------------------------------"
@@ -173,7 +172,7 @@ INSTRUCTION_CONTENT=$("$SCRIPT_DIR/rust/target/release/extract_instruction_conte
 
 if [ "$SINGULAR" = true ]; then
     echo "Singular mode enabled: only including the TODO file"
-    FOUND_FILES=$("$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/rust/target/release/filter_files_singular" "$FILE_PATH")
+    FOUND_FILES=$("$SCRIPT_DIR/rust/target/release/filter_files_singular" "$FILE_PATH")
 else
     # Extract potential type names from the Swift file.
     TYPES_FILE=$("$SCRIPT_DIR/rust/target/release/extract_types" "$FILE_PATH")
@@ -184,10 +183,10 @@ else
     # Ensure the chosen TODO file is included in the found files.
     echo "$FILE_PATH" >> "$FOUND_FILES"
     
-    # If slim mode is enabled, filter the FOUND_FILES list.
+    # If slim mode is enabled, filter the FOUND_FILES list using the new Rust binary.
     if [ "$SLIM" = true ]; then
          echo "Slim mode enabled: filtering files to include only the TODO file and model files..."
-         FOUND_FILES=$(filter-files_for_slim_mode "$FILE_PATH" "$FOUND_FILES")
+         FOUND_FILES=$("$SCRIPT_DIR/rust/target/release/filter_files" "$FILE_PATH" "$FOUND_FILES")
     fi
     
     # If any exclusions were specified, filter them out using the new Rust binary.
