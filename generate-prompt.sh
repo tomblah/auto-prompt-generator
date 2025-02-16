@@ -38,7 +38,6 @@ set -euo pipefail
 #   - get-package-root.sh              : Determines the package root (if any) for a given file.
 #
 # If not in singular mode already, load the additional helpers.
-#   - extract-types.sh                 : Extracts potential type names from a Swift file.
 #   - find-definition-files.sh         : Finds Swift files containing definitions for the types.
 #   - filter-files.sh                  : Filters the found files in slim mode.
 #
@@ -123,7 +122,6 @@ source "$SCRIPT_DIR/get-package-root.sh"
 
 # If not in singular mode already, load the additional helpers.
 if [ "$SINGULAR" = false ]; then
-    source "$SCRIPT_DIR/extract-types.sh"
     source "$SCRIPT_DIR/find-definition-files.sh"
     source "$SCRIPT_DIR/filter-files.sh"      # Slim mode filtering.
 fi
@@ -187,7 +185,7 @@ if [ "$SINGULAR" = true ]; then
     FOUND_FILES=$("$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/rust/target/release/filter_files_singular" "$FILE_PATH")
 else
     # Extract potential type names from the Swift file.
-    TYPES_FILE=$(extract-types "$FILE_PATH")
+    TYPES_FILE=$("$SCRIPT_DIR/rust/target/release/extract_types" "$FILE_PATH")
     
     # Find Swift files containing definitions for the types.
     FOUND_FILES=$(find-definition-files "$TYPES_FILE" "$SEARCH_ROOT")
