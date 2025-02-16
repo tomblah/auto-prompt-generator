@@ -32,9 +32,6 @@ set -euo pipefail
 #   You must write your question in the form // TODO: - (including the hyphen).
 #
 # It sources the following components:
-#   - get-git-root.sh                  : Determines the Git repository root.
-#
-# If not in singular mode already, load the additional helpers.
 #   - find-definition-files.sh         : Finds Swift files containing definitions for the types.
 #
 # New for reference inclusion:
@@ -110,11 +107,7 @@ CURRENT_DIR="$(pwd)"
 # Determine the directory where this script resides.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Source external components from SCRIPT_DIR.
-# Note: The find-prompt-instruction functionality is now handled by a Rust binary.
-source "$SCRIPT_DIR/get-git-root.sh"
-
-# If not in singular mode already, load the additional helpers.
+# Source additional helpers (if needed).
 if [ "$SINGULAR" = false ]; then
     source "$SCRIPT_DIR/find-definition-files.sh"
     # Note: The old filter-files.sh is no longer sourced, as its logic is now provided by the Rust binary.
@@ -125,8 +118,8 @@ echo "--------------------------------------------------"
 # Change back to the directory where the command was invoked.
 cd "$CURRENT_DIR"
 
-# Determine the Git repository root.
-GIT_ROOT=$(get-git-root) || exit 1
+# Determine the Git repository root using the new Rust binary.
+GIT_ROOT=$("$SCRIPT_DIR/rust/target/release/get_git_root") || exit 1
 echo "Git root: $GIT_ROOT"
 
 # Move to the repository root.
