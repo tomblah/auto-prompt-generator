@@ -32,7 +32,6 @@ set -euo pipefail
 #   You must write your question in the form // TODO: - (including the hyphen).
 #
 # It sources the following components:
-#   - extract-instruction-content.sh   : Extracts the TODO instruction content from the file.
 #   - assemble-prompt.sh               : Assembles the final prompt and copies it to the clipboard.
 #   - get-git-root.sh                  : Determines the Git repository root.
 #   - get-package-root.sh              : Determines the package root (if any) for a given file.
@@ -115,7 +114,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source external components from SCRIPT_DIR.
 # Note: The find-prompt-instruction functionality is now handled by a Rust binary.
-source "$SCRIPT_DIR/extract-instruction-content.sh"
 source "$SCRIPT_DIR/assemble-prompt.sh"
 source "$SCRIPT_DIR/get-git-root.sh"
 source "$SCRIPT_DIR/get-package-root.sh"
@@ -177,8 +175,8 @@ else
 fi
 # --- End Package Scope ---
 
-# Extract the instruction content from the file.
-INSTRUCTION_CONTENT=$(extract-instruction-content "$FILE_PATH")
+# Extract the instruction content from the file using the Rust binary.
+INSTRUCTION_CONTENT=$("$SCRIPT_DIR/rust/target/release/extract_instruction_content" "$FILE_PATH")
 
 if [ "$SINGULAR" = true ]; then
     echo "Singular mode enabled: only including the TODO file"
