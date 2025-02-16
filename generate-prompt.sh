@@ -34,7 +34,6 @@ set -euo pipefail
 # It sources the following components:
 #   - assemble-prompt.sh               : Assembles the final prompt and copies it to the clipboard.
 #   - get-git-root.sh                  : Determines the Git repository root.
-#   - get-package-root.sh              : Determines the package root (if any) for a given file.
 #
 # If not in singular mode already, load the additional helpers.
 #   - find-definition-files.sh         : Finds Swift files containing definitions for the types.
@@ -116,7 +115,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Note: The find-prompt-instruction functionality is now handled by a Rust binary.
 source "$SCRIPT_DIR/assemble-prompt.sh"
 source "$SCRIPT_DIR/get-git-root.sh"
-source "$SCRIPT_DIR/get-package-root.sh"
 
 # If not in singular mode already, load the additional helpers.
 if [ "$SINGULAR" = false ]; then
@@ -163,7 +161,7 @@ if [ "$INCLUDE_REFERENCES" = true ]; then
 fi
 
 # --- Determine Package Scope ---
-PACKAGE_ROOT=$(get-package-root "$FILE_PATH" || true)
+PACKAGE_ROOT=$("$SCRIPT_DIR/rust/target/release/get-package-root" "$FILE_PATH" 2>/dev/null || echo "")
 if [ "${FORCE_GLOBAL}" = true ]; then
     echo "Force global enabled: ignoring package boundaries and using Git root for context."
     SEARCH_ROOT="$GIT_ROOT"
