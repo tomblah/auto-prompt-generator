@@ -34,7 +34,6 @@ EOF
   cp "${BATS_TEST_DIRNAME}/assemble-prompt.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/get-git-root.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/get-search-roots.sh" "$TMP_DIR/"
-  cp "${BATS_TEST_DIRNAME}/find-referencing-files.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/file-types.sh" "$TMP_DIR/"
   cp -r "${BATS_TEST_DIRNAME}/rust" "$TMP_DIR/"
  
@@ -1240,15 +1239,25 @@ EOF
 }
  
 @test "find-referencing-files helper finds referencing files for a given type" {
-    # Create two files: one that references the type and one that does not.
-    echo "let instance = MySpecialClass()" > tempRef.swift
-    echo "print(\"No reference here\")" > tempNonRef.swift
-    run bash -c 'source "./find-referencing-files.sh"; find_referencing_files "MySpecialClass" "."'
-    [ "$status" -eq 0 ]
-    refList=$(cat "$output")
-    [[ "$refList" == *"tempRef.swift"* ]]
-    [[ "$refList" != *"tempNonRef.swift"* ]]
-    rm tempRef.swift tempNonRef.swift "$output"
+  # Create two files: one that references the type and one that does not.
+  echo "let instance = MySpecialClass()" > tempRef.swift
+  echo "print(\"No reference here\")" > tempNonRef.swift
+
+  # Run the new Rust binary for finding referencing files.
+  # (Assumes the current directory is TMP_DIR from setup.)
+  run "./rust/target/release/find_referencing_files" "MySpecialClass" "."
+  [ "$status" -eq 0 ]
+
+  # The binary outputs the path to a temporary file containing the list.
+  temp_file="$output"
+  refList=$(cat "$temp_file")
+
+  # Verify that the list includes tempRef.swift but not tempNonRef.swift.
+  [[ "$refList" == *"tempRef.swift"* ]]
+  [[ "$refList" != *"tempNonRef.swift"* ]]
+
+  # Clean up.
+  rm tempRef.swift tempNonRef.swift "$temp_file"
 }
  
 @test "generate-prompt.sh with --include-references includes referencing files" {

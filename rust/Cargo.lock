@@ -173,6 +173,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "find_referencing_files"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "tempfile",
+ "walkdir",
+]
+
+[[package]]
 name = "float-cmp"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

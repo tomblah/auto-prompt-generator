@@ -40,7 +40,8 @@ set -euo pipefail
 #   - filter-files.sh                  : Filters the found files in slim mode.
 #
 # New for reference inclusion:
-#   - find-referencing-files.sh        : Finds files that reference the enclosing type.
+#   --include-references
+#                  Additionally include files that reference the enclosing type.
 #
 # New for diff inclusion:
 #   --diff-with <branch>              For each included file that differs from the
@@ -120,10 +121,6 @@ source "$SCRIPT_DIR/get-git-root.sh"
 if [ "$SINGULAR" = false ]; then
     source "$SCRIPT_DIR/find-definition-files.sh"
     source "$SCRIPT_DIR/filter-files.sh"      # Slim mode filtering.
-fi
-
-if [ "${INCLUDE_REFERENCES:-false}" = true ]; then
-    source "$SCRIPT_DIR/find-referencing-files.sh"
 fi
 
 echo "--------------------------------------------------"
@@ -209,7 +206,7 @@ if [ "${INCLUDE_REFERENCES:-false}" = true ]; then
     enclosing_type=$("$SCRIPT_DIR/rust/target/release/extract_enclosing_type" "$FILE_PATH")
     if [ -n "$enclosing_type" ]; then
         echo "Found enclosing type '$enclosing_type'. Searching for files that reference '$enclosing_type' in: $SEARCH_ROOT"
-        referencing_files=$(find_referencing_files "$enclosing_type" "$SEARCH_ROOT")
+        referencing_files=$("$SCRIPT_DIR/rust/target/release/find_referencing_files" "$enclosing_type" "$SEARCH_ROOT")
         # Append the referencing files to the FOUND_FILES list.
         cat "$referencing_files" >> "$FOUND_FILES"
         rm -f "$referencing_files"
