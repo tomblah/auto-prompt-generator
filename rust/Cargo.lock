@@ -205,6 +205,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "get_git_root"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
 name = "get_package_root"
 version = "0.1.0"
 dependencies = [
