@@ -10,8 +10,13 @@ members = [
     "diff_with_branch",
     "unescape_newlines",
     "find-prompt-instruction",
-    "extract_types"
-, "extract_instruction_content", "get_package_root", "find_referencing_files", "assemble_prompt", "filter_files", "get_git_root"]
+    "extract_types",
+    "extract_instruction_content",
+    "get_package_root",
+    "find_referencing_files",
+    "filter_files",
+    "get_git_root"
+  ]
 resolver = "2"
 
 [workspace.dependencies]

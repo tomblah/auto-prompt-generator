@@ -32,6 +32,7 @@ set -euo pipefail
 #   You must write your question in the form // TODO: - (including the hyphen).
 #
 # It sources the following components:
+#   - assemble-prompt.sh            : Assembles the final prompt and copies it to the clipboard.
 #   - find-definition-files.sh         : Finds Swift files containing definitions for the types.
 #
 # New for reference inclusion:
@@ -106,6 +107,9 @@ CURRENT_DIR="$(pwd)"
 
 # Determine the directory where this script resides.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source external components from SCRIPT_DIR.
+source "$SCRIPT_DIR/assemble-prompt.sh"
 
 # Source additional helpers (if needed).
 if [ "$SINGULAR" = false ]; then
@@ -226,7 +230,7 @@ sort "$FOUND_FILES" | uniq | while read -r file_path; do
 done
 
 # Assemble the final clipboard content and copy it to the clipboard.
-FINAL_CLIPBOARD_CONTENT=$("$SCRIPT_DIR/rust/target/release/assemble_prompt" "$FOUND_FILES" "$INSTRUCTION_CONTENT")
+FINAL_CLIPBOARD_CONTENT=$(assemble-prompt "$FOUND_FILES" "$INSTRUCTION_CONTENT")
 
 echo "--------------------------------------------------"
 echo
