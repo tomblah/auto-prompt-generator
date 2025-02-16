@@ -6,21 +6,43 @@ set -euo pipefail
 #
 # This script collects the contents of various files in the repository and copies them to the clipboard.
 #
-# It includes:
-# - All .sh and README* files
-# - Optionally .bats files (if --include-tests or --tests-only is passed)
-# - Optionally only Rust source files (if --rust-only is passed)
-# - All Cargo.toml files in the repository
-#
-# Usage:
-#   ./meta-context.sh [--include-tests] [--tests-only] [--rust-only]
-#
 # Options:
 #   --include-tests  : Includes .bats test files along with .sh and README* files.
-#   --tests-only     : Includes only .bats files.
-#   --rust-only      : Includes only Rust source files (.rs) under the rust directory.
-#
+#                      For Rust files, this option leaves inline test code intact.
+#   --tests-only     : Includes only .bats test files.
+#   --rust-only      : Includes only Rust source files (under the rust directory).
 ##########################################
+
+# Define a function to filter out inline Rust test blocks.
+filter_rust_tests() {
+    awk '
+    BEGIN { in_tests=0; brace_count=0 }
+    {
+        # If we see a #[cfg(test)] attribute and we are not already in a test block, start skipping.
+        if (in_tests == 0 && $0 ~ /^[[:space:]]*#\[cfg\(test\)\]/) {
+            in_tests = 1;
+            next;
+        }
+        # If we are in a test block and see a module declaration, start counting braces.
+        if (in_tests == 1 && $0 ~ /^[[:space:]]*mod[[:space:]]+tests[[:space:]]*\{/) {
+            brace_count = 1;
+            next;
+        }
+        # If we are inside a test module block, count braces to know when it ends.
+        if (in_tests == 1 && brace_count > 0) {
+            n = gsub(/\{/, "{");
+            m = gsub(/\}/, "}");
+            brace_count += n - m;
+            if (brace_count <= 0) {
+                in_tests = 0;
+                brace_count = 0;
+            }
+            next;
+        }
+        print;
+    }
+    ' "$1"
+}
 
 # Parse command-line options
 INCLUDE_TESTS=false
@@ -57,7 +79,7 @@ fi
 # Determine the directory where this script resides.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Optionally, determine the repository root (assumes you are in a Git repository).
+# Optionally, determine the repository root (assumes you're in a Git repository).
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$SCRIPT_DIR")
 cd "$REPO_ROOT"
 
@@ -69,21 +91,27 @@ elif $TESTS_ONLY; then
     echo "Including only .bats test files in the context."
     files=$(find . -type f -iname "*.bats" \
             -not -name "meta-context.sh" \
-            -not -path "*/Legacy/*" \
-            -not -path "*/MockFiles/*")
-elif $INCLUDE_TESTS; then
-    echo "Including .bats files along with .sh and README* files in the context."
-    files=$(find . -type f \( -iname "*.sh" -o -iname "README*" -o -iname "*.bats" \) \
-            -not -name "meta-context.sh" \
+            -not -path "./.git/*" \
             -not -path "*/Legacy/*" \
             -not -path "*/MockFiles/*")
 else
-    files=$(find . -type f \( -iname "*.sh" -o -iname "README*" \) \
+    # For non-rust-only modes, start with shell and README files.
+    if $INCLUDE_TESTS; then
+        echo "Including .bats files along with .sh and README* files in the context."
+        files=$(find . -type f \( -iname "*.sh" -o -iname "README*" -o -iname "*.bats" \) \
             -not -name "meta-context.sh" \
+            -not -path "./.git/*" \
             -not -path "*/Legacy/*" \
             -not -path "*/MockFiles/*")
+    else
+        files=$(find . -type f \( -iname "*.sh" -o -iname "README*" \) \
+            -not -name "meta-context.sh" \
+            -not -path "./.git/*" \
+            -not -path "*/Legacy/*" \
+            -not -path "*/MockFiles/*")
+    fi
 
-    # Additionally, include Rust source files if the rust directory exists.
+    # Additionally, always include Rust source files if the rust directory exists.
     if [ -d "rust" ]; then
         echo "Including Rust source files from rust in the context."
         rust_files=$(find rust -type f -iname "*.rs")
@@ -92,8 +120,8 @@ else
 fi
 
 # --------------------------------------------------
-# Include all Cargo.toml files across the repository
-cargo_files=$(find . -type f -name "Cargo.toml")
+# Include all Cargo.toml files across the repository.
+cargo_files=$(find . -type f -name "Cargo.toml" -not -path "./.git/*")
 if [ -n "$cargo_files" ]; then
     echo "Including all Cargo.toml files in the context."
     files="$files $cargo_files"
@@ -117,7 +145,13 @@ for file in $files; do
       echo "--------------------------------------------------"
       echo "The contents of $file is as follows:"
       echo "--------------------------------------------------"
-      cat "$file"
+      # For Rust files: if --include-tests is not set, filter out inline tests.
+      if [[ "$file" == *.rs ]] && ! $INCLUDE_TESTS; then
+          filter_rust_tests "$file"
+          echo -e "\n// Note: rust file unit tests not shown here for brevity."
+      else
+          cat "$file"
+      fi
       echo -e "\n"
     } >> "$temp_context"
 done
@@ -135,9 +169,8 @@ elif ! $RUST_ONLY; then
     } >> "$temp_context"
 fi
 
-# Copy the final context to the clipboard using pbcopy (macOS).
-# For Linux, you might use: xclip -selection clipboard or xsel --clipboard --input.
-cat "$temp_context" | pbcopy
+# Copy the final context to the clipboard using pbcopy.
+pbcopy < "$temp_context"
 
 echo "--------------------------------------------------"
 echo "Success: Meta context has been copied to the clipboard."
