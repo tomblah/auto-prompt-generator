@@ -5,9 +5,11 @@
 # They verify that (a) when a valid TODO instruction exists, the prompt is assembled
 # (and “copied” to our dummy clipboard file), (b) that the script fails when no valid
 # TODO instruction is present, (c) that the --slim and --exclude options work as expected,
-# (d) that the --singular option causes only the TODO file to be included, and now
-# (e) that the new --force-global option causes the script to ignore package boundaries.
- 
+# (d) that the --singular option causes only the TODO file to be included, (e) that the
+# new --force-global option causes the script to ignore package boundaries, and
+# (f) that our new Rust-based helpers (for extracting the enclosing type and finding
+# referencing files) work as expected.
+
 setup() {
   # Create a temporary directory that will serve as our fake repository.
   TMP_DIR=$(mktemp -d)
@@ -36,7 +38,6 @@ EOF
   cp "${BATS_TEST_DIRNAME}/get-git-root.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/get-package-root.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/get-search-roots.sh" "$TMP_DIR/"
-  cp "${BATS_TEST_DIRNAME}/extract-enclosing-type.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/find-referencing-files.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/file-types.sh" "$TMP_DIR/"
   cp -r "${BATS_TEST_DIRNAME}/rust" "$TMP_DIR/"
@@ -258,8 +259,6 @@ EOF
   [[ "$clipboard_content" != *"PodsFile.swift"* ]]
 }
  
-# --- New tests for --force-global functionality ---
-
 @test "generate-prompt.sh uses package root when available without --force-global" {
   # Create a subdirectory "PackageDir" and simulate a package.
   mkdir -p "PackageDir"
@@ -276,7 +275,7 @@ EOF
   [[ "$output" == *"Found package root:"* ]]
   [[ "$output" == *"PackageDir"* ]]
 }
-
+ 
 @test "generate-prompt.sh with --force-global ignores package boundaries" {
   # Create a subdirectory "PackageDir" and simulate a package.
   mkdir -p "PackageDir"
@@ -294,7 +293,7 @@ EOF
   # And it should not display the package root message.
   [[ "$output" != *"Found package root:"* ]]
 }
-
+ 
 @test "generate-prompt.sh outputs correct file list and success message with realistic file content" {
 # Remove any default Swift files created by the standard setup.
 rm -f Test.swift Another.swift
@@ -453,20 +452,20 @@ final_list_sorted=$(echo "$final_list" | sort)
 # Assert that the success section includes the expected TODO instruction.
 [[ "$output" == *"// TODO: - fetch these in parallel and populate the respective published varss"* ]]
 }
-
+ 
 @test "generate-prompt.sh outputs only the expected files when many extra files exist with realistic content" {
-  # Remove any default Swift files created by setup.
-  rm -f Test.swift Another.swift
+# Remove any default Swift files created by setup.
+rm -f Test.swift Another.swift
 
-  # --- Create the minimal required files ---
+# --- Create the minimal required files ---
 
-  # Create directory structure for the expected files.
-  mkdir -p MockFiles/Model
-  mkdir -p MockFiles/TramTracker
-  mkdir -p MockFiles/ViewModel
+# Create directory structure for the expected files.
+mkdir -p MockFiles/Model
+mkdir -p MockFiles/TramTracker
+mkdir -p MockFiles/ViewModel
 
-  # Create TramTrackerViewModel.swift (expected file with unique TODO).
-  cat << 'EOF' > MockFiles/ViewModel/TramTrackerViewModel.swift
+# Create TramTrackerViewModel.swift (expected file with unique TODO).
+cat << 'EOF' > MockFiles/ViewModel/TramTrackerViewModel.swift
 //
 //  TramTrackerViewModel.swift
 //  TramTrackerSwiftUI
@@ -521,7 +520,7 @@ class TramTrackerViewModel: ObservableObject {
                 // Fetch both north and south and only update UI once both have loaded
                 async let fetchedNorthBoundPredictedArrivals = try useCase.fetchUpcomingPredictedArrivals(forStopId: StopIdentifier.north)
                 async let fetchedSouthBoundPredictedArrivals = try useCase.fetchUpcomingPredictedArrivals(forStopId: StopIdentifier.south)
-                
+                // (Rest of implementation omitted for brevity)
             } catch {
                 self.errorMessage = "⚠️\nCould not load upcoming trams, please try again"
                 self.isLoading = false
@@ -537,8 +536,8 @@ class TramTrackerViewModel: ObservableObject {
 }
 EOF
 
-  # Create TramTrackerUseCase.swift (expected file with its TODO comment).
-  cat << 'EOF' > MockFiles/TramTracker/TramTrackerUseCase.swift
+# Create TramTrackerUseCase.swift (expected file with its TODO comment).
+cat << 'EOF' > MockFiles/TramTracker/TramTrackerUseCase.swift
 //
 //  TramTrackerUseCase.swift
 //  TramTrackerSwiftUI
@@ -603,8 +602,8 @@ extension TramTrackerUseCase: TramTrackerUseCasing {
 }
 EOF
 
-  # Create PredictedArrival.swift (expected file).
-  cat << 'EOF' > MockFiles/Model/PredictedArrival.swift
+# Create PredictedArrival.swift (expected file).
+cat << 'EOF' > MockFiles/Model/PredictedArrival.swift
 //
 //  PredictedArrival.swift
 //  TramTrackerSwiftUI
@@ -621,15 +620,15 @@ struct PredictedArrival {
 }
 EOF
 
-  # Ensure TramTrackerViewModel.swift is the most recently modified.
-  sleep 1
-  touch MockFiles/ViewModel/TramTrackerViewModel.swift
+# Ensure that the TramTrackerViewModel.swift file is the most recently modified.
+sleep 1
+touch MockFiles/ViewModel/TramTrackerViewModel.swift
 
-  # --- Create extra Swift files that should NOT be included ---
+# --- Create extra Swift files that should NOT be included ---
 
-  # Create an App file.
-  mkdir -p MockFiles/App
-  cat << 'EOF' > MockFiles/App/TramTrackerSwiftUIApp.swift
+# Create an App file.
+mkdir -p MockFiles/App
+cat << 'EOF' > MockFiles/App/TramTrackerSwiftUIApp.swift
 //
 //  TramTrackerSwiftUIApp.swift
 //  TramTrackerSwiftUI
@@ -649,9 +648,9 @@ struct TramTrackerSwiftUIApp: App {
 }
 EOF
 
-  # Create DeviceTokenResponse.swift.
-  mkdir -p MockFiles/Network
-  cat << 'EOF' > MockFiles/Network/DeviceTokenResponse.swift
+# Create DeviceTokenResponse.swift.
+mkdir -p MockFiles/Network
+cat << 'EOF' > MockFiles/Network/DeviceTokenResponse.swift
 //
 //  DeviceTokenResponse.swift
 //  TramTrackerSwiftUI
@@ -681,8 +680,8 @@ struct DeviceTokenInfo: Codable {
 }
 EOF
 
-  # Create NextPredictedRoutesCollectionResponse.swift.
-  cat << 'EOF' > MockFiles/Network/NextPredictedRoutesCollectionResponse.swift
+# Create NextPredictedRoutesCollectionResponse.swift.
+cat << 'EOF' > MockFiles/Network/NextPredictedRoutesCollectionResponse.swift
 //
 //  NextPredictedRoutesCollectionResponse.swift
 //  TramTrackerSwiftUI
@@ -718,8 +717,8 @@ struct NextPredictedRouteInfo: Codable {
 }
 EOF
 
-  # Create TramTrackerService.swift.
-  cat << 'EOF' > MockFiles/TramTracker/TramTrackerService.swift
+# Create TramTrackerService.swift.
+cat << 'EOF' > MockFiles/TramTracker/TramTrackerService.swift
 //
 //  TramTrackerService.swift
 //  TramTrackerSwiftUI
@@ -774,8 +773,8 @@ extension TramTrackerService: TramTrackerServicing {
 }
 EOF
 
-  # Create HTTPClient.swift.
-  cat << 'EOF' > MockFiles/Network/HTTPClient.swift
+# Create HTTPClient.swift.
+cat << 'EOF' > MockFiles/Network/HTTPClient.swift
 //
 //  HTTPClient.swift
 //  TramTrackerSwiftUI
@@ -823,7 +822,6 @@ class HttpClient {
     init(urlSession: URLSessionProvider = URLSession.shared) {
         self.urlSession = urlSession
     }
-    
 }
 
 // MARK: - HttpClienting
@@ -844,12 +842,11 @@ extension HttpClient: HttpClienting {
             throw HttpError.errorDecodingData
         }
     }
-    
 }
 EOF
 
-  # Create TramTrackerController.swift.
-  cat << 'EOF' > MockFiles/TramTracker/TramTrackerController.swift
+# Create TramTrackerController.swift.
+cat << 'EOF' > MockFiles/TramTracker/TramTrackerController.swift
 //
 //  TramTrackerController.swift
 //  TramTrackerSwiftUI
@@ -879,7 +876,6 @@ class TramTrackerController {
     init(tramTrackerService: TramTrackerServicing = TramTrackerService()) {
         self.tramTrackerService = tramTrackerService
     }
-    
 }
 
 // MARK: - TramTrackerControlling
@@ -907,7 +903,6 @@ extension TramTrackerController: TramTrackerControlling {
         
         return predictedArrivals
     }
-    
 }
 
 // MARK: - Private functions
@@ -923,12 +918,11 @@ private extension TramTrackerController {
         let unixTimeInterval = time / 1000
         return Date(timeIntervalSince1970: unixTimeInterval)
     }
-    
 }
 EOF
 
-  # Create TramTrackerManager.swift.
-  cat << 'EOF' > MockFiles/TramTracker/TramTrackerManager.swift
+# Create TramTrackerManager.swift.
+cat << 'EOF' > MockFiles/TramTracker/TramTrackerManager.swift
 //
 //  TramTrackerManager.swift
 //  TramTrackerSwiftUI
@@ -968,13 +962,12 @@ extension TramTrackerManager: TramTrackerManaging {
         guard deviceToken == nil else { return }
         deviceToken = try await tramTrackerController.fetchDeviceToken()
     }
-    
 }
 EOF
 
-  # Create Array Extensions.swift.
-  mkdir -p MockFiles/Extensions
-  cat << 'EOF' > "MockFiles/Extensions/Array Extensions.swift"
+# Create Array Extensions.swift.
+mkdir -p MockFiles/Extensions
+cat << 'EOF' > "MockFiles/Extensions/Array Extensions.swift"
 //
 //  Array Extensions.swift
 //  TramTrackerSwiftUI
@@ -991,8 +984,8 @@ extension Array {
 }
 EOF
 
-  # Create Tram.swift.
-  cat << 'EOF' > MockFiles/Model/Tram.swift
+# Create Tram.swift.
+cat << 'EOF' > MockFiles/Model/Tram.swift
 //
 //  Tram.swift
 //  TramTrackerSwiftUI
@@ -1008,8 +1001,8 @@ struct Tram {
 }
 EOF
 
-  # Create ContentView.swift.
-  cat << 'EOF' > MockFiles/ContentView.swift
+# Create ContentView.swift.
+cat << 'EOF' > MockFiles/ContentView.swift
 //
 //  ContentView.swift
 //  TramTrackerSwiftUI
@@ -1030,7 +1023,7 @@ struct ContentView: View {
                 } else if viewModel.isLoading {
                     LoadingView()
                 } else if let northBoundPredictedArrivals = viewModel.northBoundPredictedArrivals,
-                            let southBoundPredictedArrivals = viewModel.southBoundPredictedArrivals {
+                          let southBoundPredictedArrivals = viewModel.southBoundPredictedArrivals {
                     TramArrivalsListView(
                         northBoundPredictedArrivals: northBoundPredictedArrivals,
                         southBoundPredictedArrivals: southBoundPredictedArrivals,
@@ -1237,19 +1230,19 @@ EOF
   # Assert that the success section includes the expected unique TODO instruction.
   [[ "$output" == *"// TODO: - fetch these in parallel and populate the respective published varss"* ]]
 }
-
-# --- New tests for the added --include-references functionality and its helper functions ---
-
-@test "extract-enclosing-type helper extracts the correct type from a Swift file" {
+ 
+# --- New tests for --include-references functionality using Rust binaries ---
+ 
+@test "extract_enclosing_type helper extracts the correct type from a Swift file" {
     # Create a temporary file with a type definition and a TODO instruction.
     echo "class MySpecialClass {}" > tempTodo.swift
     echo "// TODO: - Implement feature" >> tempTodo.swift
-    run bash -c 'source "./extract-enclosing-type.sh"; extract_enclosing_type "tempTodo.swift"'
+    run "$TMP_DIR/rust/target/release/extract_enclosing_type" "tempTodo.swift"
     [ "$status" -eq 0 ]
     [ "$output" = "MySpecialClass" ]
     rm tempTodo.swift
 }
-
+ 
 @test "find-referencing-files helper finds referencing files for a given type" {
     # Create two files: one that references the type and one that does not.
     echo "let instance = MySpecialClass()" > tempRef.swift
@@ -1261,7 +1254,7 @@ EOF
     [[ "$refList" != *"tempNonRef.swift"* ]]
     rm tempRef.swift tempNonRef.swift "$output"
 }
-
+ 
 @test "generate-prompt.sh with --include-references includes referencing files" {
     # Remove any default Test.swift so that our new TODO file is the only valid one.
     rm -f Test.swift
@@ -1284,4 +1277,3 @@ EOF
     # Clean up the temporary files.
     rm Todo.swift Reference.swift
 }
-

@@ -30,10 +30,8 @@ EOF
   cp "${BATS_TEST_DIRNAME}/get-git-root.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/get-package-root.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/get-search-roots.sh" "$TMP_DIR/"
-  cp "${BATS_TEST_DIRNAME}/extract-enclosing-type.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/find-referencing-files.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/file-types.sh" "$TMP_DIR/"
-  cp "${BATS_TEST_DIRNAME}/diff-with-branch.sh" "$TMP_DIR/"
   cp -R "${BATS_TEST_DIRNAME}/rust" "$TMP_DIR/"
   
   # Change to TMP_DIR which will act as our repository root.
@@ -61,18 +59,19 @@ teardown() {
   rm -rf "$TMP_DIR"
 }
 
+# Uncomment this test if you want to verify diff output appears when the file is modified.
 # @test "generate-prompt.sh with --diff-with includes diff output when file is modified" {
-#  # Modify Test.swift so that it differs from the committed version.
-#  echo "// Added comment" >> Test.swift
+#   # Modify Test.swift so that it differs from the committed version.
+#   echo "// Added comment" >> Test.swift
 #
-#  # Run generate-prompt.sh with the --diff-with option.
-#  run bash generate-prompt.sh --diff-with main --verbose
-#  [ "$status" -eq 0 ]
+#   # Run generate-prompt.sh with the --diff-with option.
+#   run bash generate-prompt.sh --diff-with main --verbose
+#   [ "$status" -eq 0 ]
 #
-#  # Assert that the output (or clipboard content) includes a diff header for Test.swift.
-#  [[ "$output" == *"The diff for Test.swift (against branch main) is as follows:"* ]]
-#  # Also check that the diff output includes our added line (the "+" prefix indicates an addition).
-#  [[ "$output" == *"+// Added comment"* ]]
+#   # Assert that the output (or clipboard content) includes a diff header for Test.swift.
+#   [[ "$output" == *"The diff for Test.swift (against branch main) is as follows:"* ]]
+#   # Also check that the diff output includes our added line (the "+" prefix indicates an addition).
+#   [[ "$output" == *"+// Added comment"* ]]
 # }
 
 @test "generate-prompt.sh with --diff-with does not include diff output when file is unmodified" {

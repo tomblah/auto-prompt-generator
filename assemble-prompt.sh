@@ -32,11 +32,6 @@ if [ ! -x "$RUST_CHECK_SIZE" ]; then
     exit 1
 fi
 
-# If DIFF_WITH_BRANCH is set, source the diff helper.
-if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
-    source "$SCRIPT_DIR/diff-with-branch.sh"
-fi
-
 assemble-prompt() {
     local found_files_file="$1"
     local instruction_content="$2"  # This parameter is now ignored.
@@ -70,9 +65,14 @@ assemble-prompt() {
         clipboard_content="${clipboard_content}"$'\nThe contents of '"${file_basename}"' is as follows:\n\n'"${file_content}"$'\n\n'
         # If DIFF_WITH_BRANCH is set, append a diff report (if there are changes).
         if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
-            diff_output=$(get_diff_with_branch "$file_path")
-            if [ -n "$diff_output" ]; then
-                clipboard_content="${clipboard_content}"$'\n--------------------------------------------------\nThe diff for '"${file_basename}"' (against branch '"${DIFF_WITH_BRANCH}"') is as follows:\n\n'"${diff_output}"$'\n\n'
+            raw_diff_output=$("$SCRIPT_DIR/rust/target/release/diff_with_branch" "$file_path")
+            # If the diff output, with all whitespace removed, equals the file's basename,
+            # then treat it as if there were no diff.
+            if [ "$(echo -n "$raw_diff_output" | tr -d '[:space:]')" = "$file_basename" ]; then
+                raw_diff_output=""
+            fi
+            if [ -n "$raw_diff_output" ]; then
+                clipboard_content="${clipboard_content}"$'\n--------------------------------------------------\nThe diff for '"${file_basename}"' (against branch '"${DIFF_WITH_BRANCH}"') is as follows:\n\n'"${raw_diff_output}"$'\n\n'
             fi
         fi
         
@@ -122,9 +122,15 @@ assemble-prompt() {
         rm -f "$temp_files"
     fi
 
-    # Copy the assembled prompt to the clipboard and print it.
-    echo "$final_clipboard_content" | pbcopy
-    echo "$final_clipboard_content"
+    # NEW: Unescape literal "\n" sequences using the new Rust binary before copying.
+    local RUST_UNESCAPE_NEWLINES="$SCRIPT_DIR/rust/target/release/unescape_newlines"
+    if [ -x "$RUST_UNESCAPE_NEWLINES" ]; then
+        echo "$final_clipboard_content" | "$RUST_UNESCAPE_NEWLINES" | pbcopy
+        echo "$final_clipboard_content" | "$RUST_UNESCAPE_NEWLINES"
+    else
+        echo "$final_clipboard_content" | pbcopy
+        echo "$final_clipboard_content"
+    fi
 }
 
 # If executed directly, print usage instructions.

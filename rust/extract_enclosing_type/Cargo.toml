@@ -1,7 +1,10 @@
 [package]
-name = "extract_enclosing_function"
+name = "extract_enclosing_type"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 regex = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

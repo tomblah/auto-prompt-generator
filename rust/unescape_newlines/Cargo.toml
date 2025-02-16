@@ -1,4 +1,6 @@
 [package]
-name = "filter_substring_markers"
+name = "unescape_newlines"
 version = "0.1.0"
 edition = "2021"
+
+[dependencies]
