@@ -1,2 +1,6 @@
 **/.DS_Store
-rust/**/target/
+# Ignore all target directories...
+rust/**/target/*
+# ...except for the release folder and its contents:
+!rust/**/target/release/
+!rust/**/target/release/**

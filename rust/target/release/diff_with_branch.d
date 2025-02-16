@@ -1,0 +1,1 @@
+/Users/thomasargue/Documents/auto-prompt-generator/rust/target/release/diff_with_branch: /Users/thomasargue/Documents/auto-prompt-generator/rust/diff_with_branch/src/lib.rs /Users/thomasargue/Documents/auto-prompt-generator/rust/diff_with_branch/src/main.rs
