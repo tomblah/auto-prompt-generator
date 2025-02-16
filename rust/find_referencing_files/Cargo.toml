@@ -1,0 +1,9 @@
+[package]
+name = "find_referencing_files"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+regex = { workspace = true }
+tempfile = { workspace = true }
+walkdir = "2.3"
