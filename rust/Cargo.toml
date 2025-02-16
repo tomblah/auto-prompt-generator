@@ -11,7 +11,7 @@ members = [
     "unescape_newlines",
     "find-prompt-instruction",
     "extract_types"
-]
+, "extract_instruction_content"]
 resolver = "2"
 
 [workspace.dependencies]

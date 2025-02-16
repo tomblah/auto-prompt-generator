@@ -120,6 +120,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "extract_instruction_content"
+version = "0.1.0"
+
+[[package]]
 name = "extract_types"
 version = "0.1.0"
 dependencies = [
