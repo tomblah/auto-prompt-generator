@@ -7,7 +7,7 @@ members = [
     "log_file_sizes",
     "filter_excluded_files",
     "extract_enclosing_type"
-, "diff_with_branch", "unescape_newlines"]
+, "diff_with_branch", "unescape_newlines", "find-prompt-instruction"]
 resolver = "2"
 
 [workspace.dependencies]

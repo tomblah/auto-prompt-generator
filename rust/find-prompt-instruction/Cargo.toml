@@ -1,0 +1,12 @@
+[package]
+name = "find_prompt_instruction"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+walkdir = "2.3"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+filetime = "0.2"
+

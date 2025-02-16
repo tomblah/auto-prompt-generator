@@ -32,15 +32,15 @@ set -euo pipefail
 #   You must write your question in the form // TODO: - (including the hyphen).
 #
 # It sources the following components:
-#   - find-prompt-instruction.sh       : Locates the unique Swift file with the TODO.
 #   - extract-instruction-content.sh   : Extracts the TODO instruction content from the file.
-#   - extract-types.sh                 : Extracts potential type names from a Swift file.
-#   - find-definition-files.sh         : Finds Swift files containing definitions for the types.
-#   - filter-files.sh                  : Filters the found files in slim mode.
 #   - assemble-prompt.sh               : Assembles the final prompt and copies it to the clipboard.
 #   - get-git-root.sh                  : Determines the Git repository root.
 #   - get-package-root.sh              : Determines the package root (if any) for a given file.
-#   - filter-files-singular.sh         : Returns only the file that contains the TODO.
+#
+# If not in singular mode already, load the additional helpers.
+#   - extract-types.sh                 : Extracts potential type names from a Swift file.
+#   - find-definition-files.sh         : Finds Swift files containing definitions for the types.
+#   - filter-files.sh                  : Filters the found files in slim mode.
 #
 # New for reference inclusion:
 #   - find-referencing-files.sh        : Finds files that reference the enclosing type.
@@ -115,7 +115,7 @@ CURRENT_DIR="$(pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source external components from SCRIPT_DIR.
-source "$SCRIPT_DIR/find-prompt-instruction.sh"
+# Note: The find-prompt-instruction functionality is now handled by a Rust binary.
 source "$SCRIPT_DIR/extract-instruction-content.sh"
 source "$SCRIPT_DIR/assemble-prompt.sh"
 source "$SCRIPT_DIR/get-git-root.sh"
@@ -144,8 +144,8 @@ echo "Git root: $GIT_ROOT"
 # Move to the repository root.
 cd "$GIT_ROOT"
 
-# Use the external component to locate the file with the TODO instruction.
-FILE_PATH=$(find-prompt-instruction "$GIT_ROOT") || exit 1
+# Use the Rust binary to locate the file with the TODO instruction.
+FILE_PATH=$("$SCRIPT_DIR/rust/target/release/find_prompt_instruction" "$GIT_ROOT") || exit 1
 echo "Found exactly one instruction in $FILE_PATH"
 
 export TODO_FILE_BASENAME=$(basename "$FILE_PATH")
