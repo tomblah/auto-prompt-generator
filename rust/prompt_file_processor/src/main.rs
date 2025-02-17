@@ -35,66 +35,78 @@ fn filter_substring_markers(content: &str) -> String {
     output
 }
 
-/// Extracts the entire enclosing function block from a Swift file.
+/// Extracts the enclosing function or computed property block that contains the TODO marker.
 ///
 /// This implementation:
 /// 1. Reads the file and splits it into lines.
-/// 2. Finds the first occurrence of the TODO marker (`// TODO: -`).
-/// 3. Searches backward from that marker for a function declaration (using a regex).
-/// 4. Starting from that function declaration, it collects lines while counting `{` and `}`
-///    until the braces balance out (i.e. the entire function block has been captured).
-pub fn extract_enclosing_function(file_path: &str) -> Option<String> {
-    // Read file content.
+/// 2. Locates the TODO marker (the first line containing "// TODO: -") and records its line index.
+/// 3. Searches all lines *up to* that marker for candidate declarations. A candidate declaration is
+///    one that matches a pattern for a function declaration or a computed property header.
+/// 4. For each candidate, it uses a simple brace‑counting algorithm (starting from the candidate’s line)
+///    to determine the block boundaries.
+/// 5. If the TODO marker falls within that block, the candidate is considered a valid enclosing block.
+/// 6. Among all valid candidates, the one with the declaration closest to the TODO marker is returned.
+///
+/// Adjust the regex pattern as needed to suit your code style.
+pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
+    // Read the file content and split into lines.
     let content = fs::read_to_string(file_path).ok()?;
     let lines: Vec<&str> = content.lines().collect();
 
-    // Find the index of the TODO marker.
+    // Find the first line that contains the TODO marker.
     let todo_index = lines.iter().position(|line| line.contains("// TODO: -"))?;
 
-    // Define a regex to match Swift function declarations.
-    // This pattern matches an optional access modifier and then "func" with a function name and parameters.
-    let func_pattern = Regex::new(r"^\s*(?:public|private|internal|fileprivate)?\s*func\s+\w+\s*\(").ok()?;
+    // Define a regex pattern that matches either a function declaration or a computed property.
+    let decl_pattern = Regex::new(
+        r"^\s*(?:(?:public|private|internal|fileprivate)\s+)?(?:(?:func\s+\w+\s*\()|(?:var\s+\w+(?:\s*:\s*[^={]+)?\s*\{))"
+    ).ok()?;
 
-    // Search backwards from the TODO marker for the function declaration.
-    let mut function_index = None;
-    for (i, line) in lines[..todo_index].iter().enumerate().rev() {
-        if func_pattern.is_match(line) {
-            function_index = Some(i);
-            break;
-        }
-    }
-    let start_index = function_index?;
+    // This will hold the candidate declaration that encloses the TODO marker.
+    // We'll store a tuple: (start_line_index, end_line_index, block_lines)
+    let mut best_candidate: Option<(usize, usize, Vec<&str>)> = None;
 
-    // Start capturing the function block using brace counting.
-    let mut brace_count = 0;
-    let mut started = false;
-    let mut extracted_lines = Vec::new();
-
-    for line in &lines[start_index..] {
-        // Check if the block has started by looking for an opening brace.
-        if !started {
-            if line.contains("{") {
-                started = true;
-                // Count the braces on this line.
-                brace_count += line.matches("{").count();
-                brace_count = brace_count.saturating_sub(line.matches("}").count());
+    // Iterate over lines from the start up to (and including) the TODO marker.
+    for (i, line) in lines[..=todo_index].iter().enumerate() {
+        if decl_pattern.is_match(line) {
+            // Starting at candidate line i, extract the block using brace counting.
+            let mut brace_count = 0;
+            let mut started = false;
+            let mut block_lines = Vec::new();
+            let mut end_index = i;
+            for (j, &current_line) in lines[i..].iter().enumerate() {
+                // Look for the opening brace to mark the start of the block.
+                if !started && current_line.contains("{") {
+                    started = true;
+                }
+                if started {
+                    // Count the braces.
+                    brace_count += current_line.matches("{").count();
+                    brace_count = brace_count.saturating_sub(current_line.matches("}").count());
+                }
+                block_lines.push(current_line);
+                // If we've started and the braces have balanced, we've reached the block end.
+                if started && brace_count == 0 {
+                    end_index = i + j;
+                    break;
+                }
             }
-        } else {
-            // If already started, count all braces.
-            brace_count += line.matches("{").count();
-            brace_count = brace_count.saturating_sub(line.matches("}").count());
-        }
-        extracted_lines.push(*line);
-
-        // Once started and the braces are balanced, we have the full function.
-        if started && brace_count == 0 {
-            break;
+            // Check if the TODO marker (at todo_index) falls within this candidate's block.
+            if i <= todo_index && todo_index <= end_index {
+                // If multiple candidates qualify, choose the one that starts later (closer to the TODO).
+                match best_candidate {
+                    Some((prev_start, _, _)) => {
+                        if i > prev_start {
+                            best_candidate = Some((i, end_index, block_lines));
+                        }
+                    }
+                    None => best_candidate = Some((i, end_index, block_lines)),
+                }
+            }
         }
     }
 
-    Some(extracted_lines.join("\n"))
+    best_candidate.map(|(_, _, block_lines)| block_lines.join("\n"))
 }
-
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Expected usage: prompt_file_processor <file_path> [<todo_file_basename>]
@@ -132,7 +144,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // If this file matches the provided TODO file basename, append extra context.
     if let Some(todo_basename) = todo_file_basename {
         if file_basename == todo_basename {
-            if let Some(context) = extract_enclosing_function(file_path) {
+            if let Some(context) = extract_enclosing_block(file_path) {
                 combined_content.push_str("\n\n// Enclosing function context:\n");
                 combined_content.push_str(&context);
             }
@@ -188,10 +200,10 @@ End";
     }
 
     #[test]
-    fn test_extract_enclosing_function() {
+    fn test_extract_enclosing_block() {
         let file_path = "dummy.rs";
         let expected = "Extra context extracted from dummy.rs";
-        let output = extract_enclosing_function(file_path).unwrap();
+        let output = extract_enclosing_block(file_path).unwrap();
         assert_eq!(output, expected);
     }
 }
