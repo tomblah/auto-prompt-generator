@@ -3,8 +3,9 @@
 #
 # This function assembles the final ChatGPT prompt by including:
 #   - The contents of files where type definitions were found
-#     (optionally filtered by substring markers), and
-#   - A fixed instruction (ignoring the extracted TODO instruction).
+#     (processed by prompt_file_processor to filter substring markers
+#      and, if applicable, append extra context), and
+#   - A fixed instruction.
 #
 # It takes two parameters:
 #   1. <found_files_file>: A file (typically temporary) containing a list of file paths.
@@ -18,10 +19,10 @@
 # Determine the directory where this script resides.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-## Use the Rust binary for filtering substring markers.
-RUST_FILTER_SUBSTR="$SCRIPT_DIR/rust/target/release/filter_substring_markers"
-if [ ! -x "$RUST_FILTER_SUBSTR" ]; then
-    echo "Error: Rust filter_substring_markers binary not found. Please build it with 'cargo build --release'." >&2
+## Use the new Rust binary for processing individual files.
+RUST_PROMPT_FILE_PROCESSOR="$SCRIPT_DIR/rust/target/release/prompt_file_processor"
+if [ ! -x "$RUST_PROMPT_FILE_PROCESSOR" ]; then
+    echo "Error: Rust prompt_file_processor binary not found. Please build it with 'cargo build --release'." >&2
     exit 1
 fi
 
@@ -29,6 +30,20 @@ fi
 RUST_CHECK_SIZE="$SCRIPT_DIR/rust/target/release/check_prompt_size"
 if [ ! -x "$RUST_CHECK_SIZE" ]; then
     echo "Error: Rust check_prompt_size binary not found. Please build it with 'cargo build --release'." >&2
+    exit 1
+fi
+
+## Use the Rust binary for diffing.
+RUST_DIFF_WITH_BRANCH="$SCRIPT_DIR/rust/target/release/diff_with_branch"
+if [ ! -x "$RUST_DIFF_WITH_BRANCH" ]; then
+    echo "Error: Rust diff_with_branch binary not found. Please build it with 'cargo build --release'." >&2
+    exit 1
+fi
+
+## Use the Rust binary for unescaping newlines.
+RUST_UNESCAPE_NEWLINES="$SCRIPT_DIR/rust/target/release/unescape_newlines"
+if [ ! -x "$RUST_UNESCAPE_NEWLINES" ]; then
+    echo "Error: Rust unescape_newlines binary not found. Please build it with 'cargo build --release'." >&2
     exit 1
 fi
 
@@ -44,28 +59,19 @@ assemble-prompt() {
     
     # Process each file and format its content.
     while IFS= read -r file_path; do
-        local file_basename file_content diff_output
+        local file_basename file_content raw_diff_output
         file_basename=$(basename "$file_path")
         
-        # If the file contains a line exactly matching the substring marker ("// v"),
-        # then process it with the Rust binary.
-        if grep -qE '^[[:space:]]*//[[:space:]]*v[[:space:]]*$' "$file_path"; then
-            file_content=$("$RUST_FILTER_SUBSTR" "$file_path")
-            # If this is the TODO file, attempt to extract its enclosing function context.
-            if [ "$file_basename" = "$TODO_FILE_BASENAME" ]; then
-                extra_context=$("$SCRIPT_DIR/rust/target/release/extract_enclosing_function" "$file_path")
-                if [ -n "$extra_context" ]; then
-                    file_content="${file_content}"$'\n\n// Enclosing function context:\n'"${extra_context}"
-                fi
-            fi
-        else
-            file_content=$(cat "$file_path")
-        fi
+        # Use the new Rust binary to process the file.
+        # It handles substring marker filtering and, if applicable,
+        # appends extra context if the file matches TODO_FILE_BASENAME.
+        file_content=$("$RUST_PROMPT_FILE_PROCESSOR" "$file_path" "$TODO_FILE_BASENAME")
         
         clipboard_content="${clipboard_content}"$'\nThe contents of '"${file_basename}"' is as follows:\n\n'"${file_content}"$'\n\n'
+        
         # If DIFF_WITH_BRANCH is set, append a diff report (if there are changes).
         if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
-            raw_diff_output=$("$SCRIPT_DIR/rust/target/release/diff_with_branch" "$file_path")
+            raw_diff_output=$("$RUST_DIFF_WITH_BRANCH" "$file_path")
             # If the diff output, with all whitespace removed, equals the file's basename,
             # then treat it as if there were no diff.
             if [ "$(echo -n "$raw_diff_output" | tr -d '[:space:]')" = "$file_basename" ]; then
@@ -122,8 +128,7 @@ assemble-prompt() {
         rm -f "$temp_files"
     fi
 
-    # NEW: Unescape literal "\n" sequences using the new Rust binary before copying.
-    local RUST_UNESCAPE_NEWLINES="$SCRIPT_DIR/rust/target/release/unescape_newlines"
+    # Unescape literal "\n" sequences using the Rust binary before copying.
     if [ -x "$RUST_UNESCAPE_NEWLINES" ]; then
         echo "$final_clipboard_content" | "$RUST_UNESCAPE_NEWLINES" | pbcopy
         echo "$final_clipboard_content" | "$RUST_UNESCAPE_NEWLINES"
