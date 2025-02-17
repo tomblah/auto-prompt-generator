@@ -35,17 +35,19 @@ fn filter_substring_markers(content: &str) -> String {
     output
 }
 
-/// Extracts the enclosing block (function, computed property, or JS cloud code function)
+/// Extracts the enclosing block (Swift function, computed property, or JavaScript function)
 /// that contains the TODO marker.
 ///
 /// This implementation:
 /// 1. Reads the file and splits it into lines.
 /// 2. Locates the TODO marker (the first line containing "// TODO: -") and records its line index.
-/// 3. Searches all lines *up to* that marker for candidate declarations. A candidate declaration is
-///    one that matches a pattern for a Swift function, a Swift computed property, or a JavaScript cloud-code function.
-/// 4. For each candidate, it uses a simple brace‑counting algorithm (starting from the candidate’s line)
+/// 3. Searches all lines up to that marker for candidate declarations matching one of:
+///    - A Swift function declaration or computed property header.
+///    - A JavaScript cloud code function (Parse.Cloud.define(...)).
+///    - A JavaScript assignment function declaration (with an optional const/var/let).
+/// 4. For each candidate, it uses a simple brace-counting algorithm (starting from the candidate’s line)
 ///    to determine the block boundaries.
-/// 5. If the TODO marker falls within that block, the candidate is considered a valid enclosing block.
+/// 5. If the TODO marker falls within that block, the candidate is considered valid.
 /// 6. Among all valid candidates, the one with the declaration closest to the TODO marker is returned.
 pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
     // Read the file content and split into lines.
@@ -55,12 +57,12 @@ pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
     // Find the first line that contains the TODO marker.
     let todo_index = lines.iter().position(|line| line.contains("// TODO: -"))?;
 
-    // Define a regex pattern that matches either:
-    // - A Swift function declaration (with an optional access modifier) or a computed property header.
-    // - A JavaScript cloud code function declaration like:
-    //   Parse.Cloud.define("getDashboardData", async (request) => {
+    // Define a regex pattern that matches one of:
+    // 1. Swift function or computed property declaration.
+    // 2. A Parse.Cloud.define JavaScript function.
+    // 3. A JavaScript assignment function declaration (with optional const/var/let).
     let decl_pattern = Regex::new(
-        r#"^\s*(?:(?:(?:public|private|internal|fileprivate)\s+)?(?:(?:func\s+\w+\s*\()|(?:var\s+\w+(?:\s*:\s*[^={]+)?\s*\{))|(?:Parse\.Cloud\.define\s*\(\s*".+?"\s*,\s*(?:async\s*)?\(.*\)\s*=>\s*\{))"#
+        r#"^\s*(?:(?:(?:public|private|internal|fileprivate)\s+)?(?:(?:func\s+\w+\s*\()|(?:var\s+\w+(?:\s*:\s*[^={]+)?\s*\{))|(Parse\.Cloud\.define\s*\(\s*".+?"\s*,\s*(?:async\s*)?\(.*\)\s*=>\s*\{)|(?:(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\(.*\)\s*\{))"#
     ).ok()?;
 
     // This will hold the candidate declaration that encloses the TODO marker.
@@ -76,17 +78,14 @@ pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
             let mut block_lines = Vec::new();
             let mut end_index = i;
             for (j, &current_line) in lines[i..].iter().enumerate() {
-                // Look for the opening brace to mark the start of the block.
                 if !started && current_line.contains("{") {
                     started = true;
                 }
                 if started {
-                    // Count the opening and closing braces.
                     brace_count += current_line.matches("{").count();
                     brace_count = brace_count.saturating_sub(current_line.matches("}").count());
                 }
                 block_lines.push(current_line);
-                // If we've started and the braces have balanced, we've reached the block end.
                 if started && brace_count == 0 {
                     end_index = i + j;
                     break;
