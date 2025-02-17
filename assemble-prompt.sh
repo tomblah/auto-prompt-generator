@@ -15,11 +15,14 @@
 #
 # If DIFF_WITH_BRANCH is set (e.g. --diff-with develop),
 # for each file that differs from that branch a diff report is appended.
+#
+# Additionally, if the final prompt exceeds a maximum length,
+# exclusion suggestions are output using the suggest_exclusions binary.
 
 # Determine the directory where this script resides.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-## Use the new Rust binary for processing individual files.
+## Use the Rust binary for processing individual files.
 RUST_PROMPT_FILE_PROCESSOR="$SCRIPT_DIR/rust/target/release/prompt_file_processor"
 if [ ! -x "$RUST_PROMPT_FILE_PROCESSOR" ]; then
     echo "Error: Rust prompt_file_processor binary not found. Please build it with 'cargo build --release'." >&2
@@ -44,6 +47,13 @@ fi
 RUST_UNESCAPE_NEWLINES="$SCRIPT_DIR/rust/target/release/unescape_newlines"
 if [ ! -x "$RUST_UNESCAPE_NEWLINES" ]; then
     echo "Error: Rust unescape_newlines binary not found. Please build it with 'cargo build --release'." >&2
+    exit 1
+fi
+
+## Use the Rust binary for suggesting file exclusions.
+SUGGEST_EXCLUSIONS="$SCRIPT_DIR/rust/target/release/suggest_exclusions"
+if [ ! -x "$SUGGEST_EXCLUSIONS" ]; then
+    echo "Error: Rust suggest_exclusions binary not found. Please build it with 'cargo build --release'." >&2
     exit 1
 fi
 
@@ -94,7 +104,7 @@ assemble-prompt() {
         echo "$warning_output"
     fi
 
-    # Additional debug logging for prompt size.
+    # Additional debug logging: if the prompt exceeds the max length, call suggest_exclusions.
     local prompt_length
     prompt_length=$(printf "%s" "$final_clipboard_content" | wc -m | tr -d ' ')
     local max_length=100000
@@ -103,26 +113,8 @@ assemble-prompt() {
         local temp_files
         temp_files=$(mktemp)
         echo "$unique_found_files" > "$temp_files"
-        local sorted_output
-        sorted_output=$("$SCRIPT_DIR/rust/target/release/log_file_sizes" "$temp_files")
-        echo "$sorted_output" | awk -v curr="$prompt_length" -v max="$max_length" -v todo="$TODO_FILE_BASENAME" '{
-  gsub(/\(/,"", $2);
-  gsub(/\)/,"", $2);
-  if ($1 == todo) next;
-  file_size = $2;
-  projected = curr - file_size;
-  percentage = int((projected / max) * 100);
-  print " --exclude " $1 " (will get you to " percentage "% of threshold)";
-}' >&2
-        echo "$sorted_output" | awk -v curr="$prompt_length" -v max="$max_length" -v todo="$TODO_FILE_BASENAME" '{
-  gsub(/\(/,"", $2);
-  gsub(/\)/,"", $2);
-  if ($1 == todo) next;
-  file_size = $2;
-  projected = curr - file_size;
-  percentage = int((projected / max) * 100);
-  print " --exclude " $1 " (will get you to " percentage "% of threshold)";
-}'
+        suggestions=$("$SUGGEST_EXCLUSIONS" "$temp_files" "$prompt_length" "$max_length" "$TODO_FILE_BASENAME")
+        echo "$suggestions" >&2
         rm -f "$temp_files"
     fi
 
