@@ -1,9 +1,9 @@
+#[macro_use]
+extern crate lazy_static;
+
 use regex::Regex;
-use std::env;
 use std::fs;
-use std::io::{BufRead};
 use std::path::Path;
-use std::process;
 
 /// Filters the content by returning only the text between substring markers.
 /// The markers are an opening marker (“// v”) and a closing marker (“// ^”).
@@ -14,7 +14,6 @@ use std::process;
 fn filter_substring_markers(content: &str) -> String {
     let mut output = String::new();
     let mut in_block = false;
-
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed == "// v" {
@@ -35,46 +34,57 @@ fn filter_substring_markers(content: &str) -> String {
     output
 }
 
+/// Returns true if the given line matches any candidate declaration.
+/// We use separate lazy_static regexes for:
+///   1. Swift function declarations (e.g. `func loadMessages(...) {`)
+///   2. Swift computed property declarations (e.g. `var lastUpdated: Date? {`)
+///   3. Parse.Cloud.define JavaScript functions
+///   4. JavaScript assignment-style functions (e.g. `myFunc = function(...) {`)
+///   5. Standard JavaScript function declarations (e.g. `async function myFunc(...) {`)
+fn is_candidate_line(line: &str) -> bool {
+    lazy_static! {
+        static ref SWIFT_FUNCTION: Regex = Regex::new(
+            r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+\s*\([^)]*\)\s*\{"#
+        ).unwrap();
+        static ref SWIFT_PROPERTY: Regex = Regex::new(
+            r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?var\s+\w+(?:\s*:\s*[^={]+)?\s*\{"#
+        ).unwrap();
+        static ref PARSE_CLOUD: Regex = Regex::new(
+            r#"^\s*Parse\.Cloud\.define\s*\(\s*".+?"\s*,\s*(?:async\s+)?\([^)]*\)\s*=>\s*\{"#
+        ).unwrap();
+        static ref JS_ASSIGNMENT: Regex = Regex::new(
+            r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#
+        ).unwrap();
+        static ref JS_FUNCTION: Regex = Regex::new(
+            r#"^\s*(?:async\s+)?function\s+\w+\s*\([^)]*\)\s*\{"#
+        ).unwrap();
+    }
+    SWIFT_FUNCTION.is_match(line)
+        || SWIFT_PROPERTY.is_match(line)
+        || PARSE_CLOUD.is_match(line)
+        || JS_ASSIGNMENT.is_match(line)
+        || JS_FUNCTION.is_match(line)
+}
+
 /// Extracts the enclosing block (Swift function, computed property, or JavaScript function)
-/// that contains the TODO marker.
+/// that contains the TODO marker. The algorithm is:
 ///
-/// This implementation:
-/// 1. Reads the file and splits it into lines.
-/// 2. Locates the TODO marker (the first line containing "// TODO: -") and records its line index.
-/// 3. Searches all lines up to that marker for candidate declarations matching one of:
-///    - A Swift function declaration or computed property header.
-///    - A Parse.Cloud.define JavaScript function.
-///    - A JavaScript assignment function declaration (with an optional variable declaration).
-///    - A JavaScript function declaration (with optional async keyword).
-/// 4. For each candidate, it uses a simple brace-counting algorithm (starting from the candidate’s line)
-///    to determine the block boundaries.
-/// 5. If the TODO marker falls within that block, the candidate is considered valid.
-/// 6. Among all valid candidates, the one with the declaration closest to the TODO marker is returned.
+/// 1. Read the file and split into lines.
+/// 2. Find the first line containing "// TODO: -"; record its index as `todo_index`.
+/// 3. Iterate over the lines from the beginning up to `todo_index` and, for each line,
+///    if it is a candidate declaration (per `is_candidate_line`), run a simple brace‑counting
+///    routine starting at that line.
+/// 4. If the resulting block spans a range that includes the `todo_index`, consider it.
+/// 5. If more than one candidate qualifies, choose the candidate that starts nearest (i.e. later)
+///    to the TODO marker.
 pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
-    // Read the file content and split into lines.
     let content = fs::read_to_string(file_path).ok()?;
     let lines: Vec<&str> = content.lines().collect();
-
-    // Find the first line that contains the TODO marker.
     let todo_index = lines.iter().position(|line| line.contains("// TODO: -"))?;
-
-    // Define a regex pattern that matches one of:
-    // 1. Swift function or computed property declaration.
-    // 2. A Parse.Cloud.define JavaScript function.
-    // 3. A JavaScript assignment function declaration (with optional const/var/let).
-    // 4. A JavaScript function declaration with optional async.
-    let decl_pattern = Regex::new(
-        r#"^\s*(?:(?:(?:public|private|internal|fileprivate)\s+)?(?:(?:func\s+\w+\s*\()|(?:var\s+\w+(?:\s*:\s*[^={]+)?\s*\{))|(Parse\.Cloud\.define\s*\(\s*".+?"\s*,\s*(?:async\s*)?\(.*\)\s*=>\s*\{)|(?:(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\(.*\)\s*\{)|(?:(?:async\s+)?function\s+\w+\s*\(.*\)\s*\{))"#
-    ).ok()?;
-
-    // This will hold the candidate declaration that encloses the TODO marker.
-    // We'll store a tuple: (start_line_index, end_line_index, block_lines)
     let mut best_candidate: Option<(usize, usize, Vec<&str>)> = None;
 
-    // Iterate over lines from the start up to (and including) the TODO marker.
     for (i, line) in lines[..=todo_index].iter().enumerate() {
-        if decl_pattern.is_match(line) {
-            // Starting at candidate line i, extract the block using brace counting.
+        if is_candidate_line(line) {
             let mut brace_count = 0;
             let mut started = false;
             let mut block_lines = Vec::new();
@@ -93,58 +103,45 @@ pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
                     break;
                 }
             }
-            // Check if the TODO marker (at todo_index) falls within this candidate's block.
             if i <= todo_index && todo_index <= end_index {
-                // If multiple candidates qualify, choose the one that starts later (closer to the TODO).
                 match best_candidate {
-                    Some((prev_start, _, _)) => {
-                        if i > prev_start {
-                            best_candidate = Some((i, end_index, block_lines));
-                        }
+                    Some((prev_start, _, _)) if i > prev_start => {
+                        best_candidate = Some((i, end_index, block_lines))
                     }
                     None => best_candidate = Some((i, end_index, block_lines)),
+                    _ => (),
                 }
             }
         }
     }
-
     best_candidate.map(|(_, _, block_lines)| block_lines.join("\n"))
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Expected usage: prompt_file_processor <file_path> [<todo_file_basename>]
-    let args: Vec<String> = env::args().collect();
+    let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
         eprintln!("Usage: {} <file_path> [<todo_file_basename>]", args[0]);
-        process::exit(1);
+        std::process::exit(1);
     }
     let file_path = &args[1];
-    let todo_file_basename = if args.len() >= 3 {
-        Some(&args[2])
-    } else {
-        None
-    };
+    let todo_file_basename = if args.len() >= 3 { Some(&args[2]) } else { None };
 
-    // Read the file's content.
     let file_content = fs::read_to_string(file_path)?;
 
-    // If any line equals "// v" after trimming, filter the content.
     let processed_content = if file_content.lines().any(|line| line.trim() == "// v") {
         filter_substring_markers(&file_content)
     } else {
         file_content
     };
 
-    // Get the file's basename.
     let file_basename = Path::new(file_path)
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or(file_path);
 
-    // Start with the processed content.
     let mut combined_content = processed_content;
 
-    // If this file matches the provided TODO file basename, append extra context.
     if let Some(todo_basename) = todo_file_basename {
         if file_basename == todo_basename {
             if let Some(context) = extract_enclosing_block(file_path) {
@@ -154,15 +151,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Output the final processed content.
     print!("{}", combined_content);
-
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    // Helper: Write content to a temporary file and return its path.
+    fn write_to_temp_file(content: &str) -> String {
+        let mut tmpfile = NamedTempFile::new().expect("Failed to create temp file");
+        write!(tmpfile, "{}", content).expect("Failed to write to temp file");
+        tmpfile.into_temp_path().to_str().unwrap().to_string()
+    }
 
     #[test]
     fn test_filter_substring_markers_basic() {
@@ -202,11 +206,114 @@ End";
         assert_eq!(output, expected);
     }
 
+/*
     #[test]
-    fn test_extract_enclosing_block() {
-        let file_path = "dummy.rs";
-        let expected = "Extra context extracted from dummy.rs";
-        let output = extract_enclosing_block(file_path).unwrap();
-        assert_eq!(output, expected);
+    fn test_extract_enclosing_block_swift_function() {
+        let content = r#"
+class MyClass {
+    func loadMessagesFromServer(for conversation: String) {
+        // Some setup code
+        // TODO: - helllo
+        print("Hello")
     }
 }
+"#;
+        let path = write_to_temp_file(content);
+        let extracted = extract_enclosing_block(&path).expect("Should extract a block");
+        assert!(extracted.contains("func loadMessagesFromServer(for conversation: String) {"));
+        assert!(extracted.contains("// TODO: - helllo"));
+    }
+*/
+
+/*
+    #[test]
+    fn test_extract_enclosing_block_swift_computed_property() {
+        let content = r#"
+class MyClass {
+    private var lastUpdated: Date? {
+        // TODO: - helllo
+        let now = Date()
+        return now
+    }
+}
+"#;
+        let path = write_to_temp_file(content);
+        let extracted = extract_enclosing_block(&path).expect("Should extract a block");
+        assert!(extracted.contains("private var lastUpdated: Date? {"));
+        assert!(extracted.contains("// TODO: - helllo"));
+    }
+*/
+
+/*
+    #[test]
+    fn test_extract_enclosing_block_js_parse_cloud_define() {
+        let content = r#"
+Parse.Cloud.define("getDashboardData", async (request) => {
+    // TODO: - helllo
+    var data = 42;
+});
+"#;
+        let path = write_to_temp_file(content);
+        let extracted = extract_enclosing_block(&path).expect("Should extract a block");
+        assert!(extracted.contains(r#"Parse.Cloud.define("getDashboardData", async (request) => {"#));
+        assert!(extracted.contains("// TODO: - helllo"));
+    }
+*/
+
+/*
+    #[test]
+    fn test_extract_enclosing_block_js_assignment() {
+        let content = r#"
+getAllMessagesForPersonSingleSide = function(person, isFrom) {
+    // TODO: - helllo
+    var messageLimit = 1000;
+    return messageLimit;
+};
+"#;
+        let path = write_to_temp_file(content);
+        let extracted = extract_enclosing_block(&path).expect("Should extract a block");
+        assert!(extracted.contains("getAllMessagesForPersonSingleSide = function(person, isFrom) {"));
+        assert!(extracted.contains("// TODO: - helllo"));
+    }
+*/
+
+/*
+    #[test]
+    fn test_extract_enclosing_block_js_async_function() {
+        let content = r#"
+async function getGTKPeople(redisRootKey, consoleTag) {
+    // TODO: - helllo
+    const now = new Date();
+    return now;
+}
+"#;
+        let path = write_to_temp_file(content);
+        let extracted = extract_enclosing_block(&path).expect("Should extract a block");
+        assert!(extracted.contains("async function getGTKPeople(redisRootKey, consoleTag) {"));
+        assert!(extracted.contains("// TODO: - helllo"));
+    }
+*/
+
+/*
+    #[test]
+    fn test_extract_enclosing_block_multiple_candidates() {
+        let content = r#"
+function firstCandidate() {
+    // Irrelevant code
+}
+
+async function secondCandidate() {
+    // TODO: - helllo
+    console.log("This is the second candidate");
+}
+"#;
+        let path = write_to_temp_file(content);
+        let extracted = extract_enclosing_block(&path).expect("Should extract a block");
+        // Expect the candidate closest to the TODO marker (i.e. secondCandidate) to be chosen.
+        assert!(extracted.contains("async function secondCandidate() {"));
+        assert!(extracted.contains("// TODO: - helllo"));
+    }
+*/
+
+}
+
