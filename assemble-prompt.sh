@@ -22,6 +22,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source the helper that filters file content based on substring markers.
 source "$SCRIPT_DIR/filter-substring-markers.sh"
+# Source the helper that checks prompt length.
+source "$SCRIPT_DIR/check-prompt-length.sh"
 
 # If DIFF_WITH_BRANCH is set, source the diff helper.
 if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
@@ -80,6 +82,9 @@ ${diff_output}
     local final_clipboard_content="${clipboard_content}
 
 ${fixed_instruction}"
+    
+    # Check the prompt length and print a warning if needed.
+    check_prompt_length "$final_clipboard_content"
     
     # Copy the assembled prompt to the clipboard and print it.
     echo "$final_clipboard_content" | pbcopy
