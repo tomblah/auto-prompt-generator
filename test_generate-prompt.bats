@@ -1284,3 +1284,56 @@ EOF
     # Clean up the temporary files.
     rm Todo.swift Reference.swift
 }
+
+@test "generate-prompt.sh extracts enclosing function context and excludes content before markers" {
+  # Create a temporary JS file with sample content.
+  cat << 'EOF' > FunctionTest.js
+const someExampleConstant = 42;
+
+// v
+
+const anotherExampleConstant = 99;
+
+// ^
+
+Parse.Cloud.define("getDashboardData", async (request) => {
+    
+    // TODO: - helllo
+    
+    var environment = require("./environment.js");
+    var _ = getUnderscore();
+    
+    var currentUserObjectId = request.params.currentUserObjectId;
+    var currentUserGlobal;
+    var hiddenPeopleGlobal;
+    var timeAgoGlobal = new Date(new Date().getTime() - (24 * 60 * 60 * 1000));
+    var resultDictionaryGlobal;
+    
+});
+EOF
+
+  # Set the environment variable so the script knows which file contains the TODO.
+  export TODO_FILE_BASENAME=$(basename "FunctionTest.js")
+
+  # Create a temporary found-files list including our file.
+  echo "FunctionTest.js" > found_files.txt
+
+  # Run the generate-prompt.sh script.
+  run bash generate-prompt.sh
+  [ "$status" -eq 0 ]
+
+  # Read the content copied to the dummy clipboard.
+  clipboard_content=$(cat clipboard.txt)
+
+  # Assert that the function block is included (starting with Parse.Cloud.define).
+  [[ "$clipboard_content" == *'Parse.Cloud.define("getDashboardData", async (request) => {'* ]]
+
+  # Assert that the TODO comment inside the function block is present.
+  [[ "$clipboard_content" == *"// TODO: - helllo"* ]]
+
+  # Assert that extra context (enclosing function context) was appended.
+  [[ "$clipboard_content" == *"// Enclosing function context:"* ]]
+
+  # Assert that content from before the substring markers is NOT included.
+  [[ "$clipboard_content" != *"const someExampleConstant = 42;"* ]]
+}
