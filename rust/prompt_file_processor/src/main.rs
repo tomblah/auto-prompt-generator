@@ -43,8 +43,9 @@ fn filter_substring_markers(content: &str) -> String {
 /// 2. Locates the TODO marker (the first line containing "// TODO: -") and records its line index.
 /// 3. Searches all lines up to that marker for candidate declarations matching one of:
 ///    - A Swift function declaration or computed property header.
-///    - A JavaScript cloud code function (Parse.Cloud.define(...)).
-///    - A JavaScript assignment function declaration (with an optional const/var/let).
+///    - A Parse.Cloud.define JavaScript function.
+///    - A JavaScript assignment function declaration (with an optional variable declaration).
+///    - A JavaScript function declaration (with optional async keyword).
 /// 4. For each candidate, it uses a simple brace-counting algorithm (starting from the candidate’s line)
 ///    to determine the block boundaries.
 /// 5. If the TODO marker falls within that block, the candidate is considered valid.
@@ -61,8 +62,9 @@ pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
     // 1. Swift function or computed property declaration.
     // 2. A Parse.Cloud.define JavaScript function.
     // 3. A JavaScript assignment function declaration (with optional const/var/let).
+    // 4. A JavaScript function declaration with optional async.
     let decl_pattern = Regex::new(
-        r#"^\s*(?:(?:(?:public|private|internal|fileprivate)\s+)?(?:(?:func\s+\w+\s*\()|(?:var\s+\w+(?:\s*:\s*[^={]+)?\s*\{))|(Parse\.Cloud\.define\s*\(\s*".+?"\s*,\s*(?:async\s*)?\(.*\)\s*=>\s*\{)|(?:(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\(.*\)\s*\{))"#
+        r#"^\s*(?:(?:(?:public|private|internal|fileprivate)\s+)?(?:(?:func\s+\w+\s*\()|(?:var\s+\w+(?:\s*:\s*[^={]+)?\s*\{))|(Parse\.Cloud\.define\s*\(\s*".+?"\s*,\s*(?:async\s*)?\(.*\)\s*=>\s*\{)|(?:(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\(.*\)\s*\{)|(?:(?:async\s+)?function\s+\w+\s*\(.*\)\s*\{))"#
     ).ok()?;
 
     // This will hold the candidate declaration that encloses the TODO marker.
