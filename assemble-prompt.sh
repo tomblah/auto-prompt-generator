@@ -33,7 +33,7 @@ if [ ! -x "$RUST_CHECK_SIZE" ]; then
     exit 1
 fi
 
-## Use the Rust binary for diffing.
+## Use the diff_with_branch binary (from your existing package).
 RUST_DIFF_WITH_BRANCH="$SCRIPT_DIR/rust/target/release/diff_with_branch"
 if [ ! -x "$RUST_DIFF_WITH_BRANCH" ]; then
     echo "Error: Rust diff_with_branch binary not found. Please build it with 'cargo build --release'." >&2
@@ -62,9 +62,7 @@ assemble-prompt() {
         local file_basename file_content raw_diff_output
         file_basename=$(basename "$file_path")
         
-        # Use the new Rust binary to process the file.
-        # It handles substring marker filtering and, if applicable,
-        # appends extra context if the file matches TODO_FILE_BASENAME.
+        # Process the file using prompt_file_processor.
         file_content=$("$RUST_PROMPT_FILE_PROCESSOR" "$file_path" "$TODO_FILE_BASENAME")
         
         clipboard_content="${clipboard_content}"$'\nThe contents of '"${file_basename}"' is as follows:\n\n'"${file_content}"$'\n\n'
@@ -72,8 +70,7 @@ assemble-prompt() {
         # If DIFF_WITH_BRANCH is set, append a diff report (if there are changes).
         if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
             raw_diff_output=$("$RUST_DIFF_WITH_BRANCH" "$file_path")
-            # If the diff output, with all whitespace removed, equals the file's basename,
-            # then treat it as if there were no diff.
+            # If the diff output (with whitespace removed) equals the file's basename, ignore it.
             if [ "$(echo -n "$raw_diff_output" | tr -d '[:space:]')" = "$file_basename" ]; then
                 raw_diff_output=""
             fi
@@ -92,7 +89,8 @@ assemble-prompt() {
     
     # Check prompt size using the Rust binary.
     warning_output=$( (trap '' SIGPIPE; printf "%s" "$final_clipboard_content") | "$RUST_CHECK_SIZE" 2>&1 || true )
-    if [ -n "$warning_output" ]; then
+    # Only echo the warning if it is not the "no suggestions" message.
+    if [ -n "$warning_output" ] && [ "$warning_output" != "The prompt length is within acceptable limits. No suggestions for exclusion." ]; then
         echo "$warning_output"
     fi
 
