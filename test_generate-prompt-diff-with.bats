@@ -23,7 +23,6 @@ EOF
   cp "${BATS_TEST_DIRNAME}/generate-prompt.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/find-definition-files.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/assemble-prompt.sh" "$TMP_DIR/"
-  cp "${BATS_TEST_DIRNAME}/get-search-roots.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/file-types.sh" "$TMP_DIR/"
   cp -R "${BATS_TEST_DIRNAME}/rust" "$TMP_DIR/"
   

@@ -16,7 +16,7 @@ members = [
     "find_referencing_files",
     "filter_files",
     "get_git_root"
-  ]
+  , "get_search_roots"]
 resolver = "2"
 
 [workspace.dependencies]

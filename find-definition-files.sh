@@ -19,11 +19,11 @@ find-definition-files() {
     local root="$2"
 
     local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    script_dir="${FDF_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 
-    # Get the search roots (optimized by the new get-search-roots.sh).
+    # Get the search roots using the new Rust binary "get_search_roots".
     local search_roots
-    search_roots=$("$script_dir/get-search-roots.sh" "$root")
+    search_roots=$("$script_dir/rust/target/release/get_search_roots" "$root")
     
     if [ "${VERBOSE:-false}" = true ]; then
          echo "[VERBOSE] Search roots: $search_roots" >&2
