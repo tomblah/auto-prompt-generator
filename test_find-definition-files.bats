@@ -18,6 +18,9 @@ echo "$1"
 EOF
   chmod +x "$TEST_DIR/rust/target/release/get_search_roots"
 
+  # (Assume the new Rust binary "find_definition_files" has been built and placed
+  # in the appropriate directory. If not, you can build it and copy it there.)
+  
   # Create a Swift file in a normal (non-.build) directory.
   mkdir -p "$TEST_DIR/Sources"
   cat << 'EOF' > "$TEST_DIR/Sources/MyType.swift"
@@ -41,11 +44,11 @@ teardown() {
 
 @test "find-definition-files excludes files in .build directory" {
   run bash -c '
-    # Define the updated find-definition-files function that excludes .build directories.
     find-definition-files() {
       local types_file="$1"
       local root="$2"
       local script_dir="'"$TEST_DIR"'"
+      
       local search_roots
       search_roots=$("$script_dir/rust/target/release/get_search_roots" "$root")
       
@@ -62,8 +65,7 @@ teardown() {
       while IFS= read -r TYPE; do
         for sr in $search_roots; do
           echo "Debug: Searching for type '\''$TYPE'\'' in '\''$sr'\''" >&2
-          find "$sr" -type f -name "*.swift" -not -path "*/.build/*" \
-            -exec grep -lE "\\b(class|struct|enum|protocol|typealias)\\s+$TYPE\\b" {} \; >> "$temp_found" || true
+          "$script_dir/rust/target/release/find_definition_files" "$types_file" "$sr" >> "$temp_found" || true
         done
       done < "$types_file"
 
@@ -106,6 +108,7 @@ EOF
       local types_file="$1"
       local root="$2"
       local script_dir="'"$TEST_DIR"'"
+      
       local search_roots
       search_roots=$("$script_dir/rust/target/release/get_search_roots" "$root")
       
@@ -114,13 +117,11 @@ EOF
       local temp_found="$tempdir/found_files.txt"
       touch "$temp_found"
       
-      local types_regex
-      types_regex=$(paste -sd "|" "'"$NEW_TYPES_FILE"'")
-      
-      for sr in $search_roots; do
-         find "$sr" -type f -name "*.swift" -not -path "*/.build/*" \
-           -exec grep -lE "\\b(class|struct|enum|protocol|typealias)\\s+($types_regex)\\b" {} \; >> "$temp_found" || true
-      done
+      while IFS= read -r TYPE; do
+        for sr in $search_roots; do
+          "$script_dir/rust/target/release/find_definition_files" "$types_file" "$sr" >> "$temp_found" || true
+        done
+      done < "$types_file"
       
       local final_found
       final_found=$(mktemp)
@@ -161,6 +162,7 @@ EOF
       local types_file="$1"
       local root="$2"
       local script_dir="'"$TEST_DIR"'"
+      
       local search_roots
       search_roots=$("$script_dir/rust/target/release/get_search_roots" "$root")
       
@@ -169,10 +171,11 @@ EOF
       local temp_found="$tempdir/found_files.txt"
       touch "$temp_found"
       
-      for sr in $search_roots; do
-         find "$sr" -type f -name "*.swift" -not -path "*/.build/*" -not -path "*/Pods/*" \
-           -exec grep -lE "\\b(class|struct|enum|protocol|typealias)\\s+MyType\\b" {} \; >> "$temp_found" || true
-      done
+      while IFS= read -r TYPE; do
+        for sr in $search_roots; do
+          "$script_dir/rust/target/release/find_definition_files" "$types_file" "$sr" >> "$temp_found" || true
+        done
+      done < "$types_file"
       
       local final_found
       final_found=$(mktemp)
@@ -206,6 +209,7 @@ EOF
       local types_file="$1"
       local root="$2"
       local script_dir="'"$TEST_DIR"'"
+      
       local search_roots
       search_roots=$("$script_dir/rust/target/release/get_search_roots" "$root")
       
@@ -214,10 +218,11 @@ EOF
       local temp_found="$tempdir/found_files.txt"
       touch "$temp_found"
       
-      for sr in $search_roots; do
-         find "$sr" -type f -name "*.swift" -not -path "*/.build/*" -not -path "*/Pods/*" \
-           -exec grep -lE "\\b(class|struct|enum|protocol|typealias)\\s+MyType\\b" {} \; >> "$temp_found" || true
-      done
+      while IFS= read -r TYPE; do
+        for sr in $search_roots; do
+          "$script_dir/rust/target/release/find_definition_files" "$types_file" "$sr" >> "$temp_found" || true
+        done
+      done < "$types_file"
       
       local final_found
       final_found=$(mktemp)
@@ -244,6 +249,7 @@ EOF
       local types_file="$1"
       local root="$2"
       local script_dir="'"$TEST_DIR"'"
+      
       local search_roots
       search_roots=$("$script_dir/rust/target/release/get_search_roots" "$root")
       
@@ -252,10 +258,11 @@ EOF
       local temp_found="$tempdir/found_files.txt"
       touch "$temp_found"
       
-      for sr in $search_roots; do
-         find "$sr" \( -name "*.swift" -o -name "*.h" -o -name "*.m" \) -not -path "*/.build/*" -not -path "*/Pods/*" \
-           -exec grep -lE "\\b(class|struct|enum|protocol|typealias)\\s+MyType\\b" {} \; >> "$temp_found" || true
-      done
+      while IFS= read -r TYPE; do
+        for sr in $search_roots; do
+          "$script_dir/rust/target/release/find_definition_files" "$types_file" "$sr" >> "$temp_found" || true
+        done
+      done < "$types_file"
       
       local final_found
       final_found=$(mktemp)

@@ -29,7 +29,6 @@ EOF
   # (This assumes your test files and these scripts are in the same directory;
   # adjust the source paths if necessary.)
   cp "${BATS_TEST_DIRNAME}/generate-prompt.sh" "$TMP_DIR/"
-  cp "${BATS_TEST_DIRNAME}/find-definition-files.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/assemble-prompt.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/file-types.sh" "$TMP_DIR/"
   cp -r "${BATS_TEST_DIRNAME}/rust" "$TMP_DIR/"

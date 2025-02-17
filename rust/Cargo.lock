@@ -171,6 +171,15 @@ name = "filter_substring_markers"
 version = "0.1.0"
 
 [[package]]
+name = "find_definition_files"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "tempfile",
+ "walkdir",
+]
+
+[[package]]
 name = "find_prompt_instruction"
 version = "0.1.0"
 dependencies = [
