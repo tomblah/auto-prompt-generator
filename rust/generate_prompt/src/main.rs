@@ -4,7 +4,7 @@ use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command as ProcessCommand;
+use std::process::{Command as ProcessCommand, Stdio};
 
 fn main() -> Result<()> {
     // Parse command-line arguments using Clap.
@@ -78,8 +78,8 @@ fn main() -> Result<()> {
     println!("--------------------------------------------------");
     println!("Current directory: {}", current_dir.display());
     
-    // Use binary name since it's in your PATH.
-    let git_root = run_command(&["get_git_root"], None)
+    // Capture output from get_git_root.
+    let git_root = run_command(&["get_git_root"], None, true)
         .context("Failed to determine Git root")?
         .trim()
         .to_string();
@@ -89,7 +89,7 @@ fn main() -> Result<()> {
     env::set_current_dir(&git_root).context("Failed to change directory to Git root")?;
 
     // 2. Locate the TODO instruction file.
-    let file_path = run_command(&["find_prompt_instruction", &git_root], None)
+    let file_path = run_command(&["find_prompt_instruction", &git_root], None, true)
         .context("Failed to locate the TODO instruction")?
         .trim()
         .to_string();
@@ -114,7 +114,7 @@ fn main() -> Result<()> {
         std::process::exit(1);
     }
     // 4. Determine package scope.
-    let package_root = run_command(&["get_package_root", &file_path], None)
+    let package_root = run_command(&["get_package_root", &file_path], None, true)
         .unwrap_or_else(|_| "".to_string())
         .trim()
         .to_string();
@@ -130,7 +130,7 @@ fn main() -> Result<()> {
     println!("Search root: {}", search_root);
 
     // 5. Extract the instruction content.
-    let instruction_content = run_command(&["extract_instruction_content", &file_path], None)
+    let instruction_content = run_command(&["extract_instruction_content", &file_path], None, true)
         .context("Failed to extract instruction content")?;
     println!("Instruction content: {}", instruction_content.trim());
 
@@ -150,7 +150,7 @@ fn main() -> Result<()> {
         };
     } else {
         // Non-singular mode:
-        let types_file = run_command(&["extract_types", &file_path], None)
+        let types_file = run_command(&["extract_types", &file_path], None, true)
             .context("Failed to extract types")?;
         // Read and print the contents of the types file.
         let types_path = types_file.trim();
@@ -163,6 +163,7 @@ fn main() -> Result<()> {
         let def_files_content = run_command(
             &["find_definition_files", types_path, &search_root],
             None,
+            true,
         )
         .context("Failed to find definition files")?;
         // Create a temporary file and write the found files content into it.
@@ -190,7 +191,7 @@ fn main() -> Result<()> {
             .context("Failed to read found files list")?;
         if slim {
             println!("Slim mode enabled: filtering files");
-            found_files = run_command(&["filter_files", &file_path, found_files.trim()], None)
+            found_files = run_command(&["filter_files", &file_path, found_files.trim()], None, true)
                 .context("Failed to filter files for slim mode")?;
             fs::write(&found_files_path, found_files.trim())
                 .context("Failed to write filtered list")?;
@@ -202,7 +203,7 @@ fn main() -> Result<()> {
             for excl in &excludes {
                 args.push(excl);
             }
-            found_files = run_command(&args, None)
+            found_files = run_command(&args, None, true)
                 .context("Failed to filter excluded files")?;
             fs::write(&found_files_path, found_files.trim())
                 .context("Failed to write final excluded list")?;
@@ -212,7 +213,7 @@ fn main() -> Result<()> {
     // 7. Optionally include referencing files.
     if include_references {
         println!("Including files that reference the enclosing type");
-        let enclosing_type = run_command(&["extract_enclosing_type", &file_path], None)
+        let enclosing_type = run_command(&["extract_enclosing_type", &file_path], None, true)
             .unwrap_or_default()
             .trim()
             .to_string();
@@ -222,6 +223,7 @@ fn main() -> Result<()> {
             let referencing_files = run_command(
                 &["find_referencing_files", &enclosing_type, &search_root],
                 None,
+                true,
             )
             .context("Failed to find referencing files")?;
             {
@@ -254,12 +256,15 @@ fn main() -> Result<()> {
     }
 
     // 9. Assemble the final prompt.
-    let _final_prompt = run_command(
+    // For assemble_prompt, we want its output to be printed directly, so we pass capture_output = false.
+    let _ = run_command(
         &["assemble_prompt", found_files_path.to_str().unwrap(), instruction_content.trim()],
         None,
+        false,
     )
     .context("Failed to assemble prompt")?;
-
+    
+    // Print the success section (which includes the TODO instruction content).
     println!("--------------------------------------------------");
     println!("Success:\n");
     println!("{}", instruction_content.trim());
@@ -272,10 +277,10 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Helper function to run an external command and capture its stdout.
-/// `args` is the list of command and its arguments.
-/// `envs` (if provided) is a slice of (KEY, VALUE) pairs to set for the command.
-fn run_command(args: &[&str], envs: Option<&[(&str, &str)]>) -> Result<String> {
+/// Runs an external command.
+/// If `capture_output` is true, the command’s stdout is captured and returned as a String.
+/// If false, stdout and stderr are inherited (printed directly), and an empty string is returned.
+fn run_command(args: &[&str], envs: Option<&[(&str, &str)]>, capture_output: bool) -> Result<String> {
     if args.is_empty() {
         bail!("No command provided");
     }
@@ -288,16 +293,24 @@ fn run_command(args: &[&str], envs: Option<&[(&str, &str)]>) -> Result<String> {
             command.env(key, value);
         }
     }
-    let output = command
-        .output()
-        .with_context(|| format!("Failed to execute command: {:?}", args))?;
-    if !output.status.success() {
-        bail!(
-            "Command {:?} failed with status {}",
-            args,
-            output.status
-        );
+    if capture_output {
+        let output = command
+            .output()
+            .with_context(|| format!("Failed to execute command: {:?}", args))?;
+        if !output.status.success() {
+            bail!("Command {:?} failed with status {}", args, output.status);
+        }
+        let stdout = String::from_utf8(output.stdout).context("Output not valid UTF-8")?;
+        Ok(stdout)
+    } else {
+        command.stdout(Stdio::inherit());
+        command.stderr(Stdio::inherit());
+        let status = command
+            .status()
+            .with_context(|| format!("Failed to execute command: {:?}", args))?;
+        if !status.success() {
+            bail!("Command {:?} failed with status {}", args, status);
+        }
+        Ok(String::new())
     }
-    let stdout = String::from_utf8(output.stdout).context("Output not valid UTF-8")?;
-    Ok(stdout)
 }
