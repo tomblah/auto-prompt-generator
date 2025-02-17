@@ -1,0 +1,9 @@
+[package]
+name = "find_definition_files"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+regex = { workspace = true }
+tempfile = { workspace = true }
+walkdir = { workspace = true }
