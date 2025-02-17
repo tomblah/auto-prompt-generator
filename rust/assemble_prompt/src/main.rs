@@ -137,11 +137,28 @@ fn main() {
             "Warning: The prompt is {} characters long. This may exceed what the AI can handle effectively.",
             prompt_length
         );
-    } else {
-        println!(
-            "Debug: The final prompt length is {} characters, which is within acceptable limits.",
-            prompt_length
-        );
+        // Attempt to get suggested exclusions.
+        // We assume that the found files list is passed as the first argument.
+        let found_files_arg = found_files_file; // found_files_file is the path argument passed to assemble_prompt.
+        // Retrieve the TODO file basename from the environment, if available.
+        let todo_file_basename = env::var("TODO_FILE_BASENAME").unwrap_or_default();
+        // Call the suggest_exclusions binary.
+        match run_command("suggest_exclusions", &[
+            found_files_arg,
+            &prompt_length.to_string(),
+            &MAX_PROMPT_LENGTH.to_string(),
+            &todo_file_basename,
+        ]) {
+            Ok(suggestions) if !suggestions.trim().is_empty() => {
+                println!("Suggested exclusions:\n{}", suggestions.trim());
+            }
+            Ok(_) => {
+                println!("No suggestions available.");
+            }
+            Err(e) => {
+                eprintln!("Failed to get exclusion suggestions: {}", e);
+            }
+        }
     }
 
     // Unescape literal "\n" sequences.
