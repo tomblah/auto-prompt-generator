@@ -364,6 +364,9 @@ dependencies = [
 [[package]]
 name = "prompt_file_processor"
 version = "0.1.0"
+dependencies = [
+ "regex",
+]
 
 [[package]]
 name = "quote"

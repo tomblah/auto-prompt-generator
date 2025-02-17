@@ -1,3 +1,4 @@
+use regex::Regex;
 use std::env;
 use std::fs;
 use std::io::{BufRead};
@@ -34,11 +35,66 @@ fn filter_substring_markers(content: &str) -> String {
     output
 }
 
-/// Dummy function representing extra context extraction (e.g. the enclosing function).
-/// Replace this with your actual extraction logic.
-fn extract_enclosing_function(file_path: &str) -> Option<String> {
-    Some(format!("Extra context extracted from {}", file_path))
+/// Extracts the entire enclosing function block from a Swift file.
+///
+/// This implementation:
+/// 1. Reads the file and splits it into lines.
+/// 2. Finds the first occurrence of the TODO marker (`// TODO: -`).
+/// 3. Searches backward from that marker for a function declaration (using a regex).
+/// 4. Starting from that function declaration, it collects lines while counting `{` and `}`
+///    until the braces balance out (i.e. the entire function block has been captured).
+pub fn extract_enclosing_function(file_path: &str) -> Option<String> {
+    // Read file content.
+    let content = fs::read_to_string(file_path).ok()?;
+    let lines: Vec<&str> = content.lines().collect();
+
+    // Find the index of the TODO marker.
+    let todo_index = lines.iter().position(|line| line.contains("// TODO: -"))?;
+
+    // Define a regex to match Swift function declarations.
+    // This pattern matches an optional access modifier and then "func" with a function name and parameters.
+    let func_pattern = Regex::new(r"^\s*(?:public|private|internal|fileprivate)?\s*func\s+\w+\s*\(").ok()?;
+
+    // Search backwards from the TODO marker for the function declaration.
+    let mut function_index = None;
+    for (i, line) in lines[..todo_index].iter().enumerate().rev() {
+        if func_pattern.is_match(line) {
+            function_index = Some(i);
+            break;
+        }
+    }
+    let start_index = function_index?;
+
+    // Start capturing the function block using brace counting.
+    let mut brace_count = 0;
+    let mut started = false;
+    let mut extracted_lines = Vec::new();
+
+    for line in &lines[start_index..] {
+        // Check if the block has started by looking for an opening brace.
+        if !started {
+            if line.contains("{") {
+                started = true;
+                // Count the braces on this line.
+                brace_count += line.matches("{").count();
+                brace_count = brace_count.saturating_sub(line.matches("}").count());
+            }
+        } else {
+            // If already started, count all braces.
+            brace_count += line.matches("{").count();
+            brace_count = brace_count.saturating_sub(line.matches("}").count());
+        }
+        extracted_lines.push(*line);
+
+        // Once started and the braces are balanced, we have the full function.
+        if started && brace_count == 0 {
+            break;
+        }
+    }
+
+    Some(extracted_lines.join("\n"))
 }
+
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Expected usage: prompt_file_processor <file_path> [<todo_file_basename>]
