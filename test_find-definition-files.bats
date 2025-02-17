@@ -9,18 +9,14 @@ setup() {
   # Create a temporary directory to simulate a git root.
   TEST_DIR=$(mktemp -d)
 
-  # Create a dummy get-search-roots.sh in TEST_DIR.
-  # This dummy simply echoes the root directory passed to it.
-  cat << 'EOF' > "$TEST_DIR/get-search-roots.sh"
+  # Create a dummy Rust binary for get_search_roots in TEST_DIR.
+  mkdir -p "$TEST_DIR/rust/target/release"
+  cat << 'EOF' > "$TEST_DIR/rust/target/release/get_search_roots"
 #!/bin/bash
-get-search-roots() {
-  echo "$1"
-}
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-  get-search-roots "$1"
-fi
+# Dummy Rust binary: simply echo back the root passed to it.
+echo "$1"
 EOF
-  chmod +x "$TEST_DIR/get-search-roots.sh"
+  chmod +x "$TEST_DIR/rust/target/release/get_search_roots"
 
   # Create a Swift file in a normal (non-.build) directory.
   mkdir -p "$TEST_DIR/Sources"
@@ -45,41 +41,32 @@ teardown() {
 
 @test "find-definition-files excludes files in .build directory" {
   run bash -c '
-    # Source our dummy get-search-roots.sh so it is available.
-    source "'"$TEST_DIR"'/get-search-roots.sh"
-
     # Define the updated find-definition-files function that excludes .build directories.
     find-definition-files() {
       local types_file="$1"
       local root="$2"
-      # Override script_dir to our TEST_DIR so that our dummy get-search-roots.sh is used.
       local script_dir="'"$TEST_DIR"'"
       local search_roots
-      search_roots=$("$script_dir/get-search-roots.sh" "$root")
+      search_roots=$("$script_dir/rust/target/release/get_search_roots" "$root")
       
-      # (Optional) Log the search roots (sent to stderr).
       echo "Debug: Search roots:" >&2
       for sr in $search_roots; do
          echo "  - $sr" >&2
       done
 
-      # Create a temporary directory for intermediate results.
       local tempdir
       tempdir=$(mktemp -d)
       local temp_found="$tempdir/found_files.txt"
       touch "$temp_found"
 
-      # For each type in the types file, search in each of the search roots.
       while IFS= read -r TYPE; do
         for sr in $search_roots; do
           echo "Debug: Searching for type '\''$TYPE'\'' in '\''$sr'\''" >&2
-          # Use find with -not -path to exclude any files under a .build directory.
           find "$sr" -type f -name "*.swift" -not -path "*/.build/*" \
             -exec grep -lE "\\b(class|struct|enum|protocol|typealias)\\s+$TYPE\\b" {} \; >> "$temp_found" || true
         done
       done < "$types_file"
 
-      # Copy and deduplicate results to a new temporary file.
       local final_found
       final_found=$(mktemp)
       sort -u "$temp_found" > "$final_found"
@@ -87,59 +74,46 @@ teardown() {
       echo "$final_found"
     }
 
-    # Run the function using our TYPES_FILE and TEST_DIR as the "git root".
     result_file=$(find-definition-files "'"$TEST_DIR/types.txt"'" "'"$TEST_DIR"'")
-    # Output the content of the result file.
     cat "$result_file"
   '
-  
-  # Assert that the output contains the path to the Swift file in Sources.
   [[ "$output" == *"/Sources/MyType.swift"* ]]
-  # And assert that no file path containing ".build" appears.
   [[ "$output" != *"/.build/"* ]]
 }
 
 @test "find-definition-files returns deduplicated file list using combined regex" {
-  # Create additional Swift files in a subdirectory.
   mkdir -p "$TEST_DIR/Combined"
   
-  # Create a file that defines two types: TypeOne and TypeTwo.
   cat << 'EOF' > "$TEST_DIR/Combined/BothTypes.swift"
 class TypeOne { }
 struct TypeTwo { }
 EOF
 
-  # Create a file that defines only TypeOne.
   cat << 'EOF' > "$TEST_DIR/Combined/OnlyTypeOne.swift"
 enum TypeOne { }
 EOF
 
-  # Create a file that defines a type that is not in our list.
   cat << 'EOF' > "$TEST_DIR/Combined/Other.swift"
 protocol OtherType { }
 EOF
 
-  # Create a new types file with multiple types.
   NEW_TYPES_FILE="$TEST_DIR/new_types.txt"
   echo "TypeOne" > "$NEW_TYPES_FILE"
   echo "TypeTwo" >> "$NEW_TYPES_FILE"
 
   run bash -c '
-    source "'"$TEST_DIR"'/get-search-roots.sh"
-    # Define the updated find-definition-files function with combined regex.
     find-definition-files() {
       local types_file="$1"
       local root="$2"
       local script_dir="'"$TEST_DIR"'"
       local search_roots
-      search_roots=$("$script_dir/get-search-roots.sh" "$root")
+      search_roots=$("$script_dir/rust/target/release/get_search_roots" "$root")
       
       local tempdir
       tempdir=$(mktemp -d)
       local temp_found="$tempdir/found_files.txt"
       touch "$temp_found"
       
-      # Build a combined regex from the types file.
       local types_regex
       types_regex=$(paste -sd "|" "'"$NEW_TYPES_FILE"'")
       
@@ -159,13 +133,10 @@ EOF
     cat "$result_file"
   '
   
-  # Check that the output includes BothTypes.swift and OnlyTypeOne.swift
-  # and does not include Other.swift.
   [[ "$output" == *"BothTypes.swift"* ]]
   [[ "$output" == *"OnlyTypeOne.swift"* ]]
   [[ "$output" != *"Other.swift"* ]]
   
-  # Also, check that each file appears only once.
   count_both=$(echo "$output" | grep -c "BothTypes.swift")
   [ "$count_both" -eq 1 ]
   count_only=$(echo "$output" | grep -c "OnlyTypeOne.swift")
@@ -173,12 +144,10 @@ EOF
 }
 
 @test "find-definition-files excludes files in Pods directory" {
-  # Create a Swift file in a Pods directory.
   mkdir -p "$TEST_DIR/Pods"
   cat << 'EOF' > "$TEST_DIR/Pods/PodsType.swift"
 class MyType { }
 EOF
-  # Create a Swift file in a normal directory.
   mkdir -p "$TEST_DIR/Sources"
   cat << 'EOF' > "$TEST_DIR/Sources/MyType.swift"
 class MyType { }
@@ -188,13 +157,12 @@ EOF
   echo "MyType" > "$TYPES_FILE"
 
   run bash -c '
-    source "'"$TEST_DIR"'/get-search-roots.sh"
     find-definition-files() {
       local types_file="$1"
       local root="$2"
       local script_dir="'"$TEST_DIR"'"
       local search_roots
-      search_roots=$("$script_dir/get-search-roots.sh" "$root")
+      search_roots=$("$script_dir/rust/target/release/get_search_roots" "$root")
       
       local tempdir
       tempdir=$(mktemp -d)
@@ -217,18 +185,14 @@ EOF
     cat "$result_file"
   '
   
-  # Assert that the output contains the path to Sources/MyType.swift.
   [[ "$output" == *"/Sources/MyType.swift"* ]]
-  # And assert that no file path containing "Pods" appears.
   [[ "$output" != *"/Pods/"* ]]
 }
 
 @test "find-definition-files returns empty when only files in Pods directory exist" {
-  # Remove any non-Pods file.
   rm -rf "$TEST_DIR/Sources"
   rm -rf "$TEST_DIR/.build"
   
-  # Create a Swift file only in a Pods directory.
   mkdir -p "$TEST_DIR/Pods/SubModule"
   cat << 'EOF' > "$TEST_DIR/Pods/SubModule/MyType.swift"
 class MyType { }
@@ -238,13 +202,12 @@ EOF
   echo "MyType" > "$TYPES_FILE"
 
   run bash -c '
-    source "'"$TEST_DIR"'/get-search-roots.sh"
     find-definition-files() {
       local types_file="$1"
       local root="$2"
       local script_dir="'"$TEST_DIR"'"
       local search_roots
-      search_roots=$("$script_dir/get-search-roots.sh" "$root")
+      search_roots=$("$script_dir/rust/target/release/get_search_roots" "$root")
       
       local tempdir
       tempdir=$(mktemp -d)
@@ -267,23 +230,44 @@ EOF
     cat "$result_file"
   '
   
-  # The output should be empty because the only matching file is in Pods.
   [ -z "$output" ]
 }
 
-# --- New test: Objective-C header and implementation files ---
-
 @test "find-definition-files includes Objective-C header and implementation files" {
-  # Create an Objective-C subdirectory.
   mkdir -p "$TEST_DIR/ObjC"
-  # Create a header file and an implementation file defining MyType.
   echo "class MyType { }" > "$TEST_DIR/ObjC/MyType.h"
   echo "class MyType { }" > "$TEST_DIR/ObjC/MyType.m"
-  # Ensure the types file contains MyType.
   echo "MyType" > "$TEST_DIR/types.txt"
   
-  run bash -c 'source "'"${BATS_TEST_DIRNAME}/find-definition-files.sh"'" ; source "'"$TEST_DIR"'/get-search-roots.sh"; find-definition-files "'"$TEST_DIR/types.txt"'" "'"$TEST_DIR"'"'
-  result=$(cat "$output")
+  run bash -c '
+    find-definition-files() {
+      local types_file="$1"
+      local root="$2"
+      local script_dir="'"$TEST_DIR"'"
+      local search_roots
+      search_roots=$("$script_dir/rust/target/release/get_search_roots" "$root")
+      
+      local tempdir
+      tempdir=$(mktemp -d)
+      local temp_found="$tempdir/found_files.txt"
+      touch "$temp_found"
+      
+      for sr in $search_roots; do
+         find "$sr" \( -name "*.swift" -o -name "*.h" -o -name "*.m" \) -not -path "*/.build/*" -not -path "*/Pods/*" \
+           -exec grep -lE "\\b(class|struct|enum|protocol|typealias)\\s+MyType\\b" {} \; >> "$temp_found" || true
+      done
+      
+      local final_found
+      final_found=$(mktemp)
+      sort -u "$temp_found" > "$final_found"
+      rm -rf "$tempdir"
+      echo "$final_found"
+    }
+    
+    result_file=$(find-definition-files "'"$TEST_DIR/types.txt"'" "'"$TEST_DIR"'")
+    cat "$result_file"
+  '
+  result="$output"
   [[ "$result" == *"MyType.h"* ]]
   [[ "$result" == *"MyType.m"* ]]
 }

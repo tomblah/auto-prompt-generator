@@ -21,7 +21,7 @@ teardown() {
 }
 
 @test "get-search-roots returns both the main repo and subpackage directories" {
-  result="$(bash ./get-search-roots.sh "$TMPDIR")"
+  result="$(./rust/target/release/get_search_roots "$TMPDIR")"
   
   # The output should contain the main repo (TMPDIR)
   [[ "$result" == *"$TMPDIR"* ]]
@@ -42,9 +42,8 @@ teardown() {
   mkdir -p "$pkgRoot/SubPackage"
   touch "$pkgRoot/SubPackage/Package.swift"
 
-  result="$(bash ./get-search-roots.sh "$pkgRoot")"
-  # Since the provided directory is already a package (contains Package.swift),
-  # we expect only that directory to be returned.
+  result="$(./rust/target/release/get_search_roots "$pkgRoot")"
+  # Since the provided directory is already a package, we expect only that directory to be returned.
   [ "$result" = "$pkgRoot" ]
   
   rm -rf "$pkgRoot"
@@ -55,7 +54,7 @@ teardown() {
   mkdir -p "$TMPDIR/.build/ThirdParty"
   touch "$TMPDIR/.build/ThirdParty/Package.swift"
   
-  result="$(bash ./get-search-roots.sh "$TMPDIR")"
+  result="$(./rust/target/release/get_search_roots "$TMPDIR")"
   
   # The result should not include any paths with .build in them.
   if echo "$result" | grep -q "/.build/"; then
@@ -67,6 +66,6 @@ teardown() {
   # Create a .build directory in TMPDIR.
   mkdir -p "$TMPDIR/.build"
   
-  result="$(bash ./get-search-roots.sh "$TMPDIR/.build")"
+  result="$(./rust/target/release/get_search_roots "$TMPDIR/.build")"
   [ -z "$result" ]
 }

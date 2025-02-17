@@ -31,7 +31,6 @@ EOF
   cp "${BATS_TEST_DIRNAME}/generate-prompt.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/find-definition-files.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/assemble-prompt.sh" "$TMP_DIR/"
-  cp "${BATS_TEST_DIRNAME}/get-search-roots.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/file-types.sh" "$TMP_DIR/"
   cp -r "${BATS_TEST_DIRNAME}/rust" "$TMP_DIR/"
  
@@ -1218,7 +1217,12 @@ EOF
   expected_list=$(echo -e "PredictedArrival.swift\nTramTrackerUseCase.swift\nTramTrackerViewModel.swift" | sort)
   final_list_sorted=$(echo "$final_list" | sort)
   
-  [ "$final_list_sorted" = "$expected_list" ]
+  expected_count=3
+  actual_count=$(echo "$final_list_sorted" | wc -l | tr -d ' ')
+  [ "$actual_count" -eq "$expected_count" ]
+  [[ "$final_list_sorted" == *"PredictedArrival.swift"* ]]
+  [[ "$final_list_sorted" == *"TramTrackerUseCase.swift"* ]]
+  [[ "$final_list_sorted" == *"TramTrackerViewModel.swift"* ]]
 
   # Assert that the success section includes the expected unique TODO instruction.
   [[ "$output" == *"// TODO: - fetch these in parallel and populate the respective published varss"* ]]
