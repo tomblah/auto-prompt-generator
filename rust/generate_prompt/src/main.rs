@@ -254,21 +254,21 @@ fn main() -> Result<()> {
     }
 
     // 9. Assemble the final prompt.
-    let final_prompt = run_command(
+    let _final_prompt = run_command(
         &["assemble_prompt", found_files_path.to_str().unwrap(), instruction_content.trim()],
         None,
     )
     .context("Failed to assemble prompt")?;
 
     println!("--------------------------------------------------");
-    println!("Success:");
-    println!("\n{}", instruction_content.trim());
+    println!("Success:\n");
+    println!("{}", instruction_content.trim());
     if include_references {
         println!("\nWarning: The --include-references option is experimental.");
     }
     println!("--------------------------------------------------\n");
-    println!("{}", final_prompt);
-
+    println!("Prompt has been copied to clipboard.");
+    
     Ok(())
 }
 
