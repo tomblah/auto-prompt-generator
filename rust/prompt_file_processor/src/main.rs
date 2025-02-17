@@ -35,19 +35,18 @@ fn filter_substring_markers(content: &str) -> String {
     output
 }
 
-/// Extracts the enclosing function or computed property block that contains the TODO marker.
+/// Extracts the enclosing block (function, computed property, or JS cloud code function)
+/// that contains the TODO marker.
 ///
 /// This implementation:
 /// 1. Reads the file and splits it into lines.
 /// 2. Locates the TODO marker (the first line containing "// TODO: -") and records its line index.
 /// 3. Searches all lines *up to* that marker for candidate declarations. A candidate declaration is
-///    one that matches a pattern for a function declaration or a computed property header.
+///    one that matches a pattern for a Swift function, a Swift computed property, or a JavaScript cloud-code function.
 /// 4. For each candidate, it uses a simple brace‑counting algorithm (starting from the candidate’s line)
 ///    to determine the block boundaries.
 /// 5. If the TODO marker falls within that block, the candidate is considered a valid enclosing block.
 /// 6. Among all valid candidates, the one with the declaration closest to the TODO marker is returned.
-///
-/// Adjust the regex pattern as needed to suit your code style.
 pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
     // Read the file content and split into lines.
     let content = fs::read_to_string(file_path).ok()?;
@@ -56,9 +55,12 @@ pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
     // Find the first line that contains the TODO marker.
     let todo_index = lines.iter().position(|line| line.contains("// TODO: -"))?;
 
-    // Define a regex pattern that matches either a function declaration or a computed property.
+    // Define a regex pattern that matches either:
+    // - A Swift function declaration (with an optional access modifier) or a computed property header.
+    // - A JavaScript cloud code function declaration like:
+    //   Parse.Cloud.define("getDashboardData", async (request) => {
     let decl_pattern = Regex::new(
-        r"^\s*(?:(?:public|private|internal|fileprivate)\s+)?(?:(?:func\s+\w+\s*\()|(?:var\s+\w+(?:\s*:\s*[^={]+)?\s*\{))"
+        r#"^\s*(?:(?:(?:public|private|internal|fileprivate)\s+)?(?:(?:func\s+\w+\s*\()|(?:var\s+\w+(?:\s*:\s*[^={]+)?\s*\{))|(?:Parse\.Cloud\.define\s*\(\s*".+?"\s*,\s*(?:async\s*)?\(.*\)\s*=>\s*\{))"#
     ).ok()?;
 
     // This will hold the candidate declaration that encloses the TODO marker.
@@ -79,7 +81,7 @@ pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
                     started = true;
                 }
                 if started {
-                    // Count the braces.
+                    // Count the opening and closing braces.
                     brace_count += current_line.matches("{").count();
                     brace_count = brace_count.saturating_sub(current_line.matches("}").count());
                 }
