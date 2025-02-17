@@ -1,12 +1,11 @@
 [package]
-name = "diff_with_branch"
+name = "prompt_file_processor"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 regex = { workspace = true }
+lazy_static = "1.4"
 
 [dev-dependencies]
 tempfile = { workspace = true }
-assert_cmd = { workspace = true }
-predicates = { workspace = true }
