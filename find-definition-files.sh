@@ -2,8 +2,7 @@
 # find-definition-files.sh
 #
 # This function searches for files that contain definitions for any of the types
-# listed in a given types file. It now builds a combined regex for all types to reduce
-# the number of find/grep executions.
+# listed in a given types file by delegating the work to the new Rust binary.
 #
 # Usage: find-definition-files <types_file> <root>
 #
@@ -11,68 +10,37 @@
 #   On success: prints the path to a temporary file containing a list of files
 #   where definitions were found.
 
-# Source file-types.sh to import the allowed file expressions.
-source "$(dirname "${BASH_SOURCE[0]}")/file-types.sh"
+# (Note: The file-types.sh source is no longer needed because our Rust binary handles allowed extensions.)
+# source "$(dirname "${BASH_SOURCE[0]}")/file-types.sh"
 
 find-definition-files() {
     local types_file="$1"
     local root="$2"
 
     local script_dir
-    script_dir="${FDF_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-    # Get the search roots using the new Rust binary "get_search_roots".
-    local search_roots
-    search_roots=$("$script_dir/rust/target/release/get_search_roots" "$root")
-    
     if [ "${VERBOSE:-false}" = true ]; then
-         echo "[VERBOSE] Search roots: $search_roots" >&2
+         echo "[VERBOSE] Running new Rust binary to find definition files" >&2
     fi
 
+    # Call the new Rust binary (adjust the binary name if needed).
+    # It expects two arguments: the types file and the root directory.
+    local output
+    output=$("$script_dir/rust/target/release/find_definition_files" "$types_file" "$root")
+
+    # Write the output (the list of file paths) to a temporary file.
     local temp_found
     temp_found=$(mktemp)
-
-    # Build a combined regex: join all type names with "|"
-    # (Assumes that type names are simple and need no extra escaping.)
-    local types_regex
-    types_regex=$(paste -sd '|' "$types_file")
-    
-    if [ "${VERBOSE:-false}" = true ]; then
-         echo "[VERBOSE] Combined regex: $types_regex" >&2
-    fi
-
-    # For each search root, perform one find command using the combined regex.
-    for sr in $search_roots; do
-         if [ "${VERBOSE:-false}" = true ]; then
-              echo "[VERBOSE] Running find command in directory: $sr" >&2
-         fi
-         find "$sr" -type f \( "${ALLOWED_FIND_EXPR[@]}" \) \
-             -not -path "*/.build/*" -not -path "*/Pods/*" \
-             -exec grep -lE "\\b(class|struct|enum|protocol|typealias)\\s+($types_regex)\\b" {} \; >> "$temp_found" || true
-         if [ "${VERBOSE:-false}" = true ]; then
-              echo "[VERBOSE] Completed search in directory: $sr" >&2
-         fi
-    done
-
-    local found_count
-    found_count=$(wc -l < "$temp_found")
-    if [ "${VERBOSE:-false}" = true ]; then
-         echo "[VERBOSE] Total files found (before deduplication): $found_count" >&2
-    fi
-
-    # Deduplicate the found files.
-    local final_found
-    final_found=$(mktemp)
-    sort -u "$temp_found" > "$final_found"
-    rm -f "$temp_found"
+    echo "$output" > "$temp_found"
 
     if [ "${VERBOSE:-false}" = true ]; then
-         local final_count
-         final_count=$(wc -l < "$final_found")
-         echo "[VERBOSE] Total unique files found: $final_count" >&2
+         local found_count
+         found_count=$(wc -l < "$temp_found")
+         echo "[VERBOSE] Total unique files found: $found_count" >&2
     fi
 
-    echo "$final_found"
+    echo "$temp_found"
 }
 
 # Allow direct execution for testing.
