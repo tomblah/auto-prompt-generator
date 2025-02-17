@@ -12,7 +12,7 @@ check_prompt_length() {
     # Trim any extra spaces from the wc output using xargs.
     local length
     length=$(echo -n "$prompt" | wc -c | xargs)
-    local threshold=${PROMPT_LENGTH_THRESHOLD:-600000}
+    local threshold=${PROMPT_LENGTH_THRESHOLD:-30000}
 
     if [ "$length" -gt "$threshold" ]; then
         echo "Warning: The prompt is ${length} characters long. This may exceed what the AI can handle effectively." >&2
