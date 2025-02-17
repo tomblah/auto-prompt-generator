@@ -1,2 +1,8 @@
 **/.DS_Store
-rust/**/target/
+# Ignore all target directories...
+rust/**/target/*
+# ...except for the universal folder and its contents:
+!rust/**/target/universal/
+!rust/**/target/universal/**
+
+rust/target/universal/.DS_Store
