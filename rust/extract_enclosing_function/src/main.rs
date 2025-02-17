@@ -3,12 +3,6 @@ use std::env;
 use std::fs;
 use std::process;
 
-/// Returns true if the content contains any line that, when trimmed, equals "// v"
-/// or if the content contains "Parse.Cloud.define(".
-pub fn uses_markers(content: &str) -> bool {
-    content.lines().any(|line| line.trim() == "// v") || content.contains("Parse.Cloud.define(")
-}
-
 /// Returns the index (zero-based) of the first line that contains "// TODO: - ", or None if not found.
 pub fn todo_index(content: &str) -> Option<usize> {
     content.lines().position(|line| line.contains("// TODO: - "))
@@ -110,8 +104,11 @@ pub fn extract_block(content: &str, start_index: usize) -> String {
 
 /// Combines the above functions to extract the enclosing block (if any) that contains the TODO.
 /// Returns Some(block) if extraction is successful; otherwise returns None.
+///
+/// **Note:** The extraction only proceeds if the file contains both the opening ("// v")
+/// and closing ("// ^") markers, and the TODO is not already inside a marker block.
 pub fn extract_enclosing_block(content: &str) -> Option<String> {
-    if !uses_markers(content) {
+    if !file_uses_markers(content) {
         return None;
     }
     let todo_idx = todo_index(content)?;
@@ -120,6 +117,14 @@ pub fn extract_enclosing_block(content: &str) -> Option<String> {
     }
     let start_index = find_enclosing_function_start(content, todo_idx)?;
     Some(extract_block(content, start_index))
+}
+
+/// Returns true if the file contains both the opening marker ("// v")
+/// and the closing marker ("// ^").
+pub fn file_uses_markers(content: &str) -> bool {
+    let has_open = content.lines().any(|line| line.trim() == "// v");
+    let has_close = content.lines().any(|line| line.trim() == "// ^");
+    has_open && has_close
 }
 
 fn main() {
@@ -144,6 +149,7 @@ fn main() {
 mod tests {
     use super::*;
 
+    // Existing test constants.
     const CLOUD_GLOBAL_SETTINGS: &str = r#"
 Parse.Cloud.define("getGlobalSettings", async (request) => {
     try {
@@ -201,6 +207,28 @@ function someOtherFunction() {
 }
 "#;
 
+    // New test constants to cover marker-specific logic.
+    const MARKER_TEST_OUTSIDE: &str = r#"
+func myFunction() {
+    print("Hello")
+}
+ 
+// v
+// Additional context that is outside the function block and will be ignored.
+// ^
+
+ // TODO: - do something important
+"#;
+
+    const MARKER_TEST_INSIDE: &str = r#"
+func myFunction() {
+    print("Hello")
+    // v
+    // TODO: - do something important
+    // ^
+}
+"#;
+
     #[test]
     fn test_find_enclosing_function_start_for_cloud() {
         let content = CLOUD_GLOBAL_SETTINGS;
@@ -208,9 +236,9 @@ function someOtherFunction() {
         let start_idx = find_enclosing_function_start(content, todo_idx).unwrap();
         let lines: Vec<&str> = content.lines().collect();
         let start_line = lines[start_idx];
-        assert!(start_line.contains("Parse.Cloud.define(\"isUsernameAvailable\"") ||
-                start_line.contains("Parse.Cloud.define (\"isUsernameAvailable\""),
-                "Expected the function header for isUsernameAvailable, got: {}", start_line);
+        assert!(start_line.contains("Parse.Cloud.define(\"isUsernameAvailable\"")
+            || start_line.contains("Parse.Cloud.define (\"isUsernameAvailable\""),
+            "Expected the function header for isUsernameAvailable, got: {}", start_line);
     }
 
     #[test]
@@ -251,10 +279,38 @@ function someOtherFunction() {
         let start_idx = find_enclosing_function_start(content, todo_idx).unwrap();
         let lines: Vec<&str> = content.lines().collect();
         let start_line = lines[start_idx];
-        // Now, even with a modifier ("private var") the computed property header should be detected.
+        // Even with a modifier ("private var") the computed property header should be detected.
         assert!(start_line.trim_start().starts_with("private var")
                 && start_line.contains("{")
                 && !start_line.contains("="),
                 "Expected a computed property header, got: {}", start_line);
+    }
+
+    // New tests for marker-specific logic.
+
+    #[test]
+    fn test_file_uses_markers_true() {
+        assert!(file_uses_markers(MARKER_TEST_OUTSIDE));
+    }
+
+    #[test]
+    fn test_file_uses_markers_false() {
+        assert!(!file_uses_markers(NO_MARKERS));
+    }
+
+    #[test]
+    fn test_extract_enclosing_block_outside() {
+        // In MARKER_TEST_OUTSIDE the TODO is outside the marker block.
+        let block = extract_enclosing_block(MARKER_TEST_OUTSIDE);
+        assert!(block.is_some(), "Expected an enclosing block, got None");
+        let block_str = block.unwrap();
+        assert!(block_str.contains("func myFunction()"), "Block should contain the function declaration");
+    }
+
+    #[test]
+    fn test_extract_enclosing_block_inside() {
+        // In MARKER_TEST_INSIDE the TODO is inside the marker block.
+        let block = extract_enclosing_block(MARKER_TEST_INSIDE);
+        assert!(block.is_none(), "Expected no enclosing block because the TODO is inside markers");
     }
 }
