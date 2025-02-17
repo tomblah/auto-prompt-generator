@@ -153,3 +153,60 @@ EOF
   # Check that the output contains the warning message from check_prompt_size.
   [[ "$output" == *"Warning: The prompt is"* ]]
 }
+
+@test "assemble-prompt extracts enclosing function context for TODO outside markers" {
+  # Create a temporary JS file with the provided sample content.
+  file_with_function="$TMP_DIR/TestFile.js"
+  cat <<'EOF' > "$file_with_function"
+const someExampleConstant = 42;
+
+// v
+
+const anotherExampleConstant = 99;
+
+// ^
+
+Parse.Cloud.define("getDashboardData", async (request) => {
+    
+    // TODO: - helllo
+    
+    var environment = require("./environment.js");
+    var _ = getUnderscore();
+    
+    var currentUserObjectId = request.params.currentUserObjectId;
+    var currentUserGlobal;
+    var hiddenPeopleGlobal;
+    var timeAgoGlobal = new Date(new Date().getTime() - (24 * 60 * 60 * 1000));
+    var resultDictionaryGlobal;
+    
+});
+EOF
+
+  # Set the TODO file basename so that assemble-prompt knows this is the file with the TODO.
+  export TODO_FILE_BASENAME=$(basename "$file_with_function")
+
+  # Create a temporary file listing the file path.
+  found_files_file="$TMP_DIR/found_files_function.txt"
+  echo "$file_with_function" > "$found_files_file"
+
+  # Run the assemble-prompt function.
+  run assemble-prompt "$found_files_file" "ignored instruction"
+  [ "$status" -eq 0 ]
+
+  # Assert that the output contains the header for TestFile.js.
+  [[ "$output" == *"The contents of TestFile.js is as follows:"* ]]
+
+  # Verify that the output includes the function header with Parse.Cloud.define.
+  [[ "$output" == *'Parse.Cloud.define("getDashboardData", async (request) => {'* ]]
+
+  # Verify that the TODO comment is present inside the function block.
+  [[ "$output" == *"// TODO: - helllo"* ]]
+
+  # Confirm that the extra context was appended (it is prefixed with the marker).
+  [[ "$output" == *"// Enclosing function context:"* ]]
+
+  # Ensure that code outside the substring markers that isn't within the enclosing context is not included
+  [[ "$output" != *"const someExampleConstant = 42;"* ]]
+
+}
+
