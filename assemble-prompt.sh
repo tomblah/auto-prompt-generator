@@ -13,82 +13,100 @@
 # The function outputs the final assembled prompt to stdout and also copies it
 # to the clipboard using pbcopy.
 #
-# If the environment variable DIFF_WITH_BRANCH is set (for example by running:
-#   generate-prompt.sh --diff-with develop
-# then for each file that differs from that branch, a diff report is appended after the file's content.
-
-# Determine the directory where this script resides.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# If DIFF_WITH_BRANCH is set, a diff report is appended.
+#
+# NOTE: The file that contains the TODO instruction should be stored in the
+#       environment variable TODO_FILE. Exclusion suggestions will not include this file.
+#       If TODO_FILE is not set, it defaults to an empty string.
 
 # Source the helper that filters file content based on substring markers.
-source "$SCRIPT_DIR/filter-substring-markers.sh"
-# Source the helper that checks prompt length.
-source "$SCRIPT_DIR/check-prompt-length.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/filter-substring-markers.sh"
 
 # If DIFF_WITH_BRANCH is set, source the diff helper.
 if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
-    source "$SCRIPT_DIR/diff-with-branch.sh"
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/diff-with-branch.sh"
 fi
+
+# Source the helper to check prompt length.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-prompt-length.sh"
 
 assemble-prompt() {
     local found_files_file="$1"
     local instruction_content="$2"  # This parameter is now ignored.
     
-    # Sort and filter out duplicate file paths.
+    # Sort and deduplicate the file list.
     local unique_found_files
     unique_found_files=$(sort "$found_files_file" | uniq)
     
     local clipboard_content=""
     
+    # Declare arrays to store file names and their corresponding prompt blocks.
+    declare -a file_names
+    declare -a file_blocks
+
     # Process each file and format its content.
     while IFS= read -r file_path; do
-        local file_basename file_content diff_output
+        local file_basename file_content diff_output block
         file_basename=$(basename "$file_path")
         
         if grep -qE '^[[:space:]]*//[[:space:]]*v' "$file_path"; then
-            file_content=$(filter_substring_markers "$file_path")
+            file_content=$(filter-substring-markers "$file_path")
         else
             file_content=$(cat "$file_path")
         fi
         
-        clipboard_content="${clipboard_content}
-The contents of ${file_basename} is as follows:
-
-${file_content}
-
-"
-        # If DIFF_WITH_BRANCH is set, append a diff report (if there are changes).
+        # Build the block for this file.
+        block=$'\nThe contents of '"$file_basename"$' is as follows:\n\n'"$file_content"$'\n\n'
+        
+        # If DIFF_WITH_BRANCH is set, append a diff report if applicable.
         if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
             diff_output=$(get_diff_with_branch "$file_path")
             if [ -n "$diff_output" ]; then
-                clipboard_content="${clipboard_content}
---------------------------------------------------
-The diff for ${file_basename} (against branch ${DIFF_WITH_BRANCH}) is as follows:
-
-${diff_output}
-
-"
+                block+="\n--------------------------------------------------\nThe diff for ${file_basename} (against branch ${DIFF_WITH_BRANCH}) is as follows:\n\n${diff_output}\n\n"
             fi
         fi
         
-        clipboard_content="${clipboard_content}
---------------------------------------------------
-"
+        block+="\n--------------------------------------------------\n"
+        
+        # Record the file name and its block.
+        file_names+=("$file_basename")
+        file_blocks+=("$block")
+        
+        # Append the block to the overall prompt.
+        clipboard_content+="$block"
     done <<< "$unique_found_files"
     
-    # Fixed instruction that will be appended.
+    # Append the fixed instruction.
     local fixed_instruction="Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen"
+    clipboard_content+="\n\n${fixed_instruction}"
     
-    local final_clipboard_content="${clipboard_content}
-
-${fixed_instruction}"
+    # Compute the final prompt length.
+    local final_length
+    final_length=$(echo -n "$clipboard_content" | wc -c | xargs)
+    local threshold=${PROMPT_LENGTH_THRESHOLD:-600000}
     
-    # Check the prompt length and print a warning if needed.
-    check_prompt_length "$final_clipboard_content"
+    # Copy the assembled prompt to the clipboard.
+    printf "%b" "$clipboard_content" | pbcopy
     
-    # Copy the assembled prompt to the clipboard and print it.
-    echo "$final_clipboard_content" | pbcopy
-    echo "$final_clipboard_content"
+    # Output the assembled prompt.
+    echo "$clipboard_content"
+    
+    # If the prompt is too long, generate and print exclusion suggestions to the console.
+    if [ "$final_length" -gt "$threshold" ]; then
+        local suggestions=""
+        for i in "${!file_blocks[@]}"; do
+            # Skip this file if TODO_FILE is set and its basename matches the current file.
+            if [ -n "${TODO_FILE:-}" ] && [ "$(basename "$TODO_FILE")" = "${file_names[$i]}" ]; then
+                continue
+            fi
+            local block_length new_length percent
+            block_length=$(echo -n "${file_blocks[$i]}" | wc -c | xargs)
+            new_length=$((final_length - block_length))
+            percent=$(awk -v l="$new_length" -v t="$threshold" 'BEGIN { printf "%.0f", (l/t)*100 }')
+            suggestions="${suggestions} --exclude ${file_names[$i]} (will get you to ${percent}% of threshold)\n"
+        done
+        echo -e "\nSuggested exclusions:\n${suggestions}" >&2
+    fi
 }
 
 # If executed directly, print usage instructions.

@@ -153,6 +153,7 @@ cd "$GIT_ROOT"
 # Use the external component to locate the file with the TODO instruction.
 FILE_PATH=$(find-prompt-instruction "$GIT_ROOT") || exit 1
 echo "Found exactly one instruction in $FILE_PATH"
+export TODO_FILE="$FILE_PATH"
 
 # --- Enforce singular mode for JavaScript files (beta support) ---
 if [[ "$FILE_PATH" == *.js ]]; then
