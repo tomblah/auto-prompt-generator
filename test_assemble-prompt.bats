@@ -242,7 +242,6 @@ EOF
   [[ "$final_list" != *"LongFile.swift"* ]]
 }
 
-
 @test "assemble-prompt includes all files when none exceed chop limit" {
   # Create two small files.
   file1="$TMP_DIR/SmallFile1.swift"
@@ -271,3 +270,41 @@ EOF
   [[ "$output" == *"SmallFile2.swift"* ]]
 }
 
+@test "assemble-prompt always includes the TODO file regardless of chop limit" {
+  # Create a TODO file and another file that is very long.
+  todo_file="$TMP_DIR/TodoAlways.swift"
+  other_file="$TMP_DIR/Other.swift"
+
+  # Create the TODO file.
+  cat <<'EOF' > "$todo_file"
+class TodoAlways {
+    // TODO: - Always include this file even if chop limit is low!
+}
+EOF
+
+  # Create another file with very long content.
+  printf 'X%.0s' {1..2000} > "$other_file"
+  
+  # Create a temporary file listing both file paths.
+  found_files_file="$TMP_DIR/found_files_todo.txt"
+  echo "$todo_file" > "$found_files_file"
+  echo "$other_file" >> "$found_files_file"
+  
+  # Set a chop limit low enough that the long file would normally be excluded.
+  export CHOP_LIMIT=500
+  
+  # Set the TODO_FILE environment variable.
+  export TODO_FILE="$todo_file"
+  
+  # Run the assemble-prompt function.
+  run assemble-prompt "$found_files_file" "ignored instruction"
+  [ "$status" -eq 0 ]
+  
+  # Check that the output includes the header for the TODO file.
+  [[ "$output" == *"The contents of $(basename "$todo_file") is as follows:"* ]]
+  # Check that the TODO file content is present.
+  [[ "$output" == *"Always include this file even if chop limit is low!"* ]]
+  # And ensure that the other file is excluded from the final list.
+  final_list=$(echo "$output" | sed -n '/Files (final list):/,$p')
+  [[ "$final_list" != *"$(basename "$other_file")"* ]]
+}
