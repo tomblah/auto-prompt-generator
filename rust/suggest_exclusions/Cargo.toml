@@ -1,7 +1,0 @@
-[package]
-name = "suggest_exclusions"
-version = "0.1.0"
-edition = "2021"
-
-[dev-dependencies]
-tempfile = { workspace = true }

@@ -132,25 +132,6 @@ EOF
   unset DIFF_WITH_BRANCH
 }
 
-@test "assemble-prompt prints warning when prompt exceeds threshold" {
-  # Create a huge temporary Swift file.
-  file_huge="$TMP_DIR/Huge.swift"
-  # Write 100,500 characters into the file (for example, by repeating a pattern).
-  head -c 100500 /dev/zero | tr '\0' 'a' > "$file_huge"
-  # Prepend a valid TODO instruction so that the file is selected.
-  sed -i '' '1s/^/\/\/ TODO: - Huge instruction\n/' "$file_huge"
-  
-  # Create a temporary file listing the huge file.
-  found_files_file="$TMP_DIR/found_files_huge.txt"
-  echo "$file_huge" > "$found_files_file"
-  
-  # Run the assemble-prompt function.
-  run assemble-prompt "$found_files_file" "ignored"
-  [ "$status" -eq 0 ]
-  # Check that the output contains the warning message from check_prompt_size.
-  [[ "$output" == *"Warning: The prompt is"* ]]
-}
-
 @test "assemble-prompt extracts enclosing function context for TODO outside markers" {
   # Create a temporary JS file with the provided sample content.
   file_with_function="$TMP_DIR/TestFile.js"

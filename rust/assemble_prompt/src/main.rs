@@ -4,9 +4,6 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Command, exit, Stdio};
 
-/// Maximum allowed prompt length.
-const MAX_PROMPT_LENGTH: usize = 100_000;
-
 /// Unescape literal "\n" sequences to actual newlines.
 fn unescape_newlines(input: &str) -> String {
     input.replace("\\n", "\n")
@@ -134,13 +131,6 @@ fn main() {
     // Append the fixed instruction.
     let fixed_instruction = "Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen";
     final_prompt.push_str(&format!("\n\n{}", fixed_instruction));
-
-    // Check the prompt size.
-    let prompt_length = final_prompt.chars().count();
-    if prompt_length > MAX_PROMPT_LENGTH {
-        eprintln!("Warning: The prompt is {} characters long. This may exceed what the AI can handle effectively.", prompt_length);
-        // (Optional: call suggest_exclusions here.)
-    }
 
     // Unescape literal "\n" sequences.
     let final_clipboard_content = unescape_newlines(&final_prompt);
