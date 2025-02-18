@@ -129,8 +129,8 @@ EOF
   echo "$output"
  
   # Extract the final list of files from the output.
-  # This extracts the lines between "Files (final list):" and the next separator line.
-  final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag')
+  # This extracts the lines between "Files:" and the next separator line.
+  final_list=$(echo "$output" | awk '/Files:/{flag=1; next} /--------------------------------------------------/{flag=0} flag')
   echo "DEBUG: Final list of files:" "$final_list" >&2
  
   # Verify that the final list of files does not include ExcludeMe.swift.
@@ -152,7 +152,7 @@ EOF
   [[ "$output" == *"Singular mode enabled: only including the TODO file"* ]]
  
   # Extract the final list of file basenames.
-  final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag' | tr -d '\r')
+  final_list=$(echo "$output" | awk '/Files:/{flag=1; next} /--------------------------------------------------/{flag=0} flag' | tr -d '\r')
  
   # In singular mode, only the TODO file (Test.swift) should be listed.
   [ "$final_list" = "Test.swift" ]
@@ -177,7 +177,7 @@ EOF
   [ "$status" -eq 0 ]
  
   # Verify that the final file list printed includes only Test.swift.
-  final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag' | tr -d '\r')
+  final_list=$(echo "$output" | awk '/Files:/{flag=1; next} /--------------------------------------------------/{flag=0} flag' | tr -d '\r')
   [ "$final_list" = "Test.swift" ]
  
   # Also check that the assembled prompt in clipboard.txt does not mention IgnoreMe.swift.
@@ -213,7 +213,7 @@ EOF
   [ "$status" -eq 0 ]
 
   # Extract the final list of files from the output.
-  final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag')
+  final_list=$(echo "$output" | awk '/Files:/{flag=1; next} /--------------------------------------------------/{flag=0} flag')
   
   # Assert that the list includes Normal.swift and does not include ThirdParty.swift.
   [[ "$final_list" == *"Normal.swift"* ]]
@@ -251,7 +251,7 @@ EOF
   [ "$status" -eq 0 ]
 
   # Extract the final list of files from the output.
-  final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag')
+  final_list=$(echo "$output" | awk '/Files:/{flag=1; next} /--------------------------------------------------/{flag=0} flag')
   
   # Assert that the list includes Normal.swift and does not include PodsFile.swift.
   [[ "$final_list" == *"Normal.swift"* ]]
@@ -447,7 +447,7 @@ run bash generate-prompt.sh
 [ "$status" -eq 0 ]
 
 # Extract the final list of file basenames from the output.
-final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag' | tr -d '\r')
+final_list=$(echo "$output" | awk '/Files:/{flag=1; next} /--------------------------------------------------/{flag=0} flag' | tr -d '\r')
 
 # Define the expected final list.
 expected_list=$(echo -e "PredictedArrival.swift\nTramTrackerUseCase.swift\nTramTrackerViewModel.swift" | sort)
@@ -1231,7 +1231,7 @@ EOF
   [ "$status" -eq 0 ]
 
   # Extract the final list of file basenames (printed between "Files (final list):" and the next separator).
-  final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag' | tr -d '\r')
+  final_list=$(echo "$output" | awk '/Files:/{flag=1; next} /--------------------------------------------------/{flag=0} flag' | tr -d '\r')
   
   # The expected final list should be exactly these three files.
   expected_list=$(echo -e "PredictedArrival.swift\nTramTrackerUseCase.swift\nTramTrackerViewModel.swift" | sort)
@@ -1283,7 +1283,7 @@ let ref = MyTodoClass()
 EOF
     run bash generate-prompt.sh --include-references
     [ "$status" -eq 0 ]
-    final_list=$(echo "$output" | awk '/Files \(final list\):/{flag=1; next} /--------------------------------------------------/{flag=0} flag' | tr -d '\r')
+    final_list=$(echo "$output" | awk '/Files:/{flag=1; next} /--------------------------------------------------/{flag=0} flag' | tr -d '\r')
     [[ "$final_list" == *"Todo.swift"* ]]
     [[ "$final_list" == *"Reference.swift"* ]]
     # Clean up the temporary files.

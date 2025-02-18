@@ -96,6 +96,15 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             ;;
+        --chop)
+            if [ -n "${2:-}" ]; then
+                export CHOP_LIMIT="$2"
+                shift 2
+            else
+                echo "Usage: $0 [--chop <character_limit>]" >&2
+                exit 1
+            fi
+            ;;
         --verbose)
             VERBOSE=true
             shift
@@ -244,7 +253,7 @@ if [ "$SINGULAR" = false ]; then
     echo "--------------------------------------------------"
 fi
 
-echo "Files (final list):"
+echo "Files:"
 sort "$FOUND_FILES" | uniq | while read -r file_path; do
     basename "$file_path"
 done

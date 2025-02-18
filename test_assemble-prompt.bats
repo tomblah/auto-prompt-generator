@@ -206,3 +206,68 @@ EOF
   # Verify that there is no "Suggested exclusions:" block.
   [[ "$output" != *"Suggested exclusions:"* ]]
 }
+
+@test "assemble-prompt excludes file exceeding chop limit and includes file not exceeding chop limit" {
+  # Create two files: one that will be too long and one that is short.
+  file_exceed="$TMP_DIR/LongFile.swift"
+  file_include="$TMP_DIR/ShortFile.swift"
+
+  # Create a file with long content. (1000 X's will yield a block length > 1000.)
+  printf 'X%.0s' {1..1000} > "$file_exceed"
+  # Create a file with short content.
+  echo "short content" > "$file_include"
+
+  # Create a temporary file listing the found file paths.
+  found_files_file="$TMP_DIR/found_files_chop.txt"
+  echo "$file_exceed" > "$found_files_file"
+  echo "$file_include" >> "$found_files_file"
+
+  # Set a chop limit that is low enough so that the block for file_exceed will exceed it,
+  # yet high enough to include file_include.
+  export CHOP_LIMIT=1000
+  
+  # Run the assemble-prompt function.
+  run assemble-prompt "$found_files_file" "ignored instruction"
+  [ "$status" -eq 0 ]
+  
+  # Check that the output includes the excluded files block.
+  [[ "$output" == *"The following files were excluded due to the chop limit of ${CHOP_LIMIT} characters:"* ]]
+  # Verify that file_exceed appears in the excluded block.
+  [[ "$output" == *"LongFile.swift"* ]]
+  
+  # Extract the "Files (final list):" section from the output.
+  final_list=$(echo "$output" | sed -n '/Files (final list):/,$p')
+  # Check that the final list includes file_include but not file_exceed.
+  [[ "$final_list" == *"ShortFile.swift"* ]]
+  [[ "$final_list" != *"LongFile.swift"* ]]
+}
+
+
+@test "assemble-prompt includes all files when none exceed chop limit" {
+  # Create two small files.
+  file1="$TMP_DIR/SmallFile1.swift"
+  file2="$TMP_DIR/SmallFile2.swift"
+  echo "content1" > "$file1"
+  echo "content2" > "$file2"
+  
+  # Create a temporary file listing found file paths.
+  found_files_file="$TMP_DIR/found_files_no_chop.txt"
+  echo "$file1" > "$found_files_file"
+  echo "$file2" >> "$found_files_file"
+
+  # Set a very high chop limit so that neither file is excluded.
+  export CHOP_LIMIT=100000
+  
+  # Run the assemble-prompt function.
+  run assemble-prompt "$found_files_file" "ignored instruction"
+  [ "$status" -eq 0 ]
+  
+  # Check that the output reports that no files were excluded.
+  [[ "$output" == *"No files were excluded due to the chop limit of ${CHOP_LIMIT} characters."* ]]
+  
+  # And check that the final file list includes both files.
+  [[ "$output" == *"Files (final list):"* ]]
+  [[ "$output" == *"SmallFile1.swift"* ]]
+  [[ "$output" == *"SmallFile2.swift"* ]]
+}
+
