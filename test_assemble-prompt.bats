@@ -87,24 +87,10 @@ EOF
   # Check that the output includes a header for MarkedFile.swift.
   [[ "$output" == *"The contents of MarkedFile.swift is as follows:"* ]]
 
-  # Based on our filter-substring-markers.sh behavior (see its own tests), the expected
-  # filtered output should include only the content between the markers (with placeholder blocks).
-  # For example, if filter_substring_markers outputs:
-  #
-  #   (blank line)
-  #   // ...
-  #   (blank line)
-  #   func secretFunction() {
-  #       print("This is inside the markers.")
-  #   }
-  #   (blank line)
-  #   // ...
-  #   (blank line)
-  #
-  # then we can check that:
+  # Check that content between the markers is included.
   [[ "$output" == *"func secretFunction() {"* ]]
   [[ "$output" == *"print(\"This is inside the markers.\")"* ]]
-  # And importantly, it should NOT include the content outside the markers:
+  # And that content outside the markers is NOT included.
   [[ "$output" != *"func publicFunction() {"* ]]
 }
 
@@ -133,4 +119,90 @@ EOF
   [[ "$output" == *"against branch dummy-branch"* ]]
 
   unset DIFF_WITH_BRANCH
+}
+
+@test "assemble-prompt includes exclusion suggestions when prompt exceeds threshold" {
+  # Create three temporary Swift files.
+  file_todo="$TMP_DIR/TodoFile.swift"
+  file_other1="$TMP_DIR/Other1.swift"
+  file_other2="$TMP_DIR/Other2.swift"
+
+  # File with TODO.
+  cat <<'EOF' > "$file_todo"
+class TodoClass {
+    // TODO: - Do something!
+}
+EOF
+
+  # Other file 1.
+  cat <<'EOF' > "$file_other1"
+struct Other1 {}
+EOF
+
+  # Other file 2.
+  cat <<'EOF' > "$file_other2"
+struct Other2 {}
+EOF
+
+  # Create a temporary file listing found file paths.
+  found_files_file="$TMP_DIR/found_files_exclusions.txt"
+  echo "$file_todo" > "$found_files_file"
+  echo "$file_other1" >> "$found_files_file"
+  echo "$file_other2" >> "$found_files_file"
+
+  # Force a low threshold to trigger exclusion suggestions.
+  export PROMPT_LENGTH_THRESHOLD=1
+
+  # Set the TODO_FILE environment variable to the TODO file.
+  export TODO_FILE="$file_todo"
+
+  # Run the assemble-prompt function.
+  run assemble-prompt "$found_files_file" "ignored instruction"
+  [ "$status" -eq 0 ]
+
+  # Verify that the output contains the "Suggested exclusions:" block.
+  [[ "$output" == *"Suggested exclusions:"* ]]
+
+  # Check that the TODO file is NOT suggested.
+  [[ "$output" != *"--exclude $(basename "$file_todo")"* ]]
+
+  # And that the other files are suggested.
+  [[ "$output" == *"--exclude $(basename "$file_other1")"* ]]
+  [[ "$output" == *"--exclude $(basename "$file_other2")"* ]]
+}
+
+@test "assemble-prompt does not include exclusion suggestions when prompt is below threshold" {
+  # Create two temporary Swift files.
+  file_todo="$TMP_DIR/TodoFile.swift"
+  file_other="$TMP_DIR/Other.swift"
+
+  # File with TODO.
+  cat <<'EOF' > "$file_todo"
+class TodoClass {
+    // TODO: - Do something!
+}
+EOF
+
+  # Other file.
+  cat <<'EOF' > "$file_other"
+struct Other {}
+EOF
+
+  # Create a temporary file listing found file paths.
+  found_files_file="$TMP_DIR/found_files_no_exclusions.txt"
+  echo "$file_todo" > "$found_files_file"
+  echo "$file_other" >> "$found_files_file"
+
+  # Set a high threshold so that the prompt length is below it.
+  export PROMPT_LENGTH_THRESHOLD=10000000
+
+  # Set the TODO_FILE environment variable.
+  export TODO_FILE="$file_todo"
+
+  # Run the assemble-prompt function.
+  run assemble-prompt "$found_files_file" "ignored instruction"
+  [ "$status" -eq 0 ]
+
+  # Verify that there is no "Suggested exclusions:" block.
+  [[ "$output" != *"Suggested exclusions:"* ]]
 }
