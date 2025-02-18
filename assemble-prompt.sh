@@ -31,6 +31,9 @@
 # Source the helper that filters file content based on substring markers.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/filter-substring-markers.sh"
 
+# Source our new helper to remove additional TODO markers.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/remove-other-todo-markers.sh"
+
 # If DIFF_WITH_BRANCH is set, source the diff helper.
 if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
     source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/diff-with-branch.sh"
@@ -76,6 +79,8 @@ assemble-prompt() {
             else
                 file_content=$(cat "$TODO_FILE")
             fi
+            # For the primary file, use Perl to replace only the first occurrence of the special TODO marker.
+            file_content=$(echo "$file_content" | awk 'BEGIN {found=0} { if ($0 ~ /^[ \t]*\/\/[ \t]*TODO: - /) { if (found==0) { print; found=1 } } else { print } }')
             todo_block=$'\nThe contents of '"$todo_basename"$' is as follows:\n\n'"$file_content"$'\n\n'
             if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
                 diff_output=$(get_diff_with_branch "$TODO_FILE")
@@ -134,6 +139,10 @@ assemble-prompt() {
             else
                 file_content=$(cat "$file_path")
             fi
+            # Scrub any extra special TODO markers in non-primary files.
+            if [ "$file_path" != "$TODO_FILE" ]; then
+                file_content=$(remove_other_todo_markers "$file_content")
+            fi
             block=$'\nThe contents of '"$file_basename"$' is as follows:\n\n'"$file_content"$'\n\n'
             if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
                 diff_output=$(get_diff_with_branch "$file_path")
@@ -161,6 +170,9 @@ assemble-prompt() {
                 file_content=$(filter-substring-markers "$file_path")
             else
                 file_content=$(cat "$file_path")
+            fi
+            if [ "$file_path" != "$TODO_FILE" ]; then
+                file_content=$(remove_other_todo_markers "$file_content")
             fi
             block=$'\nThe contents of '"$file_basename"$' is as follows:\n\n'"$file_content"$'\n\n'
             if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
@@ -197,6 +209,9 @@ assemble-prompt() {
             else
                 file_content=$(cat "$file_path")
             fi
+            if [ "$file_path" != "$TODO_FILE" ]; then
+                file_content=$(remove_other_todo_markers "$file_content")
+            fi
             block=$'\nThe contents of '"$file_basename"$' is as follows:\n\n'"$file_content"$'\n\n'
             if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
                 diff_output=$(get_diff_with_branch "$file_path")
@@ -231,6 +246,9 @@ assemble-prompt() {
                 file_content=$(filter-substring-markers "$file_path")
             else
                 file_content=$(cat "$file_path")
+            fi
+            if [ "$file_path" != "$TODO_FILE" ]; then
+                file_content=$(remove_other_todo_markers "$file_content")
             fi
             block=$'\nThe contents of '"$file_basename"$' is as follows:\n\n'"$file_content"$'\n\n'
             if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
@@ -292,6 +310,14 @@ assemble-prompt() {
                 file_content=$(filter-substring-markers "$file_path")
             else
                 file_content=$(cat "$file_path")
+            fi
+
+            if [ "$file_path" = "$TODO_FILE" ]; then
+                # For the primary TODO file, keep the first occurrence of "// TODO: - " unchanged and remove any later ones.
+                file_content=$(echo "$file_content" | awk 'BEGIN {found=0} { if ($0 ~ /^[ \t]*\/\/[ \t]*TODO: - /) { if (found==0) { print; found=1 } } else { print } }')
+            else
+                # For all other files, scrub any special marker lines.
+                file_content=$(remove_other_todo_markers "$file_content")
             fi
 
             block=$'\nThe contents of '"$file_basename"$' is as follows:\n\n'"$file_content"$'\n\n'

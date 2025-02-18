@@ -42,6 +42,7 @@ EOF
   cp "${BATS_TEST_DIRNAME}/find-referencing-files.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/file-types.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/check-prompt-length.sh" "$TMP_DIR/"
+  cp "${BATS_TEST_DIRNAME}/remove-other-todo-markers.sh" "$TMP_DIR/"
   # >>> NEW: Copy the filter-substring-markers.sh dependency
   cp "${BATS_TEST_DIRNAME}/filter-substring-markers.sh" "$TMP_DIR/"
   # <<< END NEW
