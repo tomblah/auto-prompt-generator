@@ -60,29 +60,108 @@ assemble-prompt() {
     if [ -n "${CHOP_LIMIT:-}" ]; then
         # --- CHOP MODE: Respect the user-supplied character limit ---
         local current_length=0
+
+        # Process the TODO file first, unconditionally (ignoring CHOP_LIMIT)
+        if [ -n "${TODO_FILE:-}" ] && [ -f "$TODO_FILE" ]; then
+            local todo_basename file_content todo_block
+            todo_basename=$(basename "$TODO_FILE")
+            if grep -qE '^[[:space:]]*//[[:space:]]*v' "$TODO_FILE"; then
+                file_content=$(filter-substring-markers "$TODO_FILE")
+            else
+                file_content=$(cat "$TODO_FILE")
+            fi
+            # Replace the TODO marker for the TODO file.
+            file_content=$(echo "$file_content" | sed 's,// TODO: - ,// TODO: ChatGPT: ,')
+            todo_block=$'\nThe contents of '"$todo_basename"$' is as follows:\n\n'"$file_content"$'\n\n'
+            if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
+                local diff_output
+                diff_output=$(get_diff_with_branch "$TODO_FILE")
+                if [ -n "$diff_output" ]; then
+                    todo_block+="\n--------------------------------------------------\nThe diff for ${todo_basename} (against branch ${DIFF_WITH_BRANCH}) is as follows:\n\n${diff_output}\n\n"
+                fi
+            fi
+            todo_block+="\n--------------------------------------------------\n"
+            clipboard_content+="$todo_block"
+            current_length=$(echo -n "$todo_block" | wc -c | xargs)
+            file_names+=("$todo_basename")
+            file_blocks+=("$todo_block")
+        fi
+
+        # Determine the TODO file root (filename without extension)
+        local todo_basename_full=$(basename "$TODO_FILE")
+        local todo_root="${todo_basename_full%.*}"
+
+        # Group remaining files into "related" and "other" files.
+        declare -a related_files=()
+        declare -a other_files=()
         while IFS= read -r file_path; do
+            if [ "$file_path" = "$TODO_FILE" ]; then
+                continue
+            fi
+            local base
+            base=$(basename "$file_path")
+            local file_root="${base%.*}"
+            if [[ "$todo_root" == *"$file_root"* ]] || [[ "$file_root" == *"$todo_root"* ]]; then
+                related_files+=("$file_path")
+            else
+                other_files+=("$file_path")
+            fi
+        done <<< "$unique_found_files"
+
+        # Process related files (second highest priority).
+        for file_path in "${related_files[@]}"; do
             local file_basename file_content diff_output block block_length
             file_basename=$(basename "$file_path")
-            
             if grep -qE '^[[:space:]]*//[[:space:]]*v' "$file_path"; then
                 file_content=$(filter-substring-markers "$file_path")
             else
                 file_content=$(cat "$file_path")
             fi
-            
-            # Build the block for this file.
             block=$'\nThe contents of '"$file_basename"$' is as follows:\n\n'"$file_content"$'\n\n'
-            
-            # If DIFF_WITH_BRANCH is set, append a diff report if applicable.
             if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
                 diff_output=$(get_diff_with_branch "$file_path")
                 if [ -n "$diff_output" ]; then
                     block+="\n--------------------------------------------------\nThe diff for ${file_basename} (against branch ${DIFF_WITH_BRANCH}) is as follows:\n\n${diff_output}\n\n"
                 fi
             fi
-            
             block+="\n--------------------------------------------------\n"
-            
+            block_length=$(echo -n "$block" | wc -c | xargs)
+            if [ "${VERBOSE:-false}" = true ]; then
+                echo "[DEBUG] Processing (related) $file_basename: block_length=$block_length, current_length=$current_length, CHOP_LIMIT=$CHOP_LIMIT" >&2
+            fi
+            if [ $((current_length + block_length)) -le "$CHOP_LIMIT" ]; then
+                clipboard_content+="$block"
+                current_length=$((current_length + block_length))
+                file_names+=("$file_basename")
+                file_blocks+=("$block")
+                if [ "${VERBOSE:-false}" = true ]; then
+                    echo "[DEBUG] Accepted (related) $file_basename; new current_length=$current_length" >&2
+                fi
+            else
+                chopped_files+=("$file_basename")
+                if [ "${VERBOSE:-false}" = true ]; then
+                    echo "[DEBUG] Excluded (related) $file_basename (would exceed CHOP_LIMIT)" >&2
+                fi
+            fi
+        done
+
+        # Process remaining (other) files.
+        for file_path in "${other_files[@]}"; do
+            local file_basename file_content diff_output block block_length
+            file_basename=$(basename "$file_path")
+            if grep -qE '^[[:space:]]*//[[:space:]]*v' "$file_path"; then
+                file_content=$(filter-substring-markers "$file_path")
+            else
+                file_content=$(cat "$file_path")
+            fi
+            block=$'\nThe contents of '"$file_basename"$' is as follows:\n\n'"$file_content"$'\n\n'
+            if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
+                diff_output=$(get_diff_with_branch "$file_path")
+                if [ -n "$diff_output" ]; then
+                    block+="\n--------------------------------------------------\nThe diff for ${file_basename} (against branch ${DIFF_WITH_BRANCH}) is as follows:\n\n${diff_output}\n\n"
+                fi
+            fi
+            block+="\n--------------------------------------------------\n"
             block_length=$(echo -n "$block" | wc -c | xargs)
             if [ "${VERBOSE:-false}" = true ]; then
                 echo "[DEBUG] Processing $file_basename: block_length=$block_length, current_length=$current_length, CHOP_LIMIT=$CHOP_LIMIT" >&2
@@ -101,7 +180,8 @@ assemble-prompt() {
                     echo "[DEBUG] Excluded $file_basename (would exceed CHOP_LIMIT)" >&2
                 fi
             fi
-        done <<< "$unique_found_files"
+        done
+
         # Append the fixed instruction.
         clipboard_content+="\n\n${fixed_instruction}"
         
@@ -121,6 +201,7 @@ assemble-prompt() {
         for f in "${file_names[@]}"; do
             echo "$f" >&2
         done
+
     else
         # --- ORIGINAL MODE (no chop limit) ---
         while IFS= read -r file_path; do
@@ -132,7 +213,12 @@ assemble-prompt() {
             else
                 file_content=$(cat "$file_path")
             fi
-            
+
+            # If this is the TODO file, replace the TODO marker.
+            if [ "$file_path" = "$TODO_FILE" ]; then
+                file_content=$(echo "$file_content" | sed 's,// TODO: - ,// TODO: ChatGPT: ,')
+            fi
+
             block=$'\nThe contents of '"$file_basename"$' is as follows:\n\n'"$file_content"$'\n\n'
             
             if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
