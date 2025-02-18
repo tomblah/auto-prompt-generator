@@ -16,9 +16,6 @@
 # If DIFF_WITH_BRANCH is set (e.g. --diff-with develop), the Rust binary
 # will append a diff report for each file that differs.
 #
-# Additionally, if the final prompt exceeds a maximum length, exclusion suggestions
-# are output using the suggest_exclusions binary.
-#
 # Determine the directory where this script resides.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
