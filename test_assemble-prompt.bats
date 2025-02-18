@@ -308,3 +308,54 @@ EOF
   final_list=$(echo "$output" | sed -n '/Files (final list):/,$p')
   [[ "$final_list" != *"$(basename "$other_file")"* ]]
 }
+
+@test "assemble-prompt processes related files with higher priority than others" {
+  # Create a TODO file and two additional files: one related and one unrelated.
+  todo_file="$TMP_DIR/Todo.swift"
+  related_file="$TMP_DIR/TodoHelper.swift"
+  unrelated_file="$TMP_DIR/Other.swift"
+
+  # Create the TODO file.
+  cat <<'EOF' > "$todo_file"
+class TodoClass {
+    // TODO: - Perform critical operation
+}
+EOF
+
+  # Create the related file (its basename "TodoHelper" shares "Todo" with the TODO file).
+  cat <<'EOF' > "$related_file"
+struct TodoHelper {
+    // Some helper code.
+}
+EOF
+
+  # Create an unrelated file with long content to force it to be chopped.
+  printf 'X%.0s' {1..1500} > "$unrelated_file"
+  
+  # Create a temporary file listing all file paths.
+  found_files_file="$TMP_DIR/found_files_related.txt"
+  echo "$todo_file" > "$found_files_file"
+  echo "$related_file" >> "$found_files_file"
+  echo "$unrelated_file" >> "$found_files_file"
+  
+  # Set a chop limit that allows the TODO file and related file, but not the unrelated file.
+  export CHOP_LIMIT=1000
+
+  # Set the TODO_FILE environment variable.
+  export TODO_FILE="$todo_file"
+
+  # Run the assemble-prompt function.
+  run assemble-prompt "$found_files_file" "ignored instruction"
+  [ "$status" -eq 0 ]
+
+  # Check that the output includes the header for the TODO file.
+  [[ "$output" == *"The contents of $(basename "$todo_file") is as follows:"* ]]
+  # Check that the output includes the header for the related file.
+  [[ "$output" == *"The contents of $(basename "$related_file") is as follows:"* ]]
+  # Extract the "Files (final list):" section.
+  final_list=$(echo "$output" | sed -n '/Files (final list):/,$p')
+  # Confirm that the final file list includes the TODO and related file, but not the unrelated file.
+  [[ "$final_list" == *"$(basename "$todo_file")"* ]]
+  [[ "$final_list" == *"$(basename "$related_file")"* ]]
+  [[ "$final_list" != *"$(basename "$unrelated_file")"* ]]
+}
