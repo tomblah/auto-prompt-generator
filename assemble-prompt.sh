@@ -59,7 +59,7 @@ assemble-prompt() {
 
     if [ -n "${CHOP_LIMIT:-}" ]; then
         # --- CHOP MODE: Respect the user-supplied character limit ---
-        # Source our new helper for first-segment extraction.
+        # Source our helper for first-segment extraction.
         source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/extract-first-segment.sh"
         
         local current_length=0
@@ -70,9 +70,9 @@ assemble-prompt() {
         if [ -n "${TODO_FILE:-}" ] && [ -f "$TODO_FILE" ]; then
             todo_basename=$(basename "$TODO_FILE")
             todo_root="${todo_basename%.*}"
-            todo_segment=$(extract_first_segment "$TODO_FILE")
+            todo_segment=$(extract-first-segment "$TODO_FILE")
             if grep -qE '^[[:space:]]*//[[:space:]]*v' "$TODO_FILE"; then
-                file_content=$(filter_substring_markers "$TODO_FILE")
+                file_content=$(filter-substring-markers "$TODO_FILE")
             else
                 file_content=$(cat "$TODO_FILE")
             fi
@@ -93,6 +93,7 @@ assemble-prompt() {
         fi
 
         # --- Build grouping arrays from unique_found_files, skipping the TODO file ---
+        declare -a first_class_files=()
         declare -a segment_files=()
         declare -a related_files=()
         declare -a other_files=()
@@ -106,7 +107,16 @@ assemble-prompt() {
             local base file_root candidate_segment
             base=$(basename "$file_path")
             file_root="${base%.*}"
-            candidate_segment=$(extract_first_segment "$file_path")
+            candidate_segment=$(extract-first-segment "$file_path")
+            
+            # NEW: Only treat as first-class if the TODO file contains the primary marker.
+            if grep -q "// TODO: - " "$TODO_FILE"; then
+                if echo "$instruction_content" | grep -qw "$file_root"; then
+                    first_class_files+=("$file_path")
+                    continue
+                fi
+            fi
+
             if [[ "$todo_segment" == *"$candidate_segment"* ]] || [[ "$candidate_segment" == *"$todo_segment"* ]]; then
                 segment_files+=("$file_path")
             elif [[ "$todo_root" == *"$file_root"* ]] || [[ "$file_root" == *"$todo_root"* ]]; then
@@ -116,14 +126,41 @@ assemble-prompt() {
             fi
         done <<< "$unique_found_files"
         
-        # --- Process grouping arrays in the desired order ---
-        # 1. Files with segment matches.
+        # --- Process first-class files (immune to chopping) ---
+        for file_path in "${first_class_files[@]:-}"; do
+            if [ -z "$file_path" ]; then continue; fi
+            local file_basename file_content diff_output block
+            file_basename=$(basename "$file_path")
+            if grep -qE '^[[:space:]]*//[[:space:]]*v' "$file_path"; then
+                file_content=$(filter-substring-markers "$file_path")
+            else
+                file_content=$(cat "$file_path")
+            fi
+            block=$'\nThe contents of '"$file_basename"$' is as follows:\n\n'"$file_content"$'\n\n'
+            if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
+                diff_output=$(get_diff_with_branch "$file_path")
+                if [ -n "$diff_output" ]; then
+                    block+="\n--------------------------------------------------\nThe diff for ${file_basename} (against branch ${DIFF_WITH_BRANCH}) is as follows:\n\n${diff_output}\n\n"
+                fi
+            fi
+            block+="\n--------------------------------------------------\n"
+            # Always include first-class files regardless of the CHOP_LIMIT.
+            clipboard_content+="$block"
+            current_length=$(( current_length + $(echo -n "$block" | wc -c | xargs) ))
+            file_names+=("$file_basename")
+            file_blocks+=("$block")
+            if [ "${VERBOSE:-false}" = true ]; then
+                echo "[DEBUG] Including (first-class) $file_basename regardless of CHOP_LIMIT" >&2
+            fi
+        done
+        
+        # --- Process segment files ---
         for file_path in "${segment_files[@]:-}"; do
             if [ -z "$file_path" ]; then continue; fi
             local file_basename file_content diff_output block block_length
             file_basename=$(basename "$file_path")
             if grep -qE '^[[:space:]]*//[[:space:]]*v' "$file_path"; then
-                file_content=$(filter_substring_markers "$file_path")
+                file_content=$(filter-substring-markers "$file_path")
             else
                 file_content=$(cat "$file_path")
             fi
@@ -152,13 +189,13 @@ assemble-prompt() {
             fi
         done
         
-        # 2. Process related files.
+        # --- Process related files ---
         for file_path in "${related_files[@]:-}"; do
             if [ -z "$file_path" ]; then continue; fi
             local file_basename file_content diff_output block block_length
             file_basename=$(basename "$file_path")
             if grep -qE '^[[:space:]]*//[[:space:]]*v' "$file_path"; then
-                file_content=$(filter_substring_markers "$file_path")
+                file_content=$(filter-substring-markers "$file_path")
             else
                 file_content=$(cat "$file_path")
             fi
@@ -187,13 +224,13 @@ assemble-prompt() {
             fi
         done
         
-        # 3. Process other files.
+        # --- Process other files ---
         for file_path in "${other_files[@]:-}"; do
             if [ -z "$file_path" ]; then continue; fi
             local file_basename file_content diff_output block block_length
             file_basename=$(basename "$file_path")
             if grep -qE '^[[:space:]]*//[[:space:]]*v' "$file_path"; then
-                file_content=$(filter_substring_markers "$file_path")
+                file_content=$(filter-substring-markers "$file_path")
             else
                 file_content=$(cat "$file_path")
             fi
@@ -254,7 +291,7 @@ assemble-prompt() {
             file_basename=$(basename "$file_path")
             
             if grep -qE '^[[:space:]]*//[[:space:]]*v' "$file_path"; then
-                file_content=$(filter_substring_markers "$file_path")
+                file_content=$(filter-substring-markers "$file_path")
             else
                 file_content=$(cat "$file_path")
             fi
@@ -304,7 +341,7 @@ assemble-prompt() {
             # Build the block for this file (using the same logic as above)
             local file_content
             if grep -qE '^[[:space:]]*//[[:space:]]*v' "$file_path"; then
-                file_content=$(filter_substring_markers "$file_path")
+                file_content=$(filter-substring-markers "$file_path")
             else
                 file_content=$(cat "$file_path")
             fi
