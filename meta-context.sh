@@ -152,16 +152,11 @@ for file in $files; do
     } >> "$temp_context"
 done
 
-# Append the final custom message based on the options provided.
-if $TESTS_ONLY; then
-    {
-      echo "--------------------------------------------------"
-      echo -e "Can you look through these tests and add unit tests to cover the functionality we've added.\n\nLet's lean towards appending to existing files where it makes sense to do so. However, if we've created a new script, it might make sense to create a new test file for it. And be sure to echo out the entire test file with the added test cases."
-      echo "--------------------------------------------------"
-    } >> "$temp_context"
-else
-    echo "--------------------------------------------------" >> "$temp_context"
-fi
+# Append a horizontal dashed line and a new line.
+{
+  echo "--------------------------------------------------"
+  echo ""
+} >> "$temp_context"
 
 # Copy the final context to the clipboard using pbcopy.
 pbcopy < "$temp_context"
