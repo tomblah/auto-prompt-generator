@@ -66,7 +66,7 @@ assemble-prompt() {
             local todo_basename file_content todo_block
             todo_basename=$(basename "$TODO_FILE")
             if grep -qE '^[[:space:]]*//[[:space:]]*v' "$TODO_FILE"; then
-                file_content=$(filter-substring-markers "$TODO_FILE")
+                file_content=$(filter_substring_markers "$TODO_FILE")
             else
                 file_content=$(cat "$TODO_FILE")
             fi
@@ -273,17 +273,36 @@ assemble-prompt() {
     # If the prompt is too long relative to a preset threshold, print exclusion suggestions.
     if [ "$final_length" -gt "$threshold" ]; then
         local suggestions=""
-        for i in "${!file_blocks[@]:-}"; do
-            # Skip this file if TODO_FILE is set and its basename matches the current file.
-            if [ -n "${TODO_FILE:-}" ] && [ "$(basename "$TODO_FILE")" = "${file_names[$i]}" ]; then
-                continue
+        # Iterate over every file path from the sorted unique list (skipping empty lines and the TODO file)
+        while IFS= read -r file_path; do
+            if [ -z "$file_path" ]; then continue; fi
+            if [ "$file_path" = "$TODO_FILE" ]; then continue; fi
+            local file_basename
+            file_basename=$(basename "$file_path")
+            # Build the block for this file (using the same logic as above)
+            local file_content
+            if grep -qE '^[[:space:]]*//[[:space:]]*v' "$file_path"; then
+                file_content=$(filter-substring-markers "$file_path")
+            else
+                file_content=$(cat "$file_path")
             fi
-            local block_length new_length percent
-            block_length=$(echo -n "${file_blocks[$i]}" | wc -c | xargs)
-            new_length=$((final_length - block_length))
+            local block
+            block=$'\nThe contents of '"$file_basename"' is as follows:\n\n'"$file_content"$'\n\n'
+            if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
+                local diff_output
+                diff_output=$(get_diff_with_branch "$file_path")
+                if [ -n "$diff_output" ]; then
+                    block+="\n--------------------------------------------------\nThe diff for ${file_basename} (against branch ${DIFF_WITH_BRANCH}) is as follows:\n\n${diff_output}\n\n"
+                fi
+            fi
+            block+="\n--------------------------------------------------\n"
+            local block_length
+            block_length=$(echo -n "$block" | wc -c | xargs)
+            local new_length=$((final_length - block_length))
+            local percent
             percent=$(awk -v l="$new_length" -v t="$threshold" 'BEGIN { printf "%.0f", (l/t)*100 }')
-            suggestions="${suggestions} --exclude ${file_names[$i]} (will get you to ${percent}% of threshold)\n"
-        done
+            suggestions="${suggestions} --exclude ${file_basename} (will get you to ${percent}% of threshold)\n"
+        done <<< "$unique_found_files"
         echo -e "\nSuggested exclusions:\n${suggestions}" >&2
     fi
 }
