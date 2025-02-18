@@ -1,7 +1,7 @@
 #!/bin/bash
 # assemble-prompt.sh
 #
-# This function assembles the final ChatGPT prompt by including:
+# This function assembles the final AI prompt by including:
 #   - The contents of Swift (or other allowed) files where type definitions were found
 #     (optionally filtered by substring markers), and
 #   - A fixed instruction (ignoring the extracted TODO instruction).
@@ -70,14 +70,12 @@ assemble-prompt() {
         if [ -n "${TODO_FILE:-}" ] && [ -f "$TODO_FILE" ]; then
             todo_basename=$(basename "$TODO_FILE")
             todo_root="${todo_basename%.*}"
-            todo_segment=$(extract-first-segment "$TODO_FILE")
+            todo_segment=$(extract_first_segment "$TODO_FILE")
             if grep -qE '^[[:space:]]*//[[:space:]]*v' "$TODO_FILE"; then
                 file_content=$(filter-substring-markers "$TODO_FILE")
             else
                 file_content=$(cat "$TODO_FILE")
             fi
-            # Replace the TODO marker.
-            file_content=$(echo "$file_content" | sed 's,// TODO: - ,// TODO: ChatGPT: ,')
             todo_block=$'\nThe contents of '"$todo_basename"$' is as follows:\n\n'"$file_content"$'\n\n'
             if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
                 diff_output=$(get_diff_with_branch "$TODO_FILE")
@@ -107,7 +105,7 @@ assemble-prompt() {
             local base file_root candidate_segment
             base=$(basename "$file_path")
             file_root="${base%.*}"
-            candidate_segment=$(extract-first-segment "$file_path")
+            candidate_segment=$(extract_first_segment "$file_path")
             
             # NEW: Only treat as first-class if the TODO file contains the primary marker.
             if grep -q "// TODO: - " "$TODO_FILE"; then
@@ -294,11 +292,6 @@ assemble-prompt() {
                 file_content=$(filter-substring-markers "$file_path")
             else
                 file_content=$(cat "$file_path")
-            fi
-
-            # If this is the TODO file, replace the TODO marker.
-            if [ "$file_path" = "$TODO_FILE" ]; then
-                file_content=$(echo "$file_content" | sed 's,// TODO: - ,// TODO: ChatGPT: ,')
             fi
 
             block=$'\nThe contents of '"$file_basename"$' is as follows:\n\n'"$file_content"$'\n\n'

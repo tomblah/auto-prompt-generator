@@ -7,7 +7,7 @@ set -euo pipefail
 # This script finds the unique Swift file that contains a
 # TODO instruction (specifically “// TODO: - ”),
 # processes it along with related type definitions in the repository,
-# and then assembles a ChatGPT prompt that is copied to the clipboard.
+# and then assembles an AI friendly prompt that is copied to the clipboard.
 #
 # Usage:
 #   generate-prompt.sh [--slim] [--singular] [--force-global] [--include-references] [--diff-with <branch>] [--exclude <filename>] [--verbose] [--exclude <another_filename>] ...
