@@ -10,9 +10,6 @@
 #   On success: prints the path to a temporary file containing a list of files
 #   where definitions were found.
 
-# (Note: The file-types.sh source is no longer needed because our Rust binary handles allowed extensions.)
-# source "$(dirname "${BASH_SOURCE[0]}")/file-types.sh"
-
 find-definition-files() {
     local types_file="$1"
     local root="$2"
