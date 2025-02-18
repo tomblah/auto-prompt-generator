@@ -44,8 +44,8 @@ extract-types() {
     # Stage 1: Remove lines starting with "import".
     awk '!/^import /' "$temp_stage0" > "$temp_stage1"
 
-    # Stage 2: Remove lines starting with comment markers.
-    awk '!/^\/\//' "$temp_stage1" > "$temp_stage2"
+    # Stage 2 (modified): Instead of filtering out comment lines, pass them through.
+    cp "$temp_stage1" "$temp_stage2"
 
     # Stage 3: Scan for potential type names:
     #         - Words that start with a capital letter.
