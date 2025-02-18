@@ -87,29 +87,44 @@ assemble-prompt() {
             file_blocks+=("$todo_block")
         fi
 
-        # Determine the TODO file root (filename without extension)
-        local todo_basename_full=$(basename "$TODO_FILE")
-        local todo_root="${todo_basename_full%.*}"
-
-        # Group remaining files into "related" and "other" files.
+        # Declare grouping arrays so they’re always defined.
         declare -a related_files=()
         declare -a other_files=()
-        while IFS= read -r file_path; do
-            if [ "$file_path" = "$TODO_FILE" ]; then
-                continue
-            fi
-            local base
-            base=$(basename "$file_path")
-            local file_root="${base%.*}"
-            if [[ "$todo_root" == *"$file_root"* ]] || [[ "$file_root" == *"$todo_root"* ]]; then
-                related_files+=("$file_path")
-            else
+
+        if [ -n "${TODO_FILE:-}" ]; then
+            local todo_basename_full
+            todo_basename_full=$(basename "$TODO_FILE")
+            local todo_root="${todo_basename_full%.*}"
+            while IFS= read -r file_path; do
+                if [ -z "$file_path" ]; then
+                    continue
+                fi
+                if [ "$file_path" = "$TODO_FILE" ]; then
+                    continue
+                fi
+                local base
+                base=$(basename "$file_path")
+                local file_root="${base%.*}"
+                if [[ "$todo_root" == *"$file_root"* ]] || [[ "$file_root" == *"$todo_root"* ]]; then
+                    related_files+=("$file_path")
+                else
+                    other_files+=("$file_path")
+                fi
+            done <<< "$unique_found_files"
+        else
+            while IFS= read -r file_path; do
+                if [ -z "$file_path" ]; then
+                    continue
+                fi
                 other_files+=("$file_path")
-            fi
-        done <<< "$unique_found_files"
+            done <<< "$unique_found_files"
+        fi
 
         # Process related files (second highest priority).
-        for file_path in "${related_files[@]}"; do
+        for file_path in "${related_files[@]:-}"; do
+            if [ -z "$file_path" ]; then
+                continue
+            fi
             local file_basename file_content diff_output block block_length
             file_basename=$(basename "$file_path")
             if grep -qE '^[[:space:]]*//[[:space:]]*v' "$file_path"; then
@@ -146,7 +161,10 @@ assemble-prompt() {
         done
 
         # Process remaining (other) files.
-        for file_path in "${other_files[@]}"; do
+        for file_path in "${other_files[@]:-}"; do
+            if [ -z "$file_path" ]; then
+                continue
+            fi
             local file_basename file_content diff_output block block_length
             file_basename=$(basename "$file_path")
             if grep -qE '^[[:space:]]*//[[:space:]]*v' "$file_path"; then
@@ -187,9 +205,10 @@ assemble-prompt() {
         
         # Print a dashed separator and then the excluded files.
         echo "--------------------------------------------------" >&2
-        if [ "${#chopped_files[@]}" -gt 0 ]; then
+        if [ "${#chopped_files[@]:-0}" -gt 0 ]; then
             echo "The following files were excluded due to the chop limit of ${CHOP_LIMIT} characters:" >&2
-            for f in "${chopped_files[@]}"; do
+            for f in "${chopped_files[@]:-}"; do
+                if [ -z "$f" ]; then continue; fi
                 echo "  - $f" >&2
             done
         else
@@ -198,13 +217,17 @@ assemble-prompt() {
         
         # Print the final file list without an extra separator.
         echo "Files (final list):" >&2
-        for f in "${file_names[@]}"; do
+        for f in "${file_names[@]:-}"; do
+            if [ -z "$f" ]; then continue; fi
             echo "$f" >&2
         done
 
     else
         # --- ORIGINAL MODE (no chop limit) ---
         while IFS= read -r file_path; do
+            if [ -z "$file_path" ]; then
+                continue
+            fi
             local file_basename file_content diff_output block
             file_basename=$(basename "$file_path")
             
@@ -250,7 +273,7 @@ assemble-prompt() {
     # If the prompt is too long relative to a preset threshold, print exclusion suggestions.
     if [ "$final_length" -gt "$threshold" ]; then
         local suggestions=""
-        for i in "${!file_blocks[@]}"; do
+        for i in "${!file_blocks[@]:-}"; do
             # Skip this file if TODO_FILE is set and its basename matches the current file.
             if [ -n "${TODO_FILE:-}" ] && [ "$(basename "$TODO_FILE")" = "${file_names[$i]}" ]; then
                 continue
