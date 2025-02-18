@@ -359,3 +359,121 @@ EOF
   [[ "$final_list" == *"$(basename "$related_file")"* ]]
   [[ "$final_list" != *"$(basename "$unrelated_file")"* ]]
 }
+
+# --- New tests for first-class file behavior ---
+
+@test "assemble-prompt first-class file immune to chopping" {
+  # Create a TODO file that references a specific type.
+  todo_file="$TMP_DIR/TodoWithReference.swift"
+  cat <<'EOF' > "$todo_file"
+class TodoRef {
+    // TODO: - Process data using SpecialType
+}
+EOF
+
+  # Create a file corresponding to the referenced type (SpecialType.swift)
+  special_file="$TMP_DIR/SpecialType.swift"
+  # Generate long content (which would normally exceed the chop limit)
+  printf 'A%.0s' {1..1000} > "$special_file"
+
+  # Create a regular file that is not referenced.
+  regular_file="$TMP_DIR/Regular.swift"
+  printf 'B%.0s' {1..1000} > "$regular_file"
+
+  # Create a temporary file listing these file paths.
+  found_files_file="$TMP_DIR/found_files_firstclass.txt"
+  echo "$todo_file" > "$found_files_file"
+  echo "$special_file" >> "$found_files_file"
+  echo "$regular_file" >> "$found_files_file"
+
+  # Set a chop limit low enough to force chopping.
+  export CHOP_LIMIT=500
+  export TODO_FILE="$todo_file"
+
+  # Run assemble-prompt with instruction that mentions "SpecialType".
+  run assemble-prompt "$found_files_file" "Process data using SpecialType"
+  [ "$status" -eq 0 ]
+
+  # Check that the output includes the header for SpecialType.swift.
+  [[ "$output" == *"The contents of SpecialType.swift is as follows:"* ]]
+  # Extract the final file list.
+  final_list=$(echo "$output" | sed -n '/Files (final list):/,$p')
+  # Verify that SpecialType.swift is included and Regular.swift is excluded.
+  [[ "$final_list" == *"SpecialType.swift"* ]]
+  [[ "$final_list" != *"Regular.swift"* ]]
+}
+
+@test "assemble-prompt multiple first-class files immune to chopping" {
+  # Create a TODO file that mentions two types: TypeA and TypeB.
+  todo_file="$TMP_DIR/TodoMultiple.swift"
+  cat <<'EOF' > "$todo_file"
+class TodoMultiple {
+    // TODO: - Execute process using TypeA and TypeB for enhanced functionality
+}
+EOF
+
+  # Create TypeA and TypeB files with long content.
+  type_a="$TMP_DIR/TypeA.swift"
+  type_b="$TMP_DIR/TypeB.swift"
+  printf 'C%.0s' {1..1000} > "$type_a"
+  printf 'D%.0s' {1..1000} > "$type_b"
+
+  # Create a regular file that is not mentioned.
+  regular_file="$TMP_DIR/NotReferenced.swift"
+  printf 'E%.0s' {1..1000} > "$regular_file"
+
+  # Create a temporary file listing all file paths.
+  found_files_file="$TMP_DIR/found_files_multiple.txt"
+  echo "$todo_file" > "$found_files_file"
+  echo "$type_a" >> "$found_files_file"
+  echo "$type_b" >> "$found_files_file"
+  echo "$regular_file" >> "$found_files_file"
+
+  # Set a chop limit low enough to force chopping of non-first-class files.
+  export CHOP_LIMIT=500
+  export TODO_FILE="$todo_file"
+
+  # Run assemble-prompt with instruction that mentions both "TypeA" and "TypeB".
+  run assemble-prompt "$found_files_file" "Execute process using TypeA and TypeB for enhanced functionality"
+  [ "$status" -eq 0 ]
+
+  # Extract the final file list.
+  final_list=$(echo "$output" | sed -n '/Files (final list):/,$p')
+  # Verify that both TypeA.swift and TypeB.swift are included.
+  [[ "$final_list" == *"TypeA.swift"* ]]
+  [[ "$final_list" == *"TypeB.swift"* ]]
+  # And that the non-referenced file is excluded.
+  [[ "$final_list" != *"NotReferenced.swift"* ]]
+}
+
+@test "assemble-prompt does not treat non-primary TODO file as first class" {
+  # Create a TODO file with a normal TODO comment (without the dash)
+  todo_file="$TMP_DIR/NormalTodo.swift"
+  cat <<'EOF' > "$todo_file"
+class NormalTodo {
+    // TODO: this really should use BrandNewClass
+}
+EOF
+
+  # Create BrandNewClass.swift with long content (which would normally exceed the chop limit)
+  brandnew_file="$TMP_DIR/BrandNewClass.swift"
+  printf 'Z%.0s' {1..1000} > "$brandnew_file"
+
+  # Create a temporary file listing both file paths.
+  found_files_file="$TMP_DIR/found_files_normal.txt"
+  echo "$todo_file" > "$found_files_file"
+  echo "$brandnew_file" >> "$found_files_file"
+
+  # Set a chop limit low enough that BrandNewClass.swift would normally be chopped.
+  export CHOP_LIMIT=500
+  export TODO_FILE="$todo_file"
+
+  # Run assemble-prompt with instruction content that does NOT include the primary marker (no " - ").
+  run assemble-prompt "$found_files_file" "this really should use BrandNewClass"
+  [ "$status" -eq 0 ]
+
+  # Extract the final file list from the output.
+  final_list=$(echo "$output" | sed -n '/Files (final list):/,$p')
+  # Expect that BrandNewClass.swift is NOT included in the final list (i.e. it was subject to chopping).
+  [[ "$final_list" != *"BrandNewClass.swift"* ]]
+}
