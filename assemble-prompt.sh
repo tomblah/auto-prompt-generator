@@ -1,7 +1,7 @@
 #!/bin/bash
 # assemble-prompt.sh
 #
-# This function assembles the final ChatGPT prompt by including:
+# This function assembles the final AI prompt by including:
 #   - The contents of files where type definitions were found (processed
 #     by the Rust binary that encapsulates file processing, diff reporting,
 #     and final prompt assembly)

@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     // Parse command-line arguments using Clap.
     let matches = Command::new("generate_prompt")
         .version("0.1.0")
-        .about("Generates a ChatGPT prompt by delegating to existing Rust binaries")
+        .about("Generates an AI prompt by delegating to existing Rust binaries")
         .arg(
             Arg::new("slim")
                 .long("slim")
