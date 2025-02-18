@@ -119,15 +119,6 @@ else
     fi
 fi
 
-# --------------------------------------------------
-# Include all Cargo.toml files across the repository.
-cargo_files=$(find . -type f -name "Cargo.toml" -not -path "./.git/*")
-if [ -n "$cargo_files" ]; then
-    echo "Including all Cargo.toml files in the context."
-    files="$files $cargo_files"
-fi
-# --------------------------------------------------
-
 # Display the collected files.
 echo "--------------------------------------------------"
 echo "Files to include in the meta-context prompt:"
