@@ -37,7 +37,6 @@ EOF
   cp "${BATS_TEST_DIRNAME}/file-types.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/filter-substring-markers.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/diff-with-branch.sh" "$TMP_DIR/"
-  cp "${BATS_TEST_DIRNAME}/check-prompt-length.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/remove-other-todo-markers.sh" "$TMP_DIR/"
   # Change to TMP_DIR which will act as our repository root.
   cd "$TMP_DIR"

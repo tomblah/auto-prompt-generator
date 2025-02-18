@@ -39,9 +39,6 @@ if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
     source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/diff-with-branch.sh"
 fi
 
-# Source the helper to check prompt length.
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-prompt-length.sh"
-
 assemble-prompt() {
     local found_files_file="$1"
     local instruction_content="$2"  # This parameter is now ignored.
@@ -278,25 +275,8 @@ assemble-prompt() {
         # Append the fixed instruction.
         clipboard_content+="\n\n${fixed_instruction}"
         
-        # Print a dashed separator and then the excluded files.
-        echo "--------------------------------------------------" >&2
-        if [ "${#chopped_files[@]:-0}" -gt 0 ]; then
-            echo "The following files were excluded due to the chop limit of ${CHOP_LIMIT} characters:" >&2
-            for f in "${chopped_files[@]:-}"; do
-                if [ -z "$f" ]; then continue; fi
-                echo "  - $f" >&2
-            done
-        else
-            echo "No files were excluded due to the chop limit of ${CHOP_LIMIT} characters." >&2
-        fi
-        
-        # Print the final file list without an extra separator.
-        echo "Files (final list):" >&2
-        for f in "${file_names[@]:-}"; do
-            if [ -z "$f" ]; then continue; fi
-            echo "$f" >&2
-        done
-        
+        # (The exclusion suggestions based on prompt length have been removed.)
+    
     else
         # --- ORIGINAL MODE (no chop limit) ---
         while IFS= read -r file_path; do
@@ -337,52 +317,11 @@ assemble-prompt() {
         clipboard_content+="\n\n${fixed_instruction}"
     fi
     
-    # Compute the final prompt length.
-    local final_length
-    final_length=$(echo -n "$clipboard_content" | wc -c | xargs)
-    local threshold=${PROMPT_LENGTH_THRESHOLD:-600000}
-    
     # Copy the assembled prompt to the clipboard.
     printf "%b" "$clipboard_content" | pbcopy
     
     # Output the assembled prompt.
     echo "$clipboard_content"
-    
-    # If the prompt is too long relative to a preset threshold, print exclusion suggestions.
-    if [ "$final_length" -gt "$threshold" ]; then
-        local suggestions=""
-        # Iterate over every file path from the sorted unique list (skipping empty lines and the TODO file)
-        while IFS= read -r file_path; do
-            if [ -z "$file_path" ]; then continue; fi
-            if [ "$file_path" = "$TODO_FILE" ]; then continue; fi
-            local file_basename
-            file_basename=$(basename "$file_path")
-            # Build the block for this file (using the same logic as above)
-            local file_content
-            if grep -qE '^[[:space:]]*//[[:space:]]*v' "$file_path"; then
-                file_content=$(filter-substring-markers "$file_path")
-            else
-                file_content=$(cat "$file_path")
-            fi
-            local block
-            block=$'\nThe contents of '"$file_basename"' is as follows:\n\n'"$file_content"$'\n\n'
-            if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
-                local diff_output
-                diff_output=$(get_diff_with_branch "$file_path")
-                if [ -n "$diff_output" ]; then
-                    block+="\n--------------------------------------------------\nThe diff for ${file_basename} (against branch ${DIFF_WITH_BRANCH}) is as follows:\n\n${diff_output}\n\n"
-                fi
-            fi
-            block+="\n--------------------------------------------------\n"
-            local block_length
-            block_length=$(echo -n "$block" | wc -c | xargs)
-            local new_length=$((final_length - block_length))
-            local percent
-            percent=$(awk -v l="$new_length" -v t="$threshold" 'BEGIN { printf "%.0f", (l/t)*100 }')
-            suggestions="${suggestions} --exclude ${file_basename} (will get you to ${percent}% of threshold)\n"
-        done <<< "$unique_found_files"
-        echo -e "\nSuggested exclusions:\n${suggestions}" >&2
-    fi
 }
 
 # If executed directly, print usage instructions.
