@@ -1,5 +1,9 @@
 #!/usr/bin/env bats
 
+#
+# NB: I don't think these are valid tests or doing anything at all...
+#
+
 setup() {
   # Create a temporary directory for test files.
   TMP_DIR=$(mktemp -d)
@@ -49,9 +53,10 @@ EOF
   [[ "$output" == *"The contents of File1.swift is as follows:"* ]]
   [[ "$output" == *"The contents of File2.swift is as follows:"* ]]
   
-  # Verify that the TODO marker is replaced.
-  [[ "$output" == *"// TODO: ChatGPT: Do something important"* ]]
-
+  # Verify that the TODO marker is not being replaced by the legacy, and remains the same.
+  [[ "$output" != *"// TODO: ChatGPT: Do something important"* ]]
+  [[ "$output" == *"// TODO: - Do something important"* ]]
+  
   # Check that the content from each file is present.
   [[ "$output" == *"class MyClass {"* ]]
   [[ "$output" == *"struct MyStruct {}"* ]]
