@@ -4,7 +4,7 @@
 # These tests run the main generate-prompt.sh script in a simulated Git repository.
 # They verify that (a) when a valid TODO instruction exists, the prompt is assembled
 # (and “copied” to our dummy clipboard file), (b) that the script fails when no valid
-# TODO instruction is present, (c) that the --slim and --exclude options work as expected,
+# TODO instruction is present, (c) that the --exclude option works as expected,
 # (d) that the --singular option causes only the TODO file to be included, and now
 # (e) that the new --force-global option causes the script to ignore package boundaries.
  
@@ -31,7 +31,6 @@ EOF
   cp "${BATS_TEST_DIRNAME}/extract-instruction-content.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/extract-types.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/find-definition-files.sh" "$TMP_DIR/"
-  cp "${BATS_TEST_DIRNAME}/filter-files.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/exclude-files.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/assemble-prompt.sh" "$TMP_DIR/"
   cp "${BATS_TEST_DIRNAME}/get-git-root.sh" "$TMP_DIR/"
@@ -95,22 +94,6 @@ EOF
   run bash generate-prompt.sh
   [ "$status" -ne 0 ]
   [[ "$output" == *"Error:"* ]]
-}
- 
-@test "generate-prompt.sh slim mode excludes disallowed files" {
-  # Create an extra file that should be filtered out in slim mode.
-  cat << 'EOF' > ViewController.swift
-import UIKit
-class ViewController {}
-EOF
- 
-  # Run the script with the --slim flag.
-  run bash generate-prompt.sh --slim
-  [ "$status" -eq 0 ]
- 
-  # The section showing the final list of files should not list ViewController.swift.
-  [[ "$output" != *"ViewController.swift"* ]]
-  [[ "$output" == *"Success:"* ]]
 }
  
 @test "generate-prompt.sh excludes files specified with --exclude" {
