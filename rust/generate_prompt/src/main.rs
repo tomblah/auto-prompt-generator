@@ -245,11 +245,27 @@ fn main() -> Result<()> {
     }
 
     // 9. Assemble the final prompt.
-    let _final_prompt = run_command(
+    let final_prompt = run_command(
         &["assemble_prompt", found_files_path.to_str().unwrap(), instruction_content.trim()],
         None,
     )
     .context("Failed to assemble prompt")?;
+    
+    let marker = "// TODO: -";
+    let marker_lines: Vec<&str> = final_prompt
+        .lines()
+        .filter(|line| line.contains(marker))
+        .collect();
+
+    // NB: > 2 b/c there's another // TODO: - marker in the CTA
+    if marker_lines.len() > 2 {
+        eprintln!("Multiple {} markers found. Exiting.", marker);
+        // Print all marker lines except the last one (the CTA), trimming each line.
+        for line in marker_lines.iter().take(marker_lines.len() - 1) {
+            eprintln!("{}", line.trim());
+        }
+        std::process::exit(1);
+    }
 
     println!("--------------------------------------------------");
     println!("Success:\n");
