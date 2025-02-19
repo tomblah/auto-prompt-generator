@@ -310,5 +310,63 @@ mod additional_tests {
             .stdout(predicate::str::contains("FilteredDefinition1.swift"))
             .stdout(predicate::str::contains("FilteredDefinition2.swift"));
     }
+    
+    /// Test that generate_prompt exits with an error when multiple markers are present in the assembled prompt.
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_multiple_markers() {
+        let temp_dir = TempDir::new().unwrap();
+        let fake_git_root = TempDir::new().unwrap();
+        let fake_git_root_path = fake_git_root.path().to_str().unwrap();
+
+        // Dummy "get_git_root" returns our fake Git root.
+        create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
+
+        // Create a dummy TODO instruction file path.
+        let instruction_path = format!("{}/Instruction.swift", fake_git_root_path);
+        create_dummy_executable(&temp_dir, "find_prompt_instruction", &instruction_path);
+
+        // Dummy "get_package_root" returns an empty string.
+        create_dummy_executable(&temp_dir, "get_package_root", "");
+
+        // Dummy "extract_instruction_content" returns a line with a TODO marker.
+        create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Fix issue");
+
+        // Create a dummy types file and return its path via "extract_types".
+        let types_file = temp_dir.path().join("types.txt");
+        fs::write(&types_file, "TypeA").unwrap();
+        create_dummy_executable(&temp_dir, "extract_types", types_file.to_str().unwrap());
+
+        // For this test we want the final prompt to have multiple markers.
+        // Our dummy "assemble_prompt" outputs a prompt with three marker lines:
+        // Two markers from content plus the final CTA marker.
+        let multi_marker_prompt = "\
+    The contents of Instruction.swift is as follows:\n\n\
+    // TODO: - Marker One\nSome content here\n\n\
+    // TODO: - Marker Two\nMore content here\n\n\
+     // TODO: -\n";
+        create_dummy_executable(&temp_dir, "assemble_prompt", multi_marker_prompt);
+
+        // For the file list we need at least one file.
+        // Dummy "filter_files_singular" simply echoes the instruction path.
+        create_dummy_executable(&temp_dir, "filter_files_singular", &instruction_path);
+
+        // Prepend our temporary directory to PATH and disable clipboard copying.
+        let original_path = env::var("PATH").unwrap();
+        env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
+        env::set_var("DISABLE_PBCOPY", "1");
+
+        // Run the generate_prompt binary.
+        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        let assert = cmd.assert().failure()
+            .stderr(predicate::str::contains("Multiple // TODO: - markers found. Exiting."));
+
+        // (Optional) You can also check that the very last marker (the CTA) is not printed among the offending markers.
+        // For example, by capturing stderr and ensuring that the trimmed last line isn't exactly "// TODO: -"
+        // (This step is optional if your error message is unique enough.)
+
+        // The test passes if generate_prompt exits with failure and the error message is found.
+    }
+
 }
 
