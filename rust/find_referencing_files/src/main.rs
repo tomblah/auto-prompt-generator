@@ -1,10 +1,8 @@
 use regex::Regex;
 use std::env;
 use std::fs;
-use std::io::Write;
 use std::path::Component;
 use walkdir::WalkDir;
-use tempfile::NamedTempFile;
 
 /// Searches the given directory (and its subdirectories) for files with allowed
 /// extensions that contain the given type name as a whole word. Files inside directories
@@ -78,19 +76,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Find all files referencing the type.
     let matching_files = find_files_referencing(type_name, search_root)?;
 
-    // Create a temporary file and write the matching file paths.
-    let mut temp_file = NamedTempFile::new()?;
+    // Print each file path directly to stdout.
     for file in matching_files {
-        writeln!(temp_file, "{}", file)?;
+        println!("{}", file);
     }
-    temp_file.flush()?;
-    let temp_path = temp_file.into_temp_path().keep()?;
-    
-    // Print the path to the temporary file.
-    println!("{}", temp_path.display());
     
     Ok(())
 }
+
 
 #[cfg(test)]
 mod tests {

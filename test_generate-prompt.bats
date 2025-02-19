@@ -1353,20 +1353,18 @@ EOF
   echo "print(\"No reference here\")" > tempNonRef.swift
 
   # Run the new Rust binary for finding referencing files.
-  # (Assumes the current directory is TMP_DIR from setup.)
   run "./rust/target/release/find_referencing_files" "MySpecialClass" "."
   [ "$status" -eq 0 ]
 
-  # The binary outputs the path to a temporary file containing the list.
-  temp_file="$output"
-  refList=$(cat "$temp_file")
+  # Capture the output directly (which is now a list of file paths).
+  refList="$output"
 
   # Verify that the list includes tempRef.swift but not tempNonRef.swift.
   [[ "$refList" == *"tempRef.swift"* ]]
   [[ "$refList" != *"tempNonRef.swift"* ]]
 
-  # Clean up.
-  rm tempRef.swift tempNonRef.swift "$temp_file"
+  # Clean up only the test-created files.
+  rm tempRef.swift tempNonRef.swift
 }
  
 @test "generate-prompt.sh with --include-references includes referencing files" {
