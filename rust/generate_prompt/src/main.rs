@@ -12,13 +12,6 @@ fn main() -> Result<()> {
         .version("0.1.0")
         .about("Generates an AI prompt by delegating to existing Rust binaries")
         .arg(
-            Arg::new("slim")
-                .long("slim")
-                .help("Enable slim mode")
-                .action(clap::ArgAction::SetTrue)
-                .default_value("false"),
-        )
-        .arg(
             Arg::new("singular")
                 .long("singular")
                 .help("Only include the TODO file")
@@ -60,7 +53,6 @@ fn main() -> Result<()> {
         )
         .get_matches();
 
-    let slim = *matches.get_one::<bool>("slim").unwrap();
     let singular = *matches.get_one::<bool>("singular").unwrap();
     let force_global = *matches.get_one::<bool>("force_global").unwrap();
     let include_references = *matches.get_one::<bool>("include_references").unwrap();
@@ -188,14 +180,6 @@ fn main() -> Result<()> {
         // If slim mode is enabled, filter the file list.
         let mut found_files = fs::read_to_string(&found_files_path)
             .context("Failed to read found files list")?;
-        if slim {
-            println!("Slim mode enabled: filtering files");
-            // Pass the temporary file path (as a string) rather than the file content.
-            found_files = run_command(&["filter_files", &file_path, found_files_path.to_str().unwrap()], None)
-                .context("Failed to filter files for slim mode")?;
-            fs::write(&found_files_path, found_files.trim())
-                .context("Failed to write filtered list")?;
-        }
         // Apply file exclusions.
         if !excludes.is_empty() {
             println!("Excluding files matching: {:?}", excludes);
