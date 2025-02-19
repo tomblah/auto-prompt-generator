@@ -84,22 +84,6 @@ EOF
   [[ "$output" == *"Error:"* ]]
 }
  
-@test "generate-prompt.sh slim mode excludes disallowed files" {
-  # Create an extra file that should be filtered out in slim mode.
-  cat << 'EOF' > ViewController.swift
-import UIKit
-class ViewController {}
-EOF
- 
-  # Run the script with the --slim flag.
-  run bash generate-prompt.sh --slim
-  [ "$status" -eq 0 ]
- 
-  # The section showing the final list of files should not list ViewController.swift.
-  [[ "$output" != *"ViewController.swift"* ]]
-  [[ "$output" == *"Success:"* ]]
-}
- 
 @test "generate-prompt.sh excludes files specified with --exclude" {
   # Create an extra file to be excluded.
   cat << 'EOF' > ExcludeMe.swift

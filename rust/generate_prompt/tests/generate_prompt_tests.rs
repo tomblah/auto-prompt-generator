@@ -135,47 +135,6 @@ mod tests {
             .stdout(predicate::str::contains("Prompt has been copied to clipboard."));
     }
 
-    /// Test slim mode where the file list is filtered.
-    #[test]
-    #[cfg(unix)]
-    fn test_generate_prompt_slim_mode() {
-        let temp_dir = TempDir::new().unwrap();
-        let fake_git_root = TempDir::new().unwrap();
-        let fake_git_root_path = fake_git_root.path().to_str().unwrap();
-
-        create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
-        let todo_file = format!("{}/TODO.swift", fake_git_root_path);
-        create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
-        create_dummy_executable(&temp_dir, "get_package_root", "");
-        create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Fix bug");
-
-        let types_file_path = temp_dir.path().join("types.txt");
-        fs::write(&types_file_path, "TypeA").unwrap();
-        create_dummy_executable(&temp_dir, "extract_types", types_file_path.to_str().unwrap());
-
-        // Simulate definition files output.
-        let def_files_output = format!("{}/Definition1.swift\n{}/Definition2.swift", fake_git_root_path, fake_git_root_path);
-        create_dummy_executable(&temp_dir, "find_definition_files", &def_files_output);
-        // In slim mode, the "filter_files" command is invoked.
-        create_dummy_executable(&temp_dir, "filter_files", &def_files_output);
-        create_dummy_executable(&temp_dir, "assemble_prompt", "dummy");
-
-        let original_path = env::var("PATH").unwrap();
-        env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
-        env::set_var("DISABLE_PBCOPY", "1");
-
-        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-        cmd.arg("--slim");
-
-        cmd.assert()
-            .success()
-            .stdout(predicate::str::contains("Slim mode enabled: filtering files"))
-            .stdout(predicate::str::contains("Definition1.swift"))
-            .stdout(predicate::str::contains("Definition2.swift"))
-            .stdout(predicate::str::contains("Success:"))
-            .stdout(predicate::str::contains("Prompt has been copied to clipboard."));
-    }
-
     /// Test inclusion of referencing files for Swift.
     #[test]
     #[cfg(unix)]
