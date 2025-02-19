@@ -75,15 +75,29 @@ EOF
   [ -z "$referencing_file_list" ]
 }
 
-# --- New test: Objective-C header and implementation files ---
-
 @test "find-referencing-files includes Objective-C header and implementation files" {
-  echo "let instance = MyType()" > "$TMP_DIR/Ref.h"
-  echo "let instance = MyType()" > "$TMP_DIR/Ref.m"
+  # Create an Objective-C header file referencing the type.
+  objc_header="$TMP_DIR/Ref.h"
+  cat <<EOF > "$objc_header"
+#import <Foundation/Foundation.h>
+@interface MyType : NSObject
+@end
+EOF
+
+  # Create an Objective-C implementation file referencing the type.
+  objc_impl="$TMP_DIR/Ref.m"
+  cat <<EOF > "$objc_impl"
+#import "Ref.h"
+@implementation MyType
+@end
+EOF
+
   run bash -c "source ./find-referencing-files.sh; find_referencing_files \"MyType\" \"$TMP_DIR\""
   [ "$status" -eq 0 ]
-  refList=$(cat "$output")
-  [[ "$refList" == *"Ref.h"* ]]
-  [[ "$refList" == *"Ref.m"* ]]
-  rm "$TMP_DIR/Ref.h" "$TMP_DIR/Ref.m" "$output"
+  referencing_file_list=$(cat "$output")
+  [[ "$referencing_file_list" == *"Ref.h"* ]]
+  [[ "$referencing_file_list" == *"Ref.m"* ]]
+
+  # Clean up the Objective-C files.
+  rm "$objc_header" "$objc_impl"
 }
