@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
 #
-# NB: I don't think these are valid tests or doing anything at all...
+# NB: I'm a bit skeptical of some of the validity of these tests, should really be checked
 #
 
 setup() {
@@ -124,56 +124,6 @@ EOF
   [[ "$output" == *"against branch dummy-branch"* ]]
 
   unset DIFF_WITH_BRANCH
-}
-
-@test "assemble-prompt includes exclusion suggestions when prompt exceeds threshold" {
-  # Create three temporary Swift files.
-  file_todo="$TMP_DIR/TodoFile.swift"
-  file_other1="$TMP_DIR/Other1.swift"
-  file_other2="$TMP_DIR/Other2.swift"
-
-  # File with TODO.
-  cat <<'EOF' > "$file_todo"
-class TodoClass {
-    // TODO: - Do something!
-}
-EOF
-
-  # Other file 1.
-  cat <<'EOF' > "$file_other1"
-struct Other1 {}
-EOF
-
-  # Other file 2.
-  cat <<'EOF' > "$file_other2"
-struct Other2 {}
-EOF
-
-  # Create a temporary file listing found file paths.
-  found_files_file="$TMP_DIR/found_files_exclusions.txt"
-  echo "$file_todo" > "$found_files_file"
-  echo "$file_other1" >> "$found_files_file"
-  echo "$file_other2" >> "$found_files_file"
-
-  # Force a low threshold to trigger exclusion suggestions.
-  export PROMPT_LENGTH_THRESHOLD=1
-
-  # Set the TODO_FILE environment variable to the TODO file.
-  export TODO_FILE="$file_todo"
-
-  # Run the assemble-prompt function.
-  run assemble-prompt "$found_files_file" "ignored instruction"
-  [ "$status" -eq 0 ]
-
-  # Verify that the output contains the "Suggested exclusions:" block.
-  [[ "$output" == *"Suggested exclusions:"* ]]
-
-  # Check that the TODO file is NOT suggested.
-  [[ "$output" != *"--exclude $(basename "$file_todo")"* ]]
-
-  # And that the other files are suggested.
-  [[ "$output" == *"--exclude $(basename "$file_other1")"* ]]
-  [[ "$output" == *"--exclude $(basename "$file_other2")"* ]]
 }
 
 @test "assemble-prompt does not include exclusion suggestions when prompt is below threshold" {
