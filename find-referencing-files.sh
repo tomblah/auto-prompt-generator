@@ -14,6 +14,16 @@
 source "$(dirname "${BASH_SOURCE[0]}")/file-types.sh"
 
 find_referencing_files() {
+    # If singular mode is active, do not search for referencing files.
+    if [ "${SINGULAR:-false}" = true ]; then
+         local temp_file
+         temp_file=$(mktemp)
+         # Create an empty temporary file.
+         > "$temp_file"
+         echo "$temp_file"
+         return 0
+    fi
+
     local type_name="$1"
     local search_root="$2"
 
