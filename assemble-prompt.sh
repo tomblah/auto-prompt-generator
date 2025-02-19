@@ -275,8 +275,25 @@ assemble-prompt() {
         # Append the fixed instruction.
         clipboard_content+="\n\n${fixed_instruction}"
         
-        # (The exclusion suggestions based on prompt length have been removed.)
-    
+        # Print a dashed separator and then the excluded files.
+        echo "--------------------------------------------------" >&2
+        if [ "${#chopped_files[@]:-0}" -gt 0 ]; then
+            echo "The following files were excluded due to the chop limit of ${CHOP_LIMIT} characters:" >&2
+            for f in "${chopped_files[@]:-}"; do
+                if [ -z "$f" ]; then continue; fi
+                echo "  - $f" >&2
+            done
+        else
+            echo "No files were excluded due to the chop limit of ${CHOP_LIMIT} characters." >&2
+        fi
+        
+        # Print the final file list without an extra separator.
+        echo "Files (final list):" >&2
+        for f in "${file_names[@]:-}"; do
+            if [ -z "$f" ]; then continue; fi
+            echo "$f" >&2
+        done
+        
     else
         # --- ORIGINAL MODE (no chop limit) ---
         while IFS= read -r file_path; do
