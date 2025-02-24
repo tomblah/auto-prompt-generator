@@ -76,7 +76,7 @@ assemble-prompt() {
             else
                 file_content=$(cat "$TODO_FILE")
             fi
-            # For the primary file, use Perl to replace only the first occurrence of the special TODO marker.
+            # For the primary file, use awk to keep only the first occurrence of the special TODO marker.
             file_content=$(echo "$file_content" | awk 'BEGIN {found=0} { if ($0 ~ /^[ \t]*\/\/[ \t]*TODO: - /) { if (found==0) { print; found=1 } } else { print } }')
             todo_block=$'\nThe contents of '"$todo_basename"$' is as follows:\n\n'"$file_content"$'\n\n'
             if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
@@ -97,6 +97,15 @@ assemble-prompt() {
         declare -a segment_files=()
         declare -a related_files=()
         declare -a other_files=()
+        
+        # NEW: Prioritized grouping for enclosed types from the TODO file.
+        # Source the new helper.
+        source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/extract-enclosed-types.sh"
+        local enclosed_types
+        enclosed_types=$(extract_enclosed_types "$TODO_FILE")
+        IFS=$'\n' read -r -d '' -a enclosed_type_array <<< "$enclosed_types"$'\0'
+        declare -a enclosed_files=()
+        
         while IFS= read -r file_path; do
             if [ -z "$file_path" ]; then
                 continue
@@ -109,12 +118,18 @@ assemble-prompt() {
             file_root="${base%.*}"
             candidate_segment=$(extract_first_segment "$file_path")
             
-            # NEW: Only treat as first-class if the TODO file contains the primary marker.
-            if grep -q "// TODO: - " "$TODO_FILE"; then
-                if echo "$instruction_content" | grep -qw "$file_root"; then
-                    first_class_files+=("$file_path")
-                    continue
+            # NEW: Check if this file matches any enclosed type.
+            for etype in "${enclosed_type_array[@]}"; do
+                if [[ "$file_root" == "$etype" ]] || [[ "$candidate_segment" == "$etype" ]]; then
+                    enclosed_files+=("$file_path")
+                    continue 2
                 fi
+            done
+            
+            # Existing grouping logic.
+            if grep -q "// TODO: - " "$TODO_FILE" && echo "$instruction_content" | grep -qw "$file_root"; then
+                first_class_files+=("$file_path")
+                continue
             fi
 
             if [[ "$todo_segment" == *"$candidate_segment"* ]] || [[ "$candidate_segment" == *"$todo_segment"* ]]; then
@@ -158,6 +173,44 @@ assemble-prompt() {
             fi
         done
         
+        # --- Process enclosed files (prioritized) ---
+        for file_path in "${enclosed_files[@]:-}"; do
+            if [ -z "$file_path" ]; then continue; fi
+            local file_basename file_content diff_output block block_length
+            file_basename=$(basename "$file_path")
+            if grep -qE '^[[:space:]]*//[[:space:]]*v' "$file_path"; then
+                file_content=$(filter-substring-markers "$file_path")
+            else
+                file_content=$(cat "$file_path")
+            fi
+            if [ "$file_path" != "$TODO_FILE" ]; then
+                file_content=$(remove_other_todo_markers "$file_content")
+            fi
+            block=$'\nThe contents of '"$file_basename"$' is as follows:\n\n'"$file_content"$'\n\n'
+            if [ -n "${DIFF_WITH_BRANCH:-}" ]; then
+                diff_output=$(get_diff_with_branch "$file_path")
+                if [ -n "$diff_output" ]; then
+                    block+="\n--------------------------------------------------\nThe diff for ${file_basename} (against branch ${DIFF_WITH_BRANCH}) is as follows:\n\n${diff_output}\n\n"
+                fi
+            fi
+            block+="\n--------------------------------------------------\n"
+            block_length=$(echo -n "$block" | wc -c | xargs)
+            if [ "${VERBOSE:-false}" = true ]; then
+                echo "[DEBUG] Processing (enclosed) $file_basename: block_length=$block_length, current_length=$current_length, CHOP_LIMIT=$CHOP_LIMIT" >&2
+            fi
+            if [ $((current_length + block_length)) -le "$CHOP_LIMIT" ]; then
+                clipboard_content+="$block"
+                current_length=$(( current_length + block_length ))
+                file_names+=("$file_basename")
+                file_blocks+=("$block")
+            else
+                chopped_files+=("$file_basename")
+                if [ "${VERBOSE:-false}" = true ]; then
+                    echo "[DEBUG] Excluded (enclosed) $file_basename (would exceed CHOP_LIMIT)" >&2
+                fi
+            fi
+        done
+        
         # --- Process segment files ---
         for file_path in "${segment_files[@]:-}"; do
             if [ -z "$file_path" ]; then continue; fi
@@ -185,7 +238,7 @@ assemble-prompt() {
             fi
             if [ $((current_length + block_length)) -le "$CHOP_LIMIT" ]; then
                 clipboard_content+="$block"
-                current_length=$((current_length + block_length))
+                current_length=$(( current_length + block_length ))
                 file_names+=("$file_basename")
                 file_blocks+=("$block")
             else
@@ -223,7 +276,7 @@ assemble-prompt() {
             fi
             if [ $((current_length + block_length)) -le "$CHOP_LIMIT" ]; then
                 clipboard_content+="$block"
-                current_length=$((current_length + block_length))
+                current_length=$(( current_length + block_length ))
                 file_names+=("$file_basename")
                 file_blocks+=("$block")
             else
@@ -261,7 +314,7 @@ assemble-prompt() {
             fi
             if [ $((current_length + block_length)) -le "$CHOP_LIMIT" ]; then
                 clipboard_content+="$block"
-                current_length=$((current_length + block_length))
+                current_length=$(( current_length + block_length ))
                 file_names+=("$file_basename")
                 file_blocks+=("$block")
             else
