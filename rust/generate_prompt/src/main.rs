@@ -4,7 +4,7 @@ use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command as ProcessCommand;
+use get_package_root::get_package_root; // Use the library function
 
 fn main() -> Result<()> {
     // Parse command-line arguments using Clap.
@@ -70,7 +70,7 @@ fn main() -> Result<()> {
     println!("--------------------------------------------------");
     println!("Current directory: {}", current_dir.display());
     
-    // Use binary name since it's in your PATH.
+    // Use external binary call for git root (unchanged for now).
     let git_root = run_command(&["get_git_root"], None)
         .context("Failed to determine Git root")?
         .trim()
@@ -106,10 +106,10 @@ fn main() -> Result<()> {
         std::process::exit(1);
     }
     // 4. Determine package scope.
-    let package_root = run_command(&["get_package_root", &file_path], None)
-        .unwrap_or_else(|_| "".to_string())
-        .trim()
-        .to_string();
+    // Instead of calling an external process, use the library function.
+    let package_root = get_package_root(Path::new(&file_path))
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "".to_string());
     let search_root = if force_global {
         println!("Force global enabled: using Git root for context");
         git_root.clone()
@@ -177,10 +177,9 @@ fn main() -> Result<()> {
                 .context(format!("Failed to open found files list at {}", found_files_path_str))?;
             writeln!(f, "{}", file_path).context("Failed to append TODO file")?;
         }
-        // If slim mode is enabled, filter the file list.
+        // If exclusion flags are provided, filter the file list.
         let mut found_files = fs::read_to_string(&found_files_path)
             .context("Failed to read found files list")?;
-        // Apply file exclusions.
         if !excludes.is_empty() {
             println!("Excluding files matching: {:?}", excludes);
             let mut args = vec!["filter_excluded_files", found_files_path.to_str().unwrap()];
@@ -260,7 +259,6 @@ fn main() -> Result<()> {
     // NB: > 2 b/c there's another // TODO: - marker in the CTA
     if marker_lines.len() > 2 {
         eprintln!("Multiple {} markers found. Exiting.", marker);
-        // Print all marker lines except the last one (the CTA), trimming each line.
         for line in marker_lines.iter().take(marker_lines.len() - 1) {
             eprintln!("{}", line.trim());
         }
@@ -280,15 +278,13 @@ fn main() -> Result<()> {
 }
 
 /// Helper function to run an external command and capture its stdout.
-/// `args` is the list of command and its arguments.
-/// `envs` (if provided) is a slice of (KEY, VALUE) pairs to set for the command.
 fn run_command(args: &[&str], envs: Option<&[(&str, &str)]>) -> Result<String> {
     if args.is_empty() {
         bail!("No command provided");
     }
     let cmd = args[0];
     let cmd_args = &args[1..];
-    let mut command = ProcessCommand::new(cmd);
+    let mut command = std::process::Command::new(cmd);
     command.args(cmd_args);
     if let Some(env_vars) = envs {
         for &(key, value) in env_vars {
