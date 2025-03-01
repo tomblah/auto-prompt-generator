@@ -18,6 +18,8 @@ use diff_with_branch::run_diff;
 use filter_excluded_files::filter_excluded_files_lines;
 // NEW: Use the extract_types library function directly.
 use extract_types::extract_types_from_file;
+// NEW: Import the refactored filter_files_singular library.
+use filter_files_singular;
 
 fn main() -> Result<()> {
     // Parse command-line arguments using Clap.
@@ -152,15 +154,9 @@ fn main() -> Result<()> {
     let found_files_path: PathBuf;
     if singular {
         println!("Singular mode enabled: only including the TODO file");
-        found_files_path = {
-            let mut temp = tempfile::NamedTempFile::new()
-                .context("Failed to create temporary file for singular mode")?;
-            writeln!(temp, "{}", file_path)
-                .context("Failed to write TODO file in singular mode")?;
-            temp.into_temp_path()
-                .keep()
-                .context("Failed to persist singular file list")?
-        };
+        found_files_path = filter_files_singular::create_todo_temp_file(&file_path)
+            .map_err(|e| anyhow::anyhow!(e))
+            .context("Failed to create singular temp file")?;
     } else {
         // Instead of invoking an external command for extract_types,
         // we now call the library function directly.

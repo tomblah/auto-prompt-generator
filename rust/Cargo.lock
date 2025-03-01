@@ -318,6 +318,7 @@ dependencies = [
  "extract_instruction_content",
  "extract_types",
  "filter_excluded_files",
+ "filter_files_singular",
  "filter_substring_markers",
  "find_prompt_instruction",
  "get_git_root",
