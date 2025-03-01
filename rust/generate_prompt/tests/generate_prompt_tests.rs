@@ -112,28 +112,40 @@ mod tests {
         let fake_git_root = TempDir::new().unwrap();
         let fake_git_root_path = fake_git_root.path().to_str().unwrap();
 
+        // Dummy command for get_git_root returns our fake Git root.
         create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
+        
+        // Create a TODO file in the fake Git root with expected content.
         let todo_file = format!("{}/TODO.swift", fake_git_root_path);
-        // Create the TODO file with expected content.
         fs::write(&todo_file, "   // TODO: - Fix bug").unwrap();
+        
+        // Dummy command for find_prompt_instruction returns the TODO file.
         create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
+        // Dummy command for get_package_root.
         create_dummy_executable(&temp_dir, "get_package_root", "");
+        // Dummy command for extract_instruction_content returns the TODO file content.
         create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Fix bug");
 
         // IMPORTANT: Force the instruction file override.
         env::set_var("GET_INSTRUCTION_FILE", &todo_file);
 
-        // Create a dummy types file.
+        // Create a dummy types file that includes "TypeA".
         let types_file_path = temp_dir.path().join("types.txt");
         fs::write(&types_file_path, "TypeA").unwrap();
+        // Dummy command for extract_types returns the path to the types file.
         create_dummy_executable(&temp_dir, "extract_types", types_file_path.to_str().unwrap());
 
-        // Simulate two definition files.
-        let def_files_output = format!("{}/Definition1.swift\n{}/Definition2.swift", fake_git_root_path, fake_git_root_path);
-        create_dummy_executable(&temp_dir, "find_definition_files", &def_files_output);
-        // Dummy filter_excluded_files is no longer used (we now use the library), so this dummy can be present or omitted.
+        // Instead of using a dummy executable for find_definition_files,
+        // create two actual Swift files with definitions for TypeA.
+        let def_file1 = fake_git_root.path().join("Definition1.swift");
+        fs::write(&def_file1, "class TypeA {}").unwrap();
+        let def_file2 = fake_git_root.path().join("Definition2.swift");
+        fs::write(&def_file2, "struct TypeA {}").unwrap();
+
+        // Dummy command for assemble_prompt.
         create_dummy_executable(&temp_dir, "assemble_prompt", "dummy");
 
+        // Prepend temp_dir to PATH and disable clipboard copying.
         let original_path = env::var("PATH").unwrap();
         env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
         env::set_var("DISABLE_PBCOPY", "1");

@@ -174,9 +174,9 @@ fn main() -> Result<()> {
         // For find_definition_files, call the library function directly.
         let found_files_set = find_definition_files(
             Path::new(&types_file_path),
-            Path::new(search_root),
+            search_root.as_path(),
         )
-        .context("Failed to find definition files")?;
+        .map_err(|e| anyhow::anyhow!("Failed to find definition files: {}", e))?;
         let def_files_content = found_files_set
             .into_iter()
             .map(|p| p.display().to_string())
