@@ -159,8 +159,8 @@ mod tests {
 
         create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
         let todo_file = format!("{}/TODO.swift", fake_git_root_path);
-        // Create the TODO file with expected content.
-        fs::write(&todo_file, "   // TODO: - Fix bug").unwrap();
+        // Update: Include a type declaration so the library can extract "MyType".
+        fs::write(&todo_file, "class MyType {}\n   // TODO: - Fix bug").unwrap();
         create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
         create_dummy_executable(&temp_dir, "get_package_root", "");
         create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Fix bug");
@@ -175,8 +175,7 @@ mod tests {
         create_dummy_executable(&temp_dir, "find_definition_files", &def_file);
         create_dummy_executable(&temp_dir, "filter_files_singular", &todo_file);
 
-        // For including references.
-        create_dummy_executable(&temp_dir, "extract_enclosing_type", "MyType");
+        // Note: We no longer need a dummy for "extract_enclosing_type" because the library is used.
         // Simulate that find_referencing_files returns one referencing file.
         create_dummy_executable(&temp_dir, "find_referencing_files", &format!("{}/Ref1.swift", fake_git_root_path));
         create_dummy_executable(&temp_dir, "assemble_prompt", "dummy");

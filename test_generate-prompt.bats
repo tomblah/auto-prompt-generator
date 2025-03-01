@@ -1337,16 +1337,6 @@ EOF
  
 # --- New tests for --include-references functionality using Rust binaries ---
  
-@test "extract_enclosing_type helper extracts the correct type from a Swift file" {
-    # Create a temporary file with a type definition and a TODO instruction.
-    echo "class MySpecialClass {}" > tempTodo.swift
-    echo "// TODO: - Implement feature" >> tempTodo.swift
-    run "$TMP_DIR/rust/target/release/extract_enclosing_type" "tempTodo.swift"
-    [ "$status" -eq 0 ]
-    [ "$output" = "MySpecialClass" ]
-    rm tempTodo.swift
-}
- 
 @test "find-referencing-files helper finds referencing files for a given type" {
   # Create two files: one that references the type and one that does not.
   echo "let instance = MySpecialClass()" > tempRef.swift
