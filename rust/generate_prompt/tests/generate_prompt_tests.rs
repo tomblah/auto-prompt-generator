@@ -312,28 +312,36 @@ mod additional_tests {
         let fake_git_root = TempDir::new().unwrap();
         let fake_git_root_path = fake_git_root.path().to_str().unwrap();
 
-        // Basic dummy commands.
-        create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
+        // Force the Git root to be our fake directory.
+        env::set_var("GET_GIT_ROOT", fake_git_root_path);
+
+        // Create a TODO file in the fake Git root that contains a type declaration.
+        // This will allow extract_types_from_file to extract "TypeExclude" along with tokens from the TODO comment.
         let todo_file = format!("{}/TODO.swift", fake_git_root_path);
-        // Create the TODO file with expected content.
-        fs::write(&todo_file, "   // TODO: - Exclude test").unwrap();
+        fs::write(
+            &todo_file,
+            "class TypeExclude {\n    // TODO: - Exclude test\n}"
+        ).unwrap();
+        // Force the instruction file override.
+        env::set_var("GET_INSTRUCTION_FILE", &todo_file);
+
+        // Set up dummy commands.
+        create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
         create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
         create_dummy_executable(&temp_dir, "get_package_root", "");
-        create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Exclude test");
+        create_dummy_executable(
+            &temp_dir,
+            "extract_instruction_content",
+            "class TypeExclude {\n    // TODO: - Exclude test\n}"
+        );
 
-        // Create a dummy types file that lists the type we want to search for.
-        let types_file_path = temp_dir.path().join("types.txt");
-        fs::write(&types_file_path, "TypeExclude").unwrap();
-        create_dummy_executable(&temp_dir, "extract_types", types_file_path.to_str().unwrap());
-
-        // Instead of a dummy "find_definition_files" command, create two actual Swift files
-        // in the fake Git root that contain definitions for TypeExclude.
+        // Create two actual Swift files in the fake Git root that define TypeExclude.
         let def_file1 = format!("{}/Definition1.swift", fake_git_root_path);
         let def_file2 = format!("{}/Definition2.swift", fake_git_root_path);
         fs::write(&def_file1, "class TypeExclude {}").unwrap();
         fs::write(&def_file2, "struct TypeExclude {}").unwrap();
 
-        // Dummy assemble_prompt.
+        // Dummy assemble_prompt command.
         create_dummy_executable(&temp_dir, "assemble_prompt", "dummy");
 
         // Update PATH to include our dummy executables and disable clipboard copying.
@@ -341,14 +349,14 @@ mod additional_tests {
         env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
         env::set_var("DISABLE_PBCOPY", "1");
 
-        // Pass multiple exclusion flags.
+        // Run generate_prompt with exclusion flags.
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
         cmd.args(&["--exclude", "ExcludePattern", "--exclude", "AnotherPattern"]);
 
         cmd.assert()
             .success()
             .stdout(predicate::str::contains("Excluding files matching:"))
-            // We now expect that the definitions found in the repository are "Definition1.swift" and "Definition2.swift".
+            // Assert that the final file list includes our definition files.
             .stdout(predicate::str::contains("Definition1.swift"))
             .stdout(predicate::str::contains("Definition2.swift"));
     }
