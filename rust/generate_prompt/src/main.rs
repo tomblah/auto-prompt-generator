@@ -11,6 +11,8 @@ use filter_substring_markers::filter_substring_markers;
 
 // NEW: Import the get_search_roots function from the newly refactored library.
 use get_search_roots::get_search_roots;
+// NEW: Import get_git_root library function instead of calling an external binary.
+use get_git_root::get_git_root;
 
 fn main() -> Result<()> {
     // Parse command-line arguments using Clap.
@@ -75,11 +77,8 @@ fn main() -> Result<()> {
     println!("--------------------------------------------------");
     println!("Current directory: {}", current_dir.display());
 
-    // Use external binary call for git root.
-    let git_root = run_command(&["get_git_root"], None)
-        .context("Failed to determine Git root")?
-        .trim()
-        .to_string();
+    // Use the library function to determine the Git root.
+    let git_root = get_git_root().expect("Failed to determine Git root");
     println!("Git root: {}", git_root);
     println!("--------------------------------------------------");
 
