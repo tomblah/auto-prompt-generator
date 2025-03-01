@@ -22,6 +22,7 @@ filter_files_singular = { path = "../filter_files_singular" }
 unescape_newlines = { path = "../unescape_newlines" }
 extract_enclosing_type = { path = "../extract_enclosing_type" }
 find_referencing_files = { path = "../find_referencing_files" }
+extract_enclosing_function = { path = "../extract_enclosing_function" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

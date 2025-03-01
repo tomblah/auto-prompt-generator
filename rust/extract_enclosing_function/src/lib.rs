@@ -1,14 +1,12 @@
 use regex::Regex;
-use std::env;
 use std::fs;
-use std::process;
 
 /// Returns the index (zero-based) of the first line that contains "// TODO: - ", or None if not found.
 pub fn todo_index(content: &str) -> Option<usize> {
     content.lines().position(|line| line.contains("// TODO: - "))
 }
 
-/// Given the content and the index of the TODO line, returns true if that TODO is inside a marker block.
+/// Returns true if the TODO is already inside a marker block.
 pub fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
     let lines: Vec<&str> = content.lines().collect();
     let mut marker_depth = 0;
@@ -28,23 +26,18 @@ pub fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
     marker_depth > 0
 }
 
-/// Finds the index of the enclosing function (or computed property) definition that should contain the TODO.
-///
-/// This function now limits its primary search to the last 20 lines before the TODO,
-/// looking for a line that contains one of the following:
-/// - an assignment‑style function header ("= function(")
-/// - a cloud code header ("Parse.Cloud.define(")
-/// - an async function header ("async function")
-/// - a Swift function header ("func ")
-/// - a Swift computed property header. We now check if the trimmed line starts with one of:
-///   "var ", "private var ", "public var ", "internal var ", or "fileprivate var ",
-///   and that it contains "{" and does not contain "=".
-///
-/// If none is found in that window, it falls back to scanning backwards using a regex.
+/// Returns true if the file contains both the opening ("// v") and closing ("// ^") markers.
+pub fn file_uses_markers(content: &str) -> bool {
+    let has_open = content.lines().any(|line| line.trim() == "// v");
+    let has_close = content.lines().any(|line| line.trim() == "// ^");
+    has_open && has_close
+}
+
+/// Finds the starting index of the enclosing function block using a simple heuristic.
 pub fn find_enclosing_function_start(content: &str, todo_idx: usize) -> Option<usize> {
     let lines: Vec<&str> = content.lines().collect();
     let start_search = if todo_idx >= 20 { todo_idx - 20 } else { 0 };
-    if let Some(idx) = lines[start_search..=todo_idx].iter().rposition(|line| {
+    lines[start_search..=todo_idx].iter().rposition(|line| {
         let trimmed = line.trim_start();
         trimmed.contains("= function(")
             || trimmed.contains("Parse.Cloud.define(")
@@ -59,23 +52,10 @@ pub fn find_enclosing_function_start(content: &str, todo_idx: usize) -> Option<u
                 && line.contains("{")
                 && !line.contains("=")
             )
-    }) {
-        return Some(start_search + idx);
-    }
-    // Fallback regex: allow for Swift computed properties with optional modifiers.
-    let re = Regex::new(
-        r"(?i)(function\b|=>|Parse\.Cloud\.define\s*\(|func\b|(?:(?:private|public|internal|fileprivate)\s+)?var\s+\w+\s*:\s*[\w<>, ?]+\s*\{)"
-    ).expect("Invalid regex");
-    for i in (0..=todo_idx).rev() {
-        if re.is_match(lines[i]) {
-            return Some(i);
-        }
-    }
-    None
+    }).map(|idx| start_search + idx)
 }
 
-/// Extracts the block of code starting from `start_index` using a simple brace counting heuristic.
-/// It returns the extracted block as a String.
+/// Extracts a block of code starting from `start_index` using a brace-counting heuristic.
 pub fn extract_block(content: &str, start_index: usize) -> String {
     let lines: Vec<&str> = content.lines().collect();
     let mut found_opening = false;
@@ -102,11 +82,7 @@ pub fn extract_block(content: &str, start_index: usize) -> String {
     extracted_lines.join("\n")
 }
 
-/// Combines the above functions to extract the enclosing block (if any) that contains the TODO.
-/// Returns Some(block) if extraction is successful; otherwise returns None.
-///
-/// **Note:** The extraction only proceeds if the file contains both the opening ("// v")
-/// and closing ("// ^") markers, and the TODO is not already inside a marker block.
+/// Public API: Extracts the enclosing block for the TODO, if applicable.
 pub fn extract_enclosing_block(content: &str) -> Option<String> {
     if !file_uses_markers(content) {
         return None;
@@ -117,32 +93,6 @@ pub fn extract_enclosing_block(content: &str) -> Option<String> {
     }
     let start_index = find_enclosing_function_start(content, todo_idx)?;
     Some(extract_block(content, start_index))
-}
-
-/// Returns true if the file contains both the opening marker ("// v")
-/// and the closing marker ("// ^").
-pub fn file_uses_markers(content: &str) -> bool {
-    let has_open = content.lines().any(|line| line.trim() == "// v");
-    let has_close = content.lines().any(|line| line.trim() == "// ^");
-    has_open && has_close
-}
-
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        eprintln!("Usage: {} <file_path>", args[0]);
-        process::exit(1);
-    }
-    let file_path = &args[1];
-
-    let content = fs::read_to_string(file_path).unwrap_or_else(|err| {
-        eprintln!("Error reading file {}: {}", file_path, err);
-        process::exit(1);
-    });
-
-    if let Some(block) = extract_enclosing_block(&content) {
-        println!("{}", block);
-    }
 }
 
 #[cfg(test)]
