@@ -6,8 +6,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use get_package_root::get_package_root;
-// New import: call extract_instruction_content directly as a library function.
 use extract_instruction_content::extract_instruction_content;
+// Now that filter_substring_markers is a library, we import it.
+// (We’re not yet integrating it into generate_prompt’s logic.)
+use filter_substring_markers::filter_substring_markers;
 
 fn main() -> Result<()> {
     // Parse command-line arguments using Clap.
@@ -59,8 +61,8 @@ fn main() -> Result<()> {
     let singular = *matches.get_one::<bool>("singular").unwrap();
     let force_global = *matches.get_one::<bool>("force_global").unwrap();
     let include_references = *matches.get_one::<bool>("include_references").unwrap();
-    let diff_branch = matches.get_one::<String>("diff_with").map(String::as_str);
-    let verbose = *matches.get_one::<bool>("verbose").unwrap();
+    let _diff_branch = matches.get_one::<String>("diff_with").map(String::as_str);
+    let _verbose = *matches.get_one::<bool>("verbose").unwrap();
     let excludes: Vec<String> = matches
         .get_many::<String>("exclude")
         .unwrap_or_default()
@@ -69,18 +71,17 @@ fn main() -> Result<()> {
 
     // 1. Save the current directory and determine the Git root.
     let current_dir = env::current_dir().context("Failed to get current directory")?;
-    
     println!("--------------------------------------------------");
     println!("Current directory: {}", current_dir.display());
-    
-    // Use external binary call for git root (unchanged for now).
+
+    // Use external binary call for git root.
     let git_root = run_command(&["get_git_root"], None)
         .context("Failed to determine Git root")?
         .trim()
         .to_string();
     println!("Git root: {}", git_root);
     println!("--------------------------------------------------");
-    
+
     env::set_current_dir(&git_root).context("Failed to change directory to Git root")?;
 
     // 2. Locate the TODO instruction file.
@@ -103,13 +104,12 @@ fn main() -> Result<()> {
     if file_path.ends_with(".js") && !singular {
         eprintln!("WARNING: JavaScript support is beta – enforcing singular mode.");
     }
-    // If --include-references is set but the file isn't Swift, exit with an error.
     if include_references && !file_path.ends_with(".swift") {
         eprintln!("Error: --include-references is only supported for Swift files.");
         std::process::exit(1);
     }
+
     // 4. Determine package scope.
-    // Instead of calling an external process, use the library function.
     let package_root = get_package_root(Path::new(&file_path))
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "".to_string());
@@ -133,7 +133,6 @@ fn main() -> Result<()> {
     let found_files_path: PathBuf;
     if singular {
         println!("Singular mode enabled: only including the TODO file");
-        // Create a temporary file containing only the TODO file path.
         found_files_path = {
             let mut temp = tempfile::NamedTempFile::new()
                 .context("Failed to create temporary file for singular mode")?;
@@ -144,10 +143,8 @@ fn main() -> Result<()> {
                 .context("Failed to persist singular file list")?
         };
     } else {
-        // Non-singular mode:
         let types_file = run_command(&["extract_types", &file_path], None)
             .context("Failed to extract types")?;
-        // Read and print the contents of the types file.
         let types_path = types_file.trim();
         let types_content = fs::read_to_string(types_path)
             .context("Failed to read types file")?;
@@ -160,7 +157,6 @@ fn main() -> Result<()> {
             None,
         )
         .context("Failed to find definition files")?;
-        // Create a temporary file and write the found files content into it.
         found_files_path = {
             let mut temp = tempfile::NamedTempFile::new()
                 .context("Failed to create temporary file for found files")?;
@@ -170,7 +166,6 @@ fn main() -> Result<()> {
                 .keep()
                 .context("Failed to persist temporary found files list")?
         };
-        // Append the TODO file to this temporary file.
         {
             use std::fs::OpenOptions;
             let found_files_path_str = found_files_path.to_string_lossy();
@@ -180,8 +175,8 @@ fn main() -> Result<()> {
                 .context(format!("Failed to open found files list at {}", found_files_path_str))?;
             writeln!(f, "{}", file_path).context("Failed to append TODO file")?;
         }
-        // If exclusion flags are provided, filter the file list.
-        let mut found_files = fs::read_to_string(&found_files_path)
+        // (Any unused assignments are left as-is to preserve original structure.)
+        let _found_files = fs::read_to_string(&found_files_path)
             .context("Failed to read found files list")?;
         if !excludes.is_empty() {
             println!("Excluding files matching: {:?}", excludes);
@@ -189,7 +184,7 @@ fn main() -> Result<()> {
             for excl in &excludes {
                 args.push(excl);
             }
-            found_files = run_command(&args, None)
+            let found_files = run_command(&args, None)
                 .context("Failed to filter excluded files")?;
             fs::write(&found_files_path, found_files.trim())
                 .context("Failed to write final excluded list")?;
@@ -237,8 +232,8 @@ fn main() -> Result<()> {
     file_paths.dedup();
     println!("--------------------------------------------------");
     println!("Files (final list):");
-    for file in file_paths {
-        let basename = Path::new(&file)
+    for file in &file_paths {
+        let basename = Path::new(file)
             .file_name()
             .unwrap_or_default()
             .to_string_lossy()
@@ -246,20 +241,19 @@ fn main() -> Result<()> {
         println!("{}", basename);
     }
 
-    // 9. Assemble the final prompt.
+    // 9. Assemble the final prompt by calling the external assemble_prompt binary.
     let final_prompt = run_command(
         &["assemble_prompt", found_files_path.to_str().unwrap(), instruction_content.trim()],
         None,
     )
     .context("Failed to assemble prompt")?;
-    
+
+    // Check for multiple "// TODO: -" markers.
     let marker = "// TODO: -";
     let marker_lines: Vec<&str> = final_prompt
         .lines()
         .filter(|line| line.contains(marker))
         .collect();
-
-    // NB: > 2 b/c there's another // TODO: - marker in the CTA
     if marker_lines.len() > 2 {
         eprintln!("Multiple {} markers found. Exiting.", marker);
         for line in marker_lines.iter().take(marker_lines.len() - 1) {
@@ -276,7 +270,28 @@ fn main() -> Result<()> {
     }
     println!("--------------------------------------------------\n");
     println!("Prompt has been copied to clipboard.");
-    
+
+    // Copy final prompt to clipboard if DISABLE_PBCOPY is not set.
+    if env::var("DISABLE_PBCOPY").is_err() {
+        use std::process::{Command, Stdio};
+        let mut pbcopy = Command::new("pbcopy")
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap_or_else(|err| {
+                eprintln!("Error running pbcopy: {}", err);
+                std::process::exit(1);
+            });
+        {
+            let pb_stdin = pbcopy.stdin.as_mut().expect("Failed to open pbcopy stdin");
+            pb_stdin
+                .write_all(unescape_newlines(&final_prompt).as_bytes())
+                .expect("Failed to write to pbcopy");
+        }
+        pbcopy.wait().expect("Failed to wait on pbcopy");
+    } else {
+        eprintln!("DISABLE_PBCOPY is set; skipping clipboard copy.");
+    }
+
     Ok(())
 }
 
@@ -302,4 +317,9 @@ fn run_command(args: &[&str], envs: Option<&[(&str, &str)]>) -> Result<String, a
     }
     let stdout = String::from_utf8(output.stdout).context("Output not valid UTF-8")?;
     Ok(stdout)
+}
+
+/// Unescape literal "\n" sequences to actual newlines.
+fn unescape_newlines(input: &str) -> String {
+    input.replace("\\n", "\n")
 }
