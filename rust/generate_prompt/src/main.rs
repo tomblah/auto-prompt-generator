@@ -20,6 +20,8 @@ use filter_excluded_files::filter_excluded_files_lines;
 use extract_types::extract_types_from_file;
 // NEW: Import the refactored filter_files_singular library.
 use filter_files_singular;
+// NEW: Import the find_definition_files library directly.
+use find_definition_files::find_definition_files;
 
 fn main() -> Result<()> {
     // Parse command-line arguments using Clap.
@@ -169,16 +171,18 @@ fn main() -> Result<()> {
         println!("{}", types_content.trim());
         println!("--------------------------------------------------");
 
-        // For find_definition_files, we use the types file directly.
-        let def_files_content = run_command(
-            &[
-                "find_definition_files",
-                types_file_path.as_str(),
-                search_root.to_str().unwrap(),
-            ],
-            None,
+        // For find_definition_files, call the library function directly.
+        let found_files_set = find_definition_files(
+            Path::new(&types_file_path),
+            Path::new(search_root),
         )
         .context("Failed to find definition files")?;
+        let def_files_content = found_files_set
+            .into_iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+
         found_files_path = {
             let mut temp = tempfile::NamedTempFile::new()
                 .context("Failed to create temporary file for found files")?;
