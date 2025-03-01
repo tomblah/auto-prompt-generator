@@ -1,3 +1,5 @@
+// rust/generate_prompt/src/main.rs
+
 use anyhow::{bail, Context, Result};
 use clap::{Arg, Command};
 use std::env;
@@ -24,6 +26,8 @@ use extract_types::extract_types_from_file;
 use filter_files_singular;
 // NEW: Import extract_enclosing_type as a library instead of calling an external binary.
 use extract_enclosing_type::extract_enclosing_type;
+// NEW: Import the refactored find_referencing_files library.
+use find_referencing_files;
 
 fn main() -> Result<()> {
     // Parse command-line arguments using Clap.
@@ -232,22 +236,19 @@ fn main() -> Result<()> {
         if !enclosing_type.is_empty() {
             println!("Enclosing type: {}", enclosing_type);
             println!("Searching for files referencing {}", enclosing_type);
-            let referencing_files = run_command(
-                &[
-                    "find_referencing_files",
-                    &enclosing_type,
-                    search_root.to_str().unwrap(),
-                ],
-                None,
+            // NEW: call the refactored library function for find_referencing_files directly.
+            let referencing_files = find_referencing_files::find_files_referencing(
+                &enclosing_type,
+                search_root.to_str().unwrap(),
             )
-            .context("Failed to find referencing files")?;
+            .map_err(|e| anyhow::anyhow!("Failed to find referencing files: {}", e))?;
             {
                 use std::fs::OpenOptions;
                 let mut f = OpenOptions::new()
                     .append(true)
                     .open(&found_files_path)
                     .context("Failed to open found files list for appending referencing files")?;
-                writeln!(f, "{}", referencing_files.trim())
+                writeln!(f, "{}", referencing_files.join("\n"))
                     .context("Failed to append referencing files")?;
             }
         } else {

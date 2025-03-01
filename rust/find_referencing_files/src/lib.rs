@@ -1,14 +1,34 @@
+// rust/find_referencing_files/src/lib.rs
+
 use regex::Regex;
-use std::env;
 use std::fs;
 use std::path::Component;
 use walkdir::WalkDir;
 
 /// Searches the given directory (and its subdirectories) for files with allowed
-/// extensions that contain the given type name as a whole word. Files inside directories
-/// named "Pods" or ".build" are skipped.
+/// extensions that contain the given type name as a whole word.
+/// Files inside directories named "Pods" or ".build" are skipped.
 ///
-/// Returns a vector of matching file paths.
+/// # Arguments
+///
+/// * `type_name` - The type name to search for (as a whole word).
+/// * `search_root` - The root directory to begin the search.
+///
+/// # Returns
+///
+/// A `Result` containing a vector of matching file paths as `String` on success,
+/// or an error if something goes wrong.
+///
+/// # Examples
+///
+/// ```rust
+/// use find_referencing_files::find_files_referencing;
+///
+/// let files = find_files_referencing("MyType", "/path/to/search").unwrap();
+/// for file in files {
+///     println!("{}", file);
+/// }
+/// ```
 pub fn find_files_referencing(
     type_name: &str,
     search_root: &str,
@@ -22,7 +42,7 @@ pub fn find_files_referencing(
     let mut matches = Vec::new();
 
     // Recursively traverse the search_root directory.
-    for entry in WalkDir::new(search_root).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(search_root).into_iter().filter_map(Result::ok) {
         if !entry.file_type().is_file() {
             continue;
         }
@@ -62,28 +82,6 @@ pub fn find_files_referencing(
 
     Ok(matches)
 }
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Expect exactly two arguments: <type_name> and <search_root>
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 3 {
-        eprintln!("Usage: {} <type_name> <search_root>", args[0]);
-        std::process::exit(1);
-    }
-    let type_name = &args[1];
-    let search_root = &args[2];
-
-    // Find all files referencing the type.
-    let matching_files = find_files_referencing(type_name, search_root)?;
-
-    // Print each file path directly to stdout.
-    for file in matching_files {
-        println!("{}", file);
-    }
-    
-    Ok(())
-}
-
 
 #[cfg(test)]
 mod tests {
