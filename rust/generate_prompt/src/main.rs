@@ -197,7 +197,7 @@ fn main() -> Result<()> {
             Path::new(&types_file_path),
             search_root.as_path(),
         )
-        .map_err(|e| anyhow::anyhow!(e))
+        .map_err(|e| anyhow::Error::msg(e.to_string()))
         .context("Failed to find definition files")?;
         let mut def_files_vec: Vec<_> = def_files_set.into_iter().collect();
         def_files_vec.sort();
