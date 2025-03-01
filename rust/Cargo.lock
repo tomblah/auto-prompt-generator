@@ -76,6 +76,7 @@ dependencies = [
  "predicates 2.1.5",
  "prompt_file_processor",
  "tempfile",
+ "unescape_newlines",
  "which",
 ]
 
@@ -327,6 +328,7 @@ dependencies = [
  "predicates 2.1.5",
  "prompt_file_processor",
  "tempfile",
+ "unescape_newlines",
  "which",
 ]
 
