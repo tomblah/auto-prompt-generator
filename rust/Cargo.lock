@@ -312,6 +312,7 @@ dependencies = [
  "clap",
  "extract_instruction_content",
  "filter_substring_markers",
+ "get_git_root",
  "get_package_root",
  "get_search_roots",
  "predicates 2.1.5",
