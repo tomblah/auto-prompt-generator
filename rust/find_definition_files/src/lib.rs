@@ -95,3 +95,74 @@ pub fn find_definition_files(
     }
     Ok(found_files)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::Path;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_allowed_extension() {
+        assert!(allowed_extension(Path::new("test.swift")));
+        assert!(allowed_extension(Path::new("test.h")));
+        assert!(allowed_extension(Path::new("test.m")));
+        assert!(allowed_extension(Path::new("test.js")));
+        assert!(!allowed_extension(Path::new("test.txt")));
+    }
+
+    #[test]
+    fn test_file_in_excluded_dir() {
+        let path1 = Path::new("/home/user/Pods/file.swift");
+        let path2 = Path::new("/home/user/.build/file.swift");
+        let path3 = Path::new("/home/user/src/file.swift");
+        assert!(file_in_excluded_dir(path1));
+        assert!(file_in_excluded_dir(path2));
+        assert!(!file_in_excluded_dir(path3));
+    }
+
+    #[test]
+    fn test_get_search_roots_when_root_is_package() {
+        let dir = tempdir().unwrap();
+        // Create a Package.swift file in the temporary directory.
+        let package_path = dir.path().join("Package.swift");
+        fs::write(&package_path, "swift package content").unwrap();
+
+        let roots = get_search_roots(dir.path());
+        // When the root is a Swift package, get_search_roots should return only the root.
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots[0], dir.path());
+    }
+
+    #[test]
+    fn test_find_definition_files() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create a types file containing a type name.
+        let types_file_path = root.join("types.txt");
+        fs::write(&types_file_path, "MyType\n").unwrap();
+
+        // Create a file that contains a valid definition: "class MyType"
+        let good_file_path = root.join("good.swift");
+        fs::write(&good_file_path, "import Foundation\nclass MyType {}\n").unwrap();
+
+        // Create a file that does not contain any matching definition.
+        let bad_file_path = root.join("bad.swift");
+        fs::write(&bad_file_path, "import Foundation\n// no definitions here\n").unwrap();
+
+        // Create a file inside an excluded directory ("Pods").
+        let excluded_dir = root.join("Pods");
+        fs::create_dir_all(&excluded_dir).unwrap();
+        let excluded_file_path = excluded_dir.join("excluded.swift");
+        fs::write(&excluded_file_path, "class MyType {}\n").unwrap();
+
+        let found = find_definition_files(&types_file_path, root).expect("Should succeed");
+
+        // Only the good_file should be detected.
+        assert!(found.contains(&good_file_path));
+        assert!(!found.contains(&bad_file_path));
+        assert!(!found.contains(&excluded_file_path));
+    }
+}
