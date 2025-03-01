@@ -1337,26 +1337,6 @@ EOF
  
 # --- New tests for --include-references functionality using Rust binaries ---
  
-@test "find-referencing-files helper finds referencing files for a given type" {
-  # Create two files: one that references the type and one that does not.
-  echo "let instance = MySpecialClass()" > tempRef.swift
-  echo "print(\"No reference here\")" > tempNonRef.swift
-
-  # Run the new Rust binary for finding referencing files.
-  run "./rust/target/release/find_referencing_files" "MySpecialClass" "."
-  [ "$status" -eq 0 ]
-
-  # Capture the output directly (which is now a list of file paths).
-  refList="$output"
-
-  # Verify that the list includes tempRef.swift but not tempNonRef.swift.
-  [[ "$refList" == *"tempRef.swift"* ]]
-  [[ "$refList" != *"tempNonRef.swift"* ]]
-
-  # Clean up only the test-created files.
-  rm tempRef.swift tempNonRef.swift
-}
- 
 @test "generate-prompt.sh with --include-references includes referencing files" {
     # Remove any default Test.swift so that our new TODO file is the only valid one.
     rm -f Test.swift

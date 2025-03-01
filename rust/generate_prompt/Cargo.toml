@@ -21,6 +21,7 @@ extract_types = { path = "../extract_types" }
 filter_files_singular = { path = "../filter_files_singular" }
 unescape_newlines = { path = "../unescape_newlines" }
 extract_enclosing_type = { path = "../extract_enclosing_type" }
+find_referencing_files = { path = "../find_referencing_files" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
