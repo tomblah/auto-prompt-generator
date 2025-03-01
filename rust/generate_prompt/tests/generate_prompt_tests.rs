@@ -321,21 +321,20 @@ mod tests {
 
         let _git_root_guard = EnvVarGuard::new("GET_GIT_ROOT", fake_git_root_path);
 
+        // Write a TODO file that includes a valid Swift type declaration.
         let todo_file = format!("{}/TODO.swift", fake_git_root_path);
-        fs::write(&todo_file, "   // TODO: - Fix bug").unwrap();
+        fs::write(&todo_file, "class TypeA {\n    // TODO: - Fix bug\n}").unwrap();
         let _instruction_guard = EnvVarGuard::new("GET_INSTRUCTION_FILE", &todo_file);
 
         create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
         create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
         create_dummy_executable(&temp_dir, "get_package_root", "");
-        create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Fix bug");
+        create_dummy_executable(&temp_dir, "extract_instruction_content", "class TypeA {\n    // TODO: - Fix bug\n}");
         
-        // Create a dummy types file with a type.
-        let types_file_path = temp_dir.path().join("types.txt");
-        fs::write(&types_file_path, "TypeA").unwrap();
-        create_dummy_executable(&temp_dir, "extract_types", types_file_path.to_str().unwrap());
+        // Create a dummy types file is not used since extract_types_from_file is called on the TODO file.
+        // Instead, the TODO file itself will be parsed for type tokens.
         
-        // Create two definition files in the fake Git root.
+        // Create two definition files in the fake Git root for TypeA.
         let def_file1 = format!("{}/Definition1.swift", fake_git_root_path);
         let def_file2 = format!("{}/Definition2.swift", fake_git_root_path);
         fs::write(&def_file1, "class TypeA {}").unwrap();
