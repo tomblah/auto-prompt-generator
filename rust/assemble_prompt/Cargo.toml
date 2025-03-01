@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 prompt_file_processor = { path = "../prompt_file_processor" }
 anyhow = { workspace = true }
-which = "4.3"
+which = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
