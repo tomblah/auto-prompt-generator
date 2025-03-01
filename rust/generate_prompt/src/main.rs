@@ -1,3 +1,5 @@
+// rust/generate_prompt/src/main.rs
+
 use anyhow::{bail, Context, Result};
 use clap::{Arg, Command};
 use std::env;
@@ -12,22 +14,21 @@ use extract_instruction_content::extract_instruction_content;
 use get_search_roots::get_search_roots;
 use get_git_root::get_git_root;
 use find_prompt_instruction::find_prompt_instruction_in_dir;
-// Use our library to process files.
 use prompt_file_processor::process_file;
-// Use the diff_with_branch library directly.
-use diff_with_branch::run_diff;
 // NEW: Use filter_excluded_files library directly.
 use filter_excluded_files::filter_excluded_files_lines;
-// NEW: Use the extract_types library function directly.
+// NEW: Use extract_types library function directly.
 use extract_types::extract_types_from_file;
 // NEW: Import the refactored filter_files_singular library.
 use filter_files_singular;
-// NEW: Import extract_enclosing_type as a library instead of calling an external binary.
+// NEW: Import extract_enclosing_type as a library.
 use extract_enclosing_type::extract_enclosing_type;
 // NEW: Import the refactored find_referencing_files library.
 use find_referencing_files;
 // NEW: Import extract_enclosing_function library.
 use extract_enclosing_function::extract_enclosing_block;
+// NEW: Import the find_definition_files library.
+use find_definition_files::find_definition_files;
 
 fn main() -> Result<()> {
     // Parse command-line arguments using Clap.
@@ -191,16 +192,21 @@ fn main() -> Result<()> {
         println!("{}", types_content.trim());
         println!("--------------------------------------------------");
 
-        // For find_definition_files, we use the types file directly.
-        let def_files_content = run_command(
-            &[
-                "find_definition_files",
-                types_file_path.as_str(),
-                search_root.to_str().unwrap(),
-            ],
-            None,
+        // Use the library function to find definition files.
+        let def_files_set = find_definition_files(
+            Path::new(&types_file_path),
+            search_root.as_path(),
         )
+        .map_err(|e| anyhow::anyhow!(e))
         .context("Failed to find definition files")?;
+        let mut def_files_vec: Vec<_> = def_files_set.into_iter().collect();
+        def_files_vec.sort();
+        let def_files_content = def_files_vec
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<String>>()
+            .join("\n");
+
         found_files_path = {
             let mut temp = tempfile::NamedTempFile::new()
                 .context("Failed to create temporary file for found files")?;
@@ -239,7 +245,6 @@ fn main() -> Result<()> {
     // 7. Optionally include referencing files.
     if include_references {
         println!("Including files that reference the enclosing type");
-        // Call the library function directly instead of invoking an external binary.
         let enclosing_type = match extract_enclosing_type(&file_path) {
             Ok(ty) => ty,
             Err(err) => {
@@ -250,7 +255,6 @@ fn main() -> Result<()> {
         if !enclosing_type.is_empty() {
             println!("Enclosing type: {}", enclosing_type);
             println!("Searching for files referencing {}", enclosing_type);
-            // NEW: call the refactored library function for find_referencing_files directly.
             let referencing_files = find_referencing_files::find_files_referencing(
                 &enclosing_type,
                 search_root.to_str().unwrap(),
@@ -304,7 +308,6 @@ fn main() -> Result<()> {
         )
         .context("Failed to assemble prompt")?
     } else {
-        // Fallback: assemble using library processing.
         let mut prompt = String::new();
         for file in &file_paths {
             let processed_content = match process_file(file, Some(&todo_file_basename)) {
