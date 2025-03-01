@@ -320,16 +320,23 @@ mod additional_tests {
         create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
         create_dummy_executable(&temp_dir, "get_package_root", "");
         create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Exclude test");
-        // Dummy types file.
+
+        // Create a dummy types file that lists the type we want to search for.
         let types_file_path = temp_dir.path().join("types.txt");
         fs::write(&types_file_path, "TypeExclude").unwrap();
         create_dummy_executable(&temp_dir, "extract_types", types_file_path.to_str().unwrap());
-        // Simulate two definition files.
-        let def_files_output = format!("{}/Definition1.swift\n{}/Definition2.swift", fake_git_root_path, fake_git_root_path);
-        create_dummy_executable(&temp_dir, "find_definition_files", &def_files_output);
-        // With the new filtering logic using the library, we now expect that the original definition names remain.
+
+        // Instead of a dummy "find_definition_files" command, create two actual Swift files
+        // in the fake Git root that contain definitions for TypeExclude.
+        let def_file1 = format!("{}/Definition1.swift", fake_git_root_path);
+        let def_file2 = format!("{}/Definition2.swift", fake_git_root_path);
+        fs::write(&def_file1, "class TypeExclude {}").unwrap();
+        fs::write(&def_file2, "struct TypeExclude {}").unwrap();
+
+        // Dummy assemble_prompt.
         create_dummy_executable(&temp_dir, "assemble_prompt", "dummy");
 
+        // Update PATH to include our dummy executables and disable clipboard copying.
         let original_path = env::var("PATH").unwrap();
         env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
         env::set_var("DISABLE_PBCOPY", "1");
@@ -341,8 +348,7 @@ mod additional_tests {
         cmd.assert()
             .success()
             .stdout(predicate::str::contains("Excluding files matching:"))
-            // Updated expectations: since the library filtering does not transform file names,
-            // the definitions remain as "Definition1.swift" and "Definition2.swift".
+            // We now expect that the definitions found in the repository are "Definition1.swift" and "Definition2.swift".
             .stdout(predicate::str::contains("Definition1.swift"))
             .stdout(predicate::str::contains("Definition2.swift"));
     }
