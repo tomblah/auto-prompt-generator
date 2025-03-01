@@ -1,3 +1,5 @@
+// rust/generate_prompt/src/main.rs
+
 use anyhow::{bail, Context, Result};
 use clap::{Arg, Command};
 use std::env;
@@ -191,16 +193,19 @@ fn main() -> Result<()> {
         println!("{}", types_content.trim());
         println!("--------------------------------------------------");
 
-        // For find_definition_files, we use the types file directly.
-        let def_files_content = run_command(
-            &[
-                "find_definition_files",
-                types_file_path.as_str(),
-                search_root.to_str().unwrap(),
-            ],
-            None,
+        // NEW: Use library function to find definition files instead of an external command.
+        use std::collections::BTreeSet;
+        let def_files_set: BTreeSet<PathBuf> = find_definition_files::find_definition_files(
+            Path::new(&types_file_path),
+            &search_root,
         )
-        .context("Failed to find definition files")?;
+        .map_err(|e| anyhow::anyhow!("Failed to find definition files: {}", e))?;
+        let def_files_content = def_files_set
+            .into_iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<String>>()
+            .join("\n");
+
         found_files_path = {
             let mut temp = tempfile::NamedTempFile::new()
                 .context("Failed to create temporary file for found files")?;
@@ -230,7 +235,7 @@ fn main() -> Result<()> {
                 .map(|line| line.trim().to_string())
                 .filter(|line| !line.is_empty())
                 .collect();
-            let filtered_lines = filter_excluded_files_lines(lines, &excludes);
+            let filtered_lines = filter_excluded_files::filter_excluded_files_lines(lines, &excludes);
             fs::write(&found_files_path, filtered_lines.join("\n"))
                 .context("Failed to write final excluded list")?;
         }
