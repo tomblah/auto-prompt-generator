@@ -5,9 +5,16 @@ use std::path::PathBuf;
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Performs the main logic: creates a unique temporary file, writes the given todo file path into it,
-/// and returns the path of the temporary file.
-fn run(todo_file: &str) -> Result<PathBuf, String> {
+/// Creates a unique temporary file containing the given TODO file path.
+///
+/// # Arguments
+///
+/// * `todo_file` - The TODO file content (or path) to write into the temporary file.
+///
+/// # Returns
+///
+/// A `Result` with the path to the temporary file on success, or an error message on failure.
+pub fn create_todo_temp_file(todo_file: &str) -> Result<PathBuf, String> {
     // Determine the system temporary directory.
     let mut temp_path = env::temp_dir();
 
@@ -20,31 +27,13 @@ fn run(todo_file: &str) -> Result<PathBuf, String> {
     let unique_filename = format!("filter_files_singular_{}_{}.tmp", pid, now);
     temp_path.push(unique_filename);
 
-    // Create the temporary file and write the todo_file path into it.
+    // Create the temporary file and write the TODO file content into it.
     let mut file = File::create(&temp_path)
         .map_err(|e| format!("Error creating temporary file: {}", e))?;
     writeln!(file, "{}", todo_file)
         .map_err(|e| format!("Error writing to temporary file: {}", e))?;
 
     Ok(temp_path)
-}
-
-fn main() {
-    // Expect exactly one argument: the TODO file path.
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        eprintln!("Usage: {} <todo_file>", args[0]);
-        process::exit(1);
-    }
-    let todo_file = &args[1];
-
-    match run(todo_file) {
-        Ok(path) => println!("{}", path.display()),
-        Err(e) => {
-            eprintln!("{}", e);
-            process::exit(1);
-        }
-    }
 }
 
 #[cfg(test)]
@@ -54,10 +43,10 @@ mod tests {
     use std::io::Read;
 
     #[test]
-    fn test_run_creates_temp_file_with_correct_content() {
+    fn test_create_todo_temp_file_creates_temp_file_with_correct_content() {
         let todo = "Test TODO content";
-        // Call the refactored run function.
-        let temp_file_path = run(todo).expect("run() should succeed");
+        // Call the refactored create_todo_temp_file function.
+        let temp_file_path = create_todo_temp_file(todo).expect("create_todo_temp_file() should succeed");
 
         // Check that the temporary file exists.
         assert!(temp_file_path.exists(), "Temp file should exist");
