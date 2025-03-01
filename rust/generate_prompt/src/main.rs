@@ -16,6 +16,8 @@ use prompt_file_processor::process_file;
 use diff_with_branch::run_diff;
 // NEW: Use filter_excluded_files library directly.
 use filter_excluded_files::filter_excluded_files_lines;
+// NEW: Use the extract_types library function directly.
+use extract_types::extract_types_from_file;
 
 fn main() -> Result<()> {
     // Parse command-line arguments using Clap.
@@ -160,19 +162,22 @@ fn main() -> Result<()> {
                 .context("Failed to persist singular file list")?
         };
     } else {
-        let types_file = run_command(&["extract_types", &file_path], None)
+        // Instead of invoking an external command for extract_types,
+        // we now call the library function directly.
+        let types_file_path = extract_types_from_file(&file_path)
             .context("Failed to extract types")?;
-        let types_path = types_file.trim();
-        let types_content = fs::read_to_string(types_path)
-            .context("Failed to read types file")?;
+        // Read and print the types from the temporary file.
+        let types_content = fs::read_to_string(&types_file_path)
+            .context("Failed to read extracted types")?;
         println!("Types found:");
         println!("{}", types_content.trim());
         println!("--------------------------------------------------");
 
+        // For find_definition_files, we use the types file directly.
         let def_files_content = run_command(
             &[
                 "find_definition_files",
-                types_path,
+                types_file_path.as_str(),
                 search_root.to_str().unwrap(),
             ],
             None,

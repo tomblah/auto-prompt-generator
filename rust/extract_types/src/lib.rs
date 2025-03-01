@@ -1,6 +1,6 @@
+use anyhow::{Result, Context};
 use regex::Regex;
 use std::collections::BTreeSet;
-use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -9,9 +9,10 @@ use tempfile::NamedTempFile;
 /// Reads a Swift file, extracts potential type names using two regexes,
 /// writes the sorted unique type names to a temporary file (persisted),
 /// and returns the path to that file as a String.
-fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String, Box<dyn std::error::Error>> {
+pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> {
     // Open the Swift file.
-    let file = File::open(&swift_file)?;
+    let file = File::open(&swift_file)
+        .with_context(|| format!("Failed to open file {}", swift_file.as_ref().display()))?;
     let reader = BufReader::new(file);
 
     // Regex to match tokens that start with a capital letter.
@@ -25,7 +26,9 @@ fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String, Box<
     for line in reader.lines() {
         let mut line = line?;
         // Preprocessing: replace non-alphanumeric characters with whitespace.
-        line = line.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { ' ' }).collect();
+        line = line.chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { ' ' })
+            .collect();
         let line = line.trim();
 
         // Skip empty lines or lines starting with "import " or "//".
@@ -52,26 +55,10 @@ fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String, Box<
     }
 
     // Persist the temporary file so it won't be deleted when dropped.
-    let temp_path: PathBuf = temp_file
-        .into_temp_path()
+    let temp_path: PathBuf = temp_file.into_temp_path()
         .keep()
-        .expect("Failed to persist temporary file");
+        .context("Failed to persist temporary file")?;
     Ok(temp_path.display().to_string())
-}
-
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        eprintln!("Usage: {} <swift_file>", args[0]);
-        std::process::exit(1);
-    }
-    match extract_types_from_file(&args[1]) {
-        Ok(path) => println!("{}", path),
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            std::process::exit(1);
-        }
-    }
 }
 
 #[cfg(test)]
@@ -82,7 +69,7 @@ mod tests {
     use tempfile::NamedTempFile;
 
     #[test]
-    fn test_extract_types_returns_empty_for_file_with_no_capitalized_words() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_extract_types_returns_empty_for_file_with_no_capitalized_words() -> Result<()> {
         // Create a temporary Swift file with no capitalized words.
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "import foundation\nlet x = 5")?;
@@ -94,7 +81,7 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_types_extracts_capitalized_words() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_extract_types_extracts_capitalized_words() -> Result<()> {
         // Create a temporary Swift file with type declarations.
         let mut swift_file = NamedTempFile::new()?;
         writeln!(
@@ -113,7 +100,7 @@ enum MyEnum {{}}"
     }
 
     #[test]
-    fn test_extract_types_extracts_type_names_from_bracket_notation() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_extract_types_extracts_type_names_from_bracket_notation() -> Result<()> {
         // Create a Swift file using bracket notation.
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "import UIKit\nlet array: [CustomType] = []")?;

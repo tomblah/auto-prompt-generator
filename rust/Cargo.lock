@@ -234,6 +234,7 @@ dependencies = [
 name = "extract_types"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "assert_cmd",
  "predicates 2.1.5",
  "regex",
@@ -315,6 +316,7 @@ dependencies = [
  "clap",
  "diff_with_branch",
  "extract_instruction_content",
+ "extract_types",
  "filter_excluded_files",
  "filter_substring_markers",
  "find_prompt_instruction",
