@@ -5,11 +5,12 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use get_package_root::get_package_root;
+// Existing libraries.
 use extract_instruction_content::extract_instruction_content;
-// Now that filter_substring_markers is a library, we import it.
-// (We’re not yet integrating it into generate_prompt’s logic.)
 use filter_substring_markers::filter_substring_markers;
+
+// NEW: Import the get_search_roots function from the newly refactored library.
+use get_search_roots::get_search_roots;
 
 fn main() -> Result<()> {
     // Parse command-line arguments using Clap.
@@ -110,19 +111,31 @@ fn main() -> Result<()> {
     }
 
     // 4. Determine package scope.
-    let package_root = get_package_root(Path::new(&file_path))
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|| "".to_string());
-    let search_root = if force_global {
+    // Instead of solely using get_package_root, we now use get_search_roots.
+    // If force_global is enabled, we use the Git root directly.
+    let base_dir = if force_global {
         println!("Force global enabled: using Git root for context");
-        git_root.clone()
-    } else if !package_root.is_empty() {
-        println!("Found package root: {}", package_root);
-        package_root
+        PathBuf::from(&git_root)
     } else {
-        git_root.clone()
+        PathBuf::from(&git_root)
     };
-    println!("Search root: {}", search_root);
+
+    // Retrieve candidate package roots from base_dir.
+    let candidate_roots = get_search_roots(&base_dir)
+        .unwrap_or_else(|_| vec![base_dir.clone()]);
+
+    // If there's one candidate, use it. If multiple, choose the one that is a prefix of the TODO file path.
+    let search_root = if candidate_roots.len() == 1 {
+        candidate_roots[0].clone()
+    } else {
+        let todo_path = PathBuf::from(&file_path);
+        candidate_roots
+            .into_iter()
+            .find(|p| todo_path.starts_with(p))
+            .unwrap_or(base_dir)
+    };
+
+    println!("Search root: {}", search_root.display());
 
     // 5. Extract the instruction content using the library function.
     let instruction_content = extract_instruction_content(&file_path)
@@ -153,7 +166,11 @@ fn main() -> Result<()> {
         println!("--------------------------------------------------");
 
         let def_files_content = run_command(
-            &["find_definition_files", types_path, &search_root],
+            &[
+                "find_definition_files",
+                types_path,
+                search_root.to_str().unwrap(),
+            ],
             None,
         )
         .context("Failed to find definition files")?;
@@ -175,7 +192,6 @@ fn main() -> Result<()> {
                 .context(format!("Failed to open found files list at {}", found_files_path_str))?;
             writeln!(f, "{}", file_path).context("Failed to append TODO file")?;
         }
-        // (Any unused assignments are left as-is to preserve original structure.)
         let _found_files = fs::read_to_string(&found_files_path)
             .context("Failed to read found files list")?;
         if !excludes.is_empty() {
@@ -202,7 +218,11 @@ fn main() -> Result<()> {
             println!("Enclosing type: {}", enclosing_type);
             println!("Searching for files referencing {}", enclosing_type);
             let referencing_files = run_command(
-                &["find_referencing_files", &enclosing_type, &search_root],
+                &[
+                    "find_referencing_files",
+                    &enclosing_type,
+                    search_root.to_str().unwrap(),
+                ],
                 None,
             )
             .context("Failed to find referencing files")?;
@@ -243,7 +263,11 @@ fn main() -> Result<()> {
 
     // 9. Assemble the final prompt by calling the external assemble_prompt binary.
     let final_prompt = run_command(
-        &["assemble_prompt", found_files_path.to_str().unwrap(), instruction_content.trim()],
+        &[
+            "assemble_prompt",
+            found_files_path.to_str().unwrap(),
+            instruction_content.trim(),
+        ],
         None,
     )
     .context("Failed to assemble prompt")?;

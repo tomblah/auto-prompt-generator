@@ -10,6 +10,7 @@ tempfile = { workspace = true }
 get_package_root = { path = "../get_package_root" }
 extract_instruction_content = { path = "../extract_instruction_content" }
 filter_substring_markers = { path = "../filter_substring_markers" }
+get_search_roots = { path = "../get_search_roots" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
