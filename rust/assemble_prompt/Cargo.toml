@@ -5,11 +5,10 @@ edition = "2021"
 
 [dependencies]
 prompt_file_processor = { path = "../prompt_file_processor" }
-which = "4.3"
-anyhow = "1.0"
+anyhow = { workspace = true }
+which = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
 assert_cmd = { workspace = true }
 predicates = { workspace = true }
-

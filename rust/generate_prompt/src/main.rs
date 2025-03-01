@@ -1,20 +1,19 @@
-// rust/generate_prompt/src/main.rs
-
 use anyhow::{bail, Context, Result};
 use clap::{Arg, Command};
 use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use which::which;
 
 use extract_instruction_content::extract_instruction_content;
 use get_search_roots::get_search_roots;
 use get_git_root::get_git_root;
 use find_prompt_instruction::find_prompt_instruction_in_dir;
-// Use the new library for processing file contents.
+// Use our library to process files.
 use prompt_file_processor::process_file;
-// We'll use the "which" crate to check for an external assemble_prompt command.
-use which::which;
+// Use the diff_with_branch library directly.
+use diff_with_branch::run_diff;
 
 fn main() -> Result<()> {
     // Parse command-line arguments using Clap.
@@ -66,8 +65,8 @@ fn main() -> Result<()> {
     let singular = *matches.get_one::<bool>("singular").unwrap();
     let force_global = *matches.get_one::<bool>("force_global").unwrap();
     let include_references = *matches.get_one::<bool>("include_references").unwrap();
-    let _diff_branch = matches.get_one::<String>("diff_with").map(String::as_str);
-    let _verbose = *matches.get_one::<bool>("verbose").unwrap();
+    let _diff_branch_arg = matches.get_one::<String>("diff_with").map(String::as_str);
+    let _verbose = *matches.get_one::<bool>("verbose").unwrap(); // unused, so underscore-prefixed
     let excludes: Vec<String> = matches
         .get_many::<String>("exclude")
         .unwrap_or_default()
@@ -91,7 +90,6 @@ fn main() -> Result<()> {
     env::set_current_dir(&git_root).context("Failed to change directory to Git root")?;
 
     // 2. Locate the TODO instruction file.
-    // If GET_INSTRUCTION_FILE is set, use it; otherwise search for it.
     let file_path = if let Ok(instruction_override) = env::var("GET_INSTRUCTION_FILE") {
         instruction_override
     } else {
@@ -110,7 +108,6 @@ fn main() -> Result<()> {
         .to_string();
     env::set_var("TODO_FILE_BASENAME", &todo_file_basename);
 
-    // Enforce singular mode for JavaScript files.
     if file_path.ends_with(".js") && !singular {
         eprintln!("WARNING: JavaScript support is beta – enforcing singular mode.");
     }
@@ -120,8 +117,6 @@ fn main() -> Result<()> {
     }
 
     // 4. Determine package scope.
-    // Instead of solely using get_package_root, we now use get_search_roots.
-    // If force_global is enabled, we use the Git root directly.
     let base_dir = if force_global {
         println!("Force global enabled: using Git root for context");
         PathBuf::from(&git_root)
@@ -129,11 +124,9 @@ fn main() -> Result<()> {
         PathBuf::from(&git_root)
     };
 
-    // Retrieve candidate package roots from base_dir.
     let candidate_roots = get_search_roots(&base_dir)
         .unwrap_or_else(|_| vec![base_dir.clone()]);
 
-    // If there's one candidate, use it. If multiple, choose the one that is a prefix of the TODO file path.
     let search_root = if candidate_roots.len() == 1 {
         candidate_roots[0].clone()
     } else {
@@ -146,7 +139,7 @@ fn main() -> Result<()> {
 
     println!("Search root: {}", search_root.display());
 
-    // 5. Extract the instruction content using the library function.
+    // 5. Extract instruction content.
     let instruction_content = extract_instruction_content(&file_path)
         .context("Failed to extract instruction content")?;
     println!("Instruction content: {}", instruction_content.trim());
@@ -271,8 +264,6 @@ fn main() -> Result<()> {
     }
 
     // 9. Assemble the final prompt.
-    // If an external "assemble_prompt" command is found in PATH, use it.
-    // Otherwise, assemble the prompt by processing each file via the prompt_file_processor library.
     let fixed_instruction = "Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen";
     let final_prompt = if which("assemble_prompt").is_ok() {
         run_command(
@@ -285,9 +276,9 @@ fn main() -> Result<()> {
         )
         .context("Failed to assemble prompt")?
     } else {
-        let mut final_prompt = String::new();
+        // Fallback: assemble using library processing.
+        let mut prompt = String::new();
         for file in &file_paths {
-            // Process each file using our library.
             let processed_content = match process_file(file, Some(&todo_file_basename)) {
                 Ok(content) => content,
                 Err(err) => {
@@ -299,13 +290,14 @@ fn main() -> Result<()> {
                 .file_name()
                 .unwrap_or_default()
                 .to_string_lossy();
-            final_prompt.push_str(&format!(
-                "\nThe contents of {} is as follows:\n\n{}\n\n--------------------------------------------------\n",
+            prompt.push_str(&format!(
+                "\nThe contents of {} is as follows:\n\n{}\n",
                 basename, processed_content
             ));
+            prompt.push_str("\n--------------------------------------------------\n");
         }
-        final_prompt.push_str(&format!("\n\n{}", fixed_instruction));
-        final_prompt
+        prompt.push_str(&format!("\n\n{}", fixed_instruction));
+        prompt
     };
 
     // 10. Check for multiple "// TODO: -" markers.

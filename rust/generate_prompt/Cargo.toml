@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 tempfile = { workspace = true }
-which = "4.3"
+anyhow = { workspace = true }
+which = { workspace = true }
 get_package_root = { path = "../get_package_root" }
 extract_instruction_content = { path = "../extract_instruction_content" }
 filter_substring_markers = { path = "../filter_substring_markers" }
@@ -15,6 +15,7 @@ get_search_roots = { path = "../get_search_roots" }
 get_git_root = { path = "../get_git_root" }
 find_prompt_instruction = { path = "../find_prompt_instruction" }
 prompt_file_processor = { path = "../prompt_file_processor" }
+diff_with_branch = { path = "../diff_with_branch" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
