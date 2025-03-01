@@ -112,31 +112,30 @@ mod tests {
         let fake_git_root = TempDir::new().unwrap();
         let fake_git_root_path = fake_git_root.path().to_str().unwrap();
 
-        // Dummy command for get_git_root returns our fake Git root.
+        // Create a dummy command for get_git_root returning our fake Git root.
         create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
         
         // Create a TODO file in the fake Git root with expected content.
+        // IMPORTANT: Use a token (here "TypeA") that your definitions will match.
         let todo_file = format!("{}/TODO.swift", fake_git_root_path);
-        fs::write(&todo_file, "   // TODO: - Fix bug").unwrap();
+        fs::write(&todo_file, "   // TODO: - TypeA").unwrap();
         
         // Dummy command for find_prompt_instruction returns the TODO file.
         create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
         // Dummy command for get_package_root.
         create_dummy_executable(&temp_dir, "get_package_root", "");
         // Dummy command for extract_instruction_content returns the TODO file content.
-        create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Fix bug");
+        create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - TypeA");
 
-        // IMPORTANT: Force the instruction file override.
+        // Force the instruction file override so that generate_prompt uses our real file.
         env::set_var("GET_INSTRUCTION_FILE", &todo_file);
 
-        // Create a dummy types file that includes "TypeA".
+        // Create a dummy types file that also contains "TypeA" (though our library now reads the TODO file).
         let types_file_path = temp_dir.path().join("types.txt");
         fs::write(&types_file_path, "TypeA").unwrap();
-        // Dummy command for extract_types returns the path to the types file.
         create_dummy_executable(&temp_dir, "extract_types", types_file_path.to_str().unwrap());
 
-        // Instead of using a dummy executable for find_definition_files,
-        // create two actual Swift files with definitions for TypeA.
+        // Create two real definition files in the fake Git root that contain valid definitions for TypeA.
         let def_file1 = fake_git_root.path().join("Definition1.swift");
         fs::write(&def_file1, "class TypeA {}").unwrap();
         let def_file2 = fake_git_root.path().join("Definition2.swift");
@@ -154,7 +153,7 @@ mod tests {
         cmd.assert()
             .success()
             .stdout(predicate::str::contains("Found exactly one instruction in"))
-            .stdout(predicate::str::contains("Instruction content: // TODO: - Fix bug"))
+            .stdout(predicate::str::contains("Instruction content: // TODO: - TypeA"))
             .stdout(predicate::str::contains("Definition1.swift"))
             .stdout(predicate::str::contains("Definition2.swift"))
             .stdout(predicate::str::contains("Success:"))
@@ -320,16 +319,26 @@ mod additional_tests {
         create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
         create_dummy_executable(&temp_dir, "get_package_root", "");
         create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Exclude test");
-        // Dummy types file.
+        
+        // Create a dummy types file containing "TypeExclude".
         let types_file_path = temp_dir.path().join("types.txt");
         fs::write(&types_file_path, "TypeExclude").unwrap();
         create_dummy_executable(&temp_dir, "extract_types", types_file_path.to_str().unwrap());
-        // Simulate two definition files.
-        let def_files_output = format!("{}/Definition1.swift\n{}/Definition2.swift", fake_git_root_path, fake_git_root_path);
-        create_dummy_executable(&temp_dir, "find_definition_files", &def_files_output);
-        // With the new filtering logic using the library, we now expect that the original definition names remain.
+        
+        // Instead of using a dummy for find_definition_files, create two actual Swift files
+        // in the fake Git root that define "TypeExclude".
+        let def_file1 = fake_git_root.path().join("Definition1.swift");
+        fs::write(&def_file1, "class TypeExclude {}").unwrap();
+        let def_file2 = fake_git_root.path().join("Definition2.swift");
+        fs::write(&def_file2, "struct TypeExclude {}").unwrap();
+
+        // Dummy command for assemble_prompt.
         create_dummy_executable(&temp_dir, "assemble_prompt", "dummy");
 
+        // Force the instruction file override.
+        env::set_var("GET_INSTRUCTION_FILE", &todo_file);
+
+        // Prepend temp_dir to PATH and disable clipboard copying.
         let original_path = env::var("PATH").unwrap();
         env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
         env::set_var("DISABLE_PBCOPY", "1");
@@ -338,11 +347,10 @@ mod additional_tests {
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
         cmd.args(&["--exclude", "ExcludePattern", "--exclude", "AnotherPattern"]);
 
+        // The expected output now should include our real definition file basenames.
         cmd.assert()
             .success()
             .stdout(predicate::str::contains("Excluding files matching:"))
-            // Updated expectations: since the library filtering does not transform file names,
-            // the definitions remain as "Definition1.swift" and "Definition2.swift".
             .stdout(predicate::str::contains("Definition1.swift"))
             .stdout(predicate::str::contains("Definition2.swift"));
     }
