@@ -5,15 +5,11 @@ use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Command, exit, Stdio};
+use unescape_newlines::unescape_newlines;
 
 use anyhow::{Result, Context};
 use prompt_file_processor; // our new library for processing files
 use which::which;
-
-/// Unescape literal "\n" sequences to actual newlines.
-fn unescape_newlines(input: &str) -> String {
-    input.replace("\\n", "\n")
-}
 
 /// Runs an external command and returns its stdout as a String.
 fn run_command(cmd: &str, args: &[&str]) -> io::Result<String> {

@@ -5,17 +5,6 @@ pub fn unescape_newlines(input: &str) -> String {
     input.replace("\\n", "\n")
 }
 
-fn main() {
-    let mut input = String::new();
-    io::stdin()
-        .read_to_string(&mut input)
-        .expect("Failed to read from stdin");
-    let output = unescape_newlines(&input);
-    io::stdout()
-        .write_all(output.as_bytes())
-        .expect("Failed to write to stdout");
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

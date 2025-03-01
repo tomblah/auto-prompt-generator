@@ -5,6 +5,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use which::which;
+use unescape_newlines::unescape_newlines;
 
 use extract_instruction_content::extract_instruction_content;
 use get_search_roots::get_search_roots;
@@ -374,9 +375,4 @@ fn run_command(args: &[&str], envs: Option<&[(&str, &str)]>) -> Result<String, a
     }
     let stdout = String::from_utf8(output.stdout).context("Output not valid UTF-8")?;
     Ok(stdout)
-}
-
-/// Unescape literal "\n" sequences to actual newlines.
-fn unescape_newlines(input: &str) -> String {
-    input.replace("\\n", "\n")
 }
