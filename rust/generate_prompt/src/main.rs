@@ -1,5 +1,3 @@
-// rust/generate_prompt/src/main.rs
-
 use anyhow::{bail, Context, Result};
 use clap::{Arg, Command};
 use std::env;
@@ -28,6 +26,8 @@ use filter_files_singular;
 use extract_enclosing_type::extract_enclosing_type;
 // NEW: Import the refactored find_referencing_files library.
 use find_referencing_files;
+// NEW: Import extract_enclosing_function library.
+use extract_enclosing_function::extract_enclosing_block;
 
 fn main() -> Result<()> {
     // Parse command-line arguments using Clap.
@@ -157,6 +157,20 @@ fn main() -> Result<()> {
     let instruction_content = extract_instruction_content(&file_path)
         .context("Failed to extract instruction content")?;
     println!("Instruction content: {}", instruction_content.trim());
+
+    // NEW: Extract enclosing function block using the new extract_enclosing_function library.
+    let enclosing_context = match fs::read_to_string(&file_path) {
+        Ok(content) => match extract_enclosing_block(&content) {
+            Some(block) => block,
+            None => String::from("No enclosing function block found."),
+        },
+        Err(err) => {
+            eprintln!("Error reading TODO file for enclosing block extraction: {}", err);
+            String::new()
+        }
+    };
+    println!("Enclosing function block:\n{}", enclosing_context);
+    println!("--------------------------------------------------");
 
     // 6. Determine files to include.
     let found_files_path: PathBuf;

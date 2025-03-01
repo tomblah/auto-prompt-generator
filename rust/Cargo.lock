@@ -316,6 +316,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "diff_with_branch",
+ "extract_enclosing_function",
  "extract_enclosing_type",
  "extract_instruction_content",
  "extract_types",
