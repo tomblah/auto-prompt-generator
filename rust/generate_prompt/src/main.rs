@@ -4,7 +4,10 @@ use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use get_package_root::get_package_root; // Use the library function
+
+use get_package_root::get_package_root;
+// New import: call extract_instruction_content directly as a library function.
+use extract_instruction_content::extract_instruction_content;
 
 fn main() -> Result<()> {
     // Parse command-line arguments using Clap.
@@ -121,8 +124,8 @@ fn main() -> Result<()> {
     };
     println!("Search root: {}", search_root);
 
-    // 5. Extract the instruction content.
-    let instruction_content = run_command(&["extract_instruction_content", &file_path], None)
+    // 5. Extract the instruction content using the library function.
+    let instruction_content = extract_instruction_content(&file_path)
         .context("Failed to extract instruction content")?;
     println!("Instruction content: {}", instruction_content.trim());
 
@@ -277,8 +280,8 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Helper function to run an external command and capture its stdout.
-fn run_command(args: &[&str], envs: Option<&[(&str, &str)]>) -> Result<String> {
+/// Helper function to run an external command and capture its stdout as a String.
+fn run_command(args: &[&str], envs: Option<&[(&str, &str)]>) -> Result<String, anyhow::Error> {
     if args.is_empty() {
         bail!("No command provided");
     }
@@ -295,11 +298,7 @@ fn run_command(args: &[&str], envs: Option<&[(&str, &str)]>) -> Result<String> {
         .output()
         .with_context(|| format!("Failed to execute command: {:?}", args))?;
     if !output.status.success() {
-        bail!(
-            "Command {:?} failed with status {}",
-            args,
-            output.status
-        );
+        bail!("Command {:?} failed with status {}", args, output.status);
     }
     let stdout = String::from_utf8(output.stdout).context("Output not valid UTF-8")?;
     Ok(stdout)

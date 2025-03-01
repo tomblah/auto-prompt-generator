@@ -223,6 +223,9 @@ dependencies = [
 [[package]]
 name = "extract_instruction_content"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+]
 
 [[package]]
 name = "extract_types"
@@ -307,6 +310,7 @@ dependencies = [
  "anyhow",
  "assert_cmd",
  "clap",
+ "extract_instruction_content",
  "get_package_root",
  "predicates 2.1.5",
  "tempfile",

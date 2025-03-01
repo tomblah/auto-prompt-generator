@@ -32,18 +32,20 @@ mod tests {
         let fake_git_root = TempDir::new().unwrap();
         let fake_git_root_path = fake_git_root.path().to_str().unwrap();
 
-        // Dummy commands
+        // Dummy commands.
         create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
         let todo_file = format!("{}/TODO.swift", fake_git_root_path);
+        // Create the TODO file with the expected content.
+        fs::write(&todo_file, "   // TODO: - Fix issue").unwrap();
         create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
         create_dummy_executable(&temp_dir, "get_package_root", "");
         create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Fix issue");
         // In singular mode, we expect the file list to contain only the TODO file.
         create_dummy_executable(&temp_dir, "filter_files_singular", &todo_file);
-        // Our dummy assemble_prompt won’t affect the final output.
+        // Dummy assemble_prompt.
         create_dummy_executable(&temp_dir, "assemble_prompt", "dummy");
 
-        // Prepend temp_dir to PATH and disable clipboard
+        // Prepend temp_dir to PATH and disable clipboard.
         let original_path = env::var("PATH").unwrap();
         env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
         env::set_var("DISABLE_PBCOPY", "1");
@@ -51,7 +53,7 @@ mod tests {
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
         cmd.arg("--singular");
 
-        // Instead of expecting the dummy output, we check for key output markers.
+        // Check for key output markers.
         cmd.assert()
             .success()
             .stdout(predicate::str::contains("Found exactly one instruction in"))
@@ -69,8 +71,10 @@ mod tests {
         let fake_git_root_path = fake_git_root.path().to_str().unwrap();
 
         create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
-        // TODO file with .js extension (non‑Swift)
+        // TODO file with .js extension.
         let todo_file = format!("{}/TODO.js", fake_git_root_path);
+        // Create the file so extract_instruction_content can read it.
+        fs::write(&todo_file, "   // TODO: - Fix issue").unwrap();
         create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
         create_dummy_executable(&temp_dir, "get_package_root", "");
         create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Fix issue");
@@ -94,7 +98,7 @@ mod tests {
             .stderr(predicate::str::contains("--include-references is only supported for Swift files"));
     }
 
-    /// Test a normal (non‑singular, non‑slim) run.
+    /// Test a normal (non‑singular) run.
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_normal_mode() {
@@ -104,6 +108,8 @@ mod tests {
 
         create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
         let todo_file = format!("{}/TODO.swift", fake_git_root_path);
+        // Create the TODO file with expected content.
+        fs::write(&todo_file, "   // TODO: - Fix bug").unwrap();
         create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
         create_dummy_executable(&temp_dir, "get_package_root", "");
         create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Fix bug");
@@ -113,10 +119,10 @@ mod tests {
         fs::write(&types_file_path, "TypeA").unwrap();
         create_dummy_executable(&temp_dir, "extract_types", types_file_path.to_str().unwrap());
 
-        // Simulate two definition files (their names will appear in the final file list).
+        // Simulate two definition files.
         let def_files_output = format!("{}/Definition1.swift\n{}/Definition2.swift", fake_git_root_path, fake_git_root_path);
         create_dummy_executable(&temp_dir, "find_definition_files", &def_files_output);
-        // For this test, we also simulate the exclusion branch by echoing back the definitions.
+        // Dummy filter_excluded_files echoes back the definitions.
         create_dummy_executable(&temp_dir, "filter_excluded_files", &def_files_output);
         create_dummy_executable(&temp_dir, "assemble_prompt", "dummy");
 
@@ -145,6 +151,8 @@ mod tests {
 
         create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
         let todo_file = format!("{}/TODO.swift", fake_git_root_path);
+        // Create the TODO file with expected content.
+        fs::write(&todo_file, "   // TODO: - Fix bug").unwrap();
         create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
         create_dummy_executable(&temp_dir, "get_package_root", "");
         create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Fix bug");
@@ -156,7 +164,7 @@ mod tests {
         create_dummy_executable(&temp_dir, "find_definition_files", &def_file);
         create_dummy_executable(&temp_dir, "filter_files_singular", &todo_file);
 
-        // For including references:
+        // For including references.
         create_dummy_executable(&temp_dir, "extract_enclosing_type", "MyType");
         // Simulate that find_referencing_files returns one referencing file.
         create_dummy_executable(&temp_dir, "find_referencing_files", &format!("{}/Ref1.swift", fake_git_root_path));
@@ -246,6 +254,8 @@ mod additional_tests {
         // but with --force-global we expect that to be overridden.
         create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
         let todo_file = format!("{}/TODO.swift", fake_git_root_path);
+        // Create the TODO file with expected content.
+        fs::write(&todo_file, "   // TODO: - Force global test").unwrap();
         create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
         create_dummy_executable(&temp_dir, "get_package_root", "NonEmptyValue");
         create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Force global test");
@@ -282,6 +292,8 @@ mod additional_tests {
         // Basic dummy commands.
         create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
         let todo_file = format!("{}/TODO.swift", fake_git_root_path);
+        // Create the TODO file with expected content.
+        fs::write(&todo_file, "   // TODO: - Exclude test").unwrap();
         create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
         create_dummy_executable(&temp_dir, "get_package_root", "");
         create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Exclude test");
@@ -324,6 +336,8 @@ mod additional_tests {
 
         // Create a dummy TODO instruction file path.
         let instruction_path = format!("{}/Instruction.swift", fake_git_root_path);
+        // Create the file with expected content.
+        fs::write(&instruction_path, "   // TODO: - Fix issue").unwrap();
         create_dummy_executable(&temp_dir, "find_prompt_instruction", &instruction_path);
 
         // Dummy "get_package_root" returns an empty string.
@@ -336,6 +350,9 @@ mod additional_tests {
         let types_file = temp_dir.path().join("types.txt");
         fs::write(&types_file, "TypeA").unwrap();
         create_dummy_executable(&temp_dir, "extract_types", types_file.to_str().unwrap());
+
+        // Add dummy for find_definition_files so it succeeds.
+        create_dummy_executable(&temp_dir, "find_definition_files", "dummy_definitions");
 
         // For this test we want the final prompt to have multiple markers.
         // Our dummy "assemble_prompt" outputs a prompt with three marker lines:
@@ -358,15 +375,7 @@ mod additional_tests {
 
         // Run the generate_prompt binary.
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-        let assert = cmd.assert().failure()
+        cmd.assert().failure()
             .stderr(predicate::str::contains("Multiple // TODO: - markers found. Exiting."));
-
-        // (Optional) You can also check that the very last marker (the CTA) is not printed among the offending markers.
-        // For example, by capturing stderr and ensuring that the trimmed last line isn't exactly "// TODO: -"
-        // (This step is optional if your error message is unique enough.)
-
-        // The test passes if generate_prompt exits with failure and the error message is found.
     }
-
 }
-
