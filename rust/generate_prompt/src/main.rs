@@ -1,3 +1,5 @@
+// rust/generate_prompt/src/main.rs
+
 use anyhow::{bail, Context, Result};
 use clap::{Arg, Command};
 use std::env;
@@ -9,12 +11,16 @@ use extract_instruction_content::extract_instruction_content;
 use get_search_roots::get_search_roots;
 use get_git_root::get_git_root;
 use find_prompt_instruction::find_prompt_instruction_in_dir;
+// Use the new library for processing file contents.
+use prompt_file_processor::process_file;
+// We'll use the "which" crate to check for an external assemble_prompt command.
+use which::which;
 
 fn main() -> Result<()> {
     // Parse command-line arguments using Clap.
     let matches = Command::new("generate_prompt")
         .version("0.1.0")
-        .about("Generates an AI prompt by delegating to existing Rust binaries")
+        .about("Generates an AI prompt by delegating to existing Rust libraries and binaries")
         .arg(
             Arg::new("singular")
                 .long("singular")
@@ -264,18 +270,45 @@ fn main() -> Result<()> {
         println!("{}", basename);
     }
 
-    // 9. Assemble the final prompt by calling the external assemble_prompt binary.
-    let final_prompt = run_command(
-        &[
-            "assemble_prompt",
-            found_files_path.to_str().unwrap(),
-            instruction_content.trim(),
-        ],
-        None,
-    )
-    .context("Failed to assemble prompt")?;
+    // 9. Assemble the final prompt.
+    // If an external "assemble_prompt" command is found in PATH, use it.
+    // Otherwise, assemble the prompt by processing each file via the prompt_file_processor library.
+    let fixed_instruction = "Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen";
+    let final_prompt = if which("assemble_prompt").is_ok() {
+        run_command(
+            &[
+                "assemble_prompt",
+                found_files_path.to_str().unwrap(),
+                instruction_content.trim(),
+            ],
+            None,
+        )
+        .context("Failed to assemble prompt")?
+    } else {
+        let mut final_prompt = String::new();
+        for file in &file_paths {
+            // Process each file using our library.
+            let processed_content = match process_file(file, Some(&todo_file_basename)) {
+                Ok(content) => content,
+                Err(err) => {
+                    eprintln!("Error processing {}: {}. Falling back to file contents.", file, err);
+                    fs::read_to_string(file).unwrap_or_default()
+                }
+            };
+            let basename = Path::new(file)
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy();
+            final_prompt.push_str(&format!(
+                "\nThe contents of {} is as follows:\n\n{}\n\n--------------------------------------------------\n",
+                basename, processed_content
+            ));
+        }
+        final_prompt.push_str(&format!("\n\n{}", fixed_instruction));
+        final_prompt
+    };
 
-    // Check for multiple "// TODO: -" markers.
+    // 10. Check for multiple "// TODO: -" markers.
     let marker = "// TODO: -";
     let marker_lines: Vec<&str> = final_prompt
         .lines()

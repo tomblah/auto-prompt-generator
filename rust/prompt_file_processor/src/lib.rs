@@ -1,18 +1,15 @@
-#[macro_use]
-extern crate lazy_static;
+// rust/prompt_file_processor/src/lib.rs
 
-use regex::Regex;
-use std::env;
 use std::fs;
 use std::path::Path;
-use std::process;
+use anyhow::{Result, anyhow};
 
 /// Filters the file’s content by returning only the text between substring markers.
 /// The markers are defined as:
 ///   - Opening marker: a line that, when trimmed, equals "// v"
 ///   - Closing marker: a line that, when trimmed, equals "// ^"
 /// Lines outside these markers are omitted (replaced by a placeholder).
-fn filter_substring_markers(content: &str) -> String {
+pub fn filter_substring_markers(content: &str) -> String {
     let mut output = String::new();
     let mut in_block = false;
     for line in content.lines() {
@@ -35,49 +32,21 @@ fn filter_substring_markers(content: &str) -> String {
     output
 }
 
-/// Returns true if the given line appears to be a candidate declaration.
-/// This function checks for various patterns in Swift and JavaScript.
-fn is_candidate_line(line: &str) -> bool {
-    lazy_static! {
-        static ref SWIFT_FUNCTION: Regex = Regex::new(
-            r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+\s*\([^)]*\)\s*\{"#
-        ).unwrap();
-        static ref SWIFT_PROPERTY: Regex = Regex::new(
-            r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?var\s+\w+(?:\s*:\s*[^={]+)?\s*\{"#
-        ).unwrap();
-        static ref PARSE_CLOUD: Regex = Regex::new(
-            r#"^\s*Parse\.Cloud\.define\s*\(\s*".+?"\s*,\s*(?:async\s+)?\([^)]*\)\s*=>\s*\{"#
-        ).unwrap();
-        static ref JS_ASSIGNMENT: Regex = Regex::new(
-            r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#
-        ).unwrap();
-        static ref JS_FUNCTION: Regex = Regex::new(
-            r#"^\s*(?:async\s+)?function\s+\w+\s*\([^)]*\)\s*\{"#
-        ).unwrap();
-    }
-    SWIFT_FUNCTION.is_match(line)
-        || SWIFT_PROPERTY.is_match(line)
-        || PARSE_CLOUD.is_match(line)
-        || JS_ASSIGNMENT.is_match(line)
-        || JS_FUNCTION.is_match(line)
-}
-
-/// Returns true if the file content contains both the opening marker ("// v")
-/// and the closing marker ("// ^").
-fn file_uses_markers(content: &str) -> bool {
+/// Checks if the file uses both markers ("// v" and "// ^").
+pub fn file_uses_markers(content: &str) -> bool {
     let has_open = content.lines().any(|line| line.trim() == "// v");
     let has_close = content.lines().any(|line| line.trim() == "// ^");
     has_open && has_close
 }
 
-/// Returns the index (zero-based) of the first line that contains "// TODO: - ", or None if not found.
+/// Returns the index (zero-based) of the first line that contains "// TODO: - ".
 pub fn todo_index(content: &str) -> Option<usize> {
     content.lines().position(|line| line.contains("// TODO: - "))
 }
 
-/// Determines whether the TODO is already inside a marker block.
-/// It counts the markers from the start of the file up to the TODO line.
-fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
+/// Determines whether the TODO is already inside a marker block by counting marker boundaries
+/// from the start of the file up to the TODO line.
+pub fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
     let lines: Vec<&str> = content.lines().collect();
     let mut marker_depth = 0;
     for (i, line) in lines.iter().enumerate() {
@@ -96,27 +65,45 @@ fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
     marker_depth > 0
 }
 
-/// Extracts the enclosing block (function, computed property, etc.)
-/// that contains the TODO marker. This is only done if:
-///   1. The file uses markers (both "// v" and "// ^") and
-///   2. The TODO is not already inside a marker block.
+//
+// Helper function to determine if a given line is a candidate declaration line.
+// We use regex patterns for Swift functions, JS functions/assignments, or Parse.Cloud.define.
+//
+fn is_candidate_line(line: &str) -> bool {
+    // We inline the regexes so we don’t need to keep lazy_static imports if they’re unused elsewhere.
+    let swift_function = regex::Regex::new(
+        r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+\s*\([^)]*\)\s*\{"#
+    ).unwrap();
+    let js_assignment = regex::Regex::new(
+        r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#
+    ).unwrap();
+    let js_function = regex::Regex::new(
+        r#"^\s*(?:async\s+)?function\s+\w+\s*\([^)]*\)\s*\{"#
+    ).unwrap();
+    let parse_cloud = regex::Regex::new(
+        r#"^\s*Parse\.Cloud\.define\s*\(\s*".+?"\s*,\s*(?:async\s+)?\([^)]*\)\s*=>\s*\{"#
+    ).unwrap();
+
+    swift_function.is_match(line)
+        || js_assignment.is_match(line)
+        || js_function.is_match(line)
+        || parse_cloud.is_match(line)
+}
+
+/// Extracts the enclosing block (such as a function) that should contain the TODO marker.
+/// It does so by scanning upward from the TODO marker for the last candidate declaration,
+/// then using a simple brace counting heuristic to extract from that line until the block closes.
 fn extract_enclosing_block(file_path: &str) -> Option<String> {
     let content = fs::read_to_string(file_path).ok()?;
-    
-    // Only proceed if the file actually uses both markers.
+    // Only proceed if the file uses both markers.
     if !file_uses_markers(&content) {
         return None;
     }
-    
-    // Find the index of the TODO marker.
     let todo_idx = content.lines().position(|line| line.contains("// TODO: - "))?;
-    
-    // If the TODO is already inside a marker block, do not extract additional context.
+    // If the TODO is already inside a marker block, skip extraction.
     if is_todo_inside_markers(&content, todo_idx) {
         return None;
     }
-    
-    // Look for the last candidate declaration before the TODO.
     let lines: Vec<&str> = content.lines().collect();
     let mut candidate_index = None;
     for (i, line) in lines.iter().enumerate().take(todo_idx) {
@@ -125,8 +112,6 @@ fn extract_enclosing_block(file_path: &str) -> Option<String> {
         }
     }
     let start_index = candidate_index?;
-    
-    // Extract the block using a simple brace counting heuristic.
     let mut brace_count = 0;
     let mut found_open = false;
     let mut extracted_lines = Vec::new();
@@ -150,55 +135,51 @@ fn extract_enclosing_block(file_path: &str) -> Option<String> {
     Some(extracted_lines.join("\n"))
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        eprintln!("Usage: {} <file_path> [<todo_file_basename>]", args[0]);
-        process::exit(1);
-    }
-    let file_path = &args[1];
-    let todo_file_basename = if args.len() >= 3 { Some(&args[2]) } else { None };
-
-    // Read the raw file content.
-    let file_content = fs::read_to_string(file_path).unwrap_or_else(|err| {
-        eprintln!("Error reading {}: {}", file_path, err);
-        process::exit(1);
-    });
-
-    // Process the file content: if markers are present, use the filtered content.
+/// Public API: processes the file at `file_path` by filtering its content based on markers
+/// and, if applicable, appending an enclosing context block extracted via candidate heuristics.
+/// The optional parameter `todo_file_basename` is used so that context is only appended if
+/// the file's basename matches.
+/// Returns the processed content as a `String`.
+pub fn process_file<P: AsRef<Path>>(file_path: P, todo_file_basename: Option<&str>) -> Result<String> {
+    let file_path_ref = file_path.as_ref();
+    let file_path_str = file_path_ref.to_str().ok_or_else(|| anyhow!("Invalid file path"))?;
+    let file_content = fs::read_to_string(file_path_ref)?;
+    
+    // If the file contains the marker, use the filtered content; otherwise, use the raw content.
     let processed_content = if file_content.lines().any(|line| line.trim() == "// v") {
         filter_substring_markers(&file_content)
     } else {
         file_content.clone()
     };
-
-    let file_basename = Path::new(file_path)
+    
+    // Determine the file's basename.
+    let file_basename = file_path_ref
         .file_name()
         .and_then(|s| s.to_str())
-        .unwrap_or(file_path);
-
-    // Start with the processed content.
-    let mut combined_content = processed_content.clone();
-
-    // Only append the enclosing function context if the file uses markers.
+        .unwrap_or("");
+    
+    let mut combined_content = processed_content;
+    
+    // Append the enclosing block context if the file uses markers and the basename matches.
     if file_uses_markers(&file_content) {
-        // Optionally, check that the provided todo_file_basename matches the file's basename.
-        if let Some(todo_basename) = todo_file_basename {
-            if file_basename == *todo_basename {
-                if let Some(context) = extract_enclosing_block(file_path) {
+        if let Some(expected_basename) = todo_file_basename {
+            if file_basename == expected_basename {
+                if let Some(context) = extract_enclosing_block(file_path_str) {
                     combined_content.push_str("\n\n// Enclosing function context:\n");
                     combined_content.push_str(&context);
                 }
             }
         }
     }
-
-    print!("{}", combined_content);
+    
+    Ok(combined_content)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::NamedTempFile;
+    use std::io::Write;
 
     // Test for filter_substring_markers.
     const INPUT_WITH_MARKERS: &str = r#"
@@ -270,12 +251,7 @@ func example() {
         assert!(is_todo_inside_markers(CONTENT_TODO_INSIDE, todo_idx));
     }
 
-    // For extract_enclosing_block, we can simulate the file content via temporary files,
-    // but here we test the logic indirectly by constructing content strings.
-    // Since extract_enclosing_block takes a file path, we create a temporary file.
-    use std::io::Write;
-    use tempfile::NamedTempFile;
-
+    // For extract_enclosing_block, we simulate file content via temporary files.
     // This content has markers and the TODO is outside the marker block.
     const MARKER_CONTENT_OUTSIDE: &str = r#"
 func myFunction() {
@@ -296,7 +272,10 @@ func myFunction() {
         let block = extract_enclosing_block(path);
         assert!(block.is_some(), "Expected an enclosing block, got None");
         let block_str = block.unwrap();
+        // Expect that the extracted block starts at the function declaration.
         assert!(block_str.contains("func myFunction()"), "Block should contain the function declaration");
+        // And should not include content before the candidate (i.e. not include leading unrelated lines).
+        assert!(!block_str.contains("Some extra context"), "Block should not include unrelated context outside the function block");
     }
 
     // This content has markers and the TODO is inside the marker block.
