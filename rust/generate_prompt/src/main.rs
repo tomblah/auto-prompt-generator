@@ -5,14 +5,10 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-// Existing libraries.
 use extract_instruction_content::extract_instruction_content;
-use filter_substring_markers::filter_substring_markers;
-
-// NEW: Import the get_search_roots function from the newly refactored library.
 use get_search_roots::get_search_roots;
-// NEW: Import get_git_root library function instead of calling an external binary.
 use get_git_root::get_git_root;
+use find_prompt_instruction::find_prompt_instruction_in_dir;
 
 fn main() -> Result<()> {
     // Parse command-line arguments using Clap.
@@ -77,18 +73,26 @@ fn main() -> Result<()> {
     println!("--------------------------------------------------");
     println!("Current directory: {}", current_dir.display());
 
-    // Use the library function to determine the Git root.
-    let git_root = get_git_root().expect("Failed to determine Git root");
+    // Allow override for Git root in tests.
+    let git_root = if let Ok(git_root_override) = env::var("GET_GIT_ROOT") {
+        git_root_override
+    } else {
+        get_git_root().expect("Failed to determine Git root")
+    };
     println!("Git root: {}", git_root);
     println!("--------------------------------------------------");
 
     env::set_current_dir(&git_root).context("Failed to change directory to Git root")?;
 
     // 2. Locate the TODO instruction file.
-    let file_path = run_command(&["find_prompt_instruction", &git_root], None)
-        .context("Failed to locate the TODO instruction")?
-        .trim()
-        .to_string();
+    // If GET_INSTRUCTION_FILE is set, use it; otherwise search for it.
+    let file_path = if let Ok(instruction_override) = env::var("GET_INSTRUCTION_FILE") {
+        instruction_override
+    } else {
+        let instruction_path_buf = find_prompt_instruction_in_dir(&git_root, false)
+            .context("Failed to locate the TODO instruction")?;
+        instruction_path_buf.to_string_lossy().into_owned()
+    };
     println!("Found exactly one instruction in {}", file_path);
     println!("--------------------------------------------------");
 
