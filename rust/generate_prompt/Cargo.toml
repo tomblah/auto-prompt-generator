@@ -16,6 +16,7 @@ get_git_root = { path = "../get_git_root" }
 find_prompt_instruction = { path = "../find_prompt_instruction" }
 prompt_file_processor = { path = "../prompt_file_processor" }
 diff_with_branch = { path = "../diff_with_branch" }
+filter_excluded_files = { path = "../filter_excluded_files" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

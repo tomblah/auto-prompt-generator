@@ -131,8 +131,7 @@ mod tests {
         // Simulate two definition files.
         let def_files_output = format!("{}/Definition1.swift\n{}/Definition2.swift", fake_git_root_path, fake_git_root_path);
         create_dummy_executable(&temp_dir, "find_definition_files", &def_files_output);
-        // Dummy filter_excluded_files echoes back the definitions.
-        create_dummy_executable(&temp_dir, "filter_excluded_files", &def_files_output);
+        // Dummy filter_excluded_files is no longer used (we now use the library), so this dummy can be present or omitted.
         create_dummy_executable(&temp_dir, "assemble_prompt", "dummy");
 
         let original_path = env::var("PATH").unwrap();
@@ -316,8 +315,7 @@ mod additional_tests {
         // Simulate two definition files.
         let def_files_output = format!("{}/Definition1.swift\n{}/Definition2.swift", fake_git_root_path, fake_git_root_path);
         create_dummy_executable(&temp_dir, "find_definition_files", &def_files_output);
-        // Dummy filter_excluded_files returns a modified file list.
-        create_dummy_executable(&temp_dir, "filter_excluded_files", "FilteredDefinition1.swift\nFilteredDefinition2.swift");
+        // With the new filtering logic using the library, we now expect that the original definition names remain.
         create_dummy_executable(&temp_dir, "assemble_prompt", "dummy");
 
         let original_path = env::var("PATH").unwrap();
@@ -331,8 +329,10 @@ mod additional_tests {
         cmd.assert()
             .success()
             .stdout(predicate::str::contains("Excluding files matching:"))
-            .stdout(predicate::str::contains("FilteredDefinition1.swift"))
-            .stdout(predicate::str::contains("FilteredDefinition2.swift"));
+            // Updated expectations: since the library filtering does not transform file names,
+            // the definitions remain as "Definition1.swift" and "Definition2.swift".
+            .stdout(predicate::str::contains("Definition1.swift"))
+            .stdout(predicate::str::contains("Definition2.swift"));
     }
     
     /// Test that generate_prompt exits with an error when multiple markers are present in the assembled prompt.
