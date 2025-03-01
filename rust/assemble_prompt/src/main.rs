@@ -1,8 +1,14 @@
+// rust/assemble_prompt/src/main.rs
+
 use std::env;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Command, exit, Stdio};
+
+use anyhow::{Result, Context};
+use prompt_file_processor; // our new library for processing files
+use which::which;
 
 /// Unescape literal "\n" sequences to actual newlines.
 fn unescape_newlines(input: &str) -> String {
@@ -18,9 +24,8 @@ fn run_command(cmd: &str, args: &[&str]) -> io::Result<String> {
 }
 
 /// Helper: determine external command path.
-/// It first checks for an environment variable override (`cmd_env`),
-/// then looks in the same directory as the current executable for a file named `default`,
-/// and finally falls back to `default` as-is.
+/// Checks for an environment variable override, then looks in the executable’s directory,
+/// and finally falls back to the default provided.
 fn get_external_cmd(cmd_env: &str, default: &str) -> String {
     if let Ok(val) = env::var(cmd_env) {
         return val;
@@ -55,11 +60,9 @@ fn main() {
     let file = File::open(found_files_file)
         .unwrap_or_else(|err| { eprintln!("Error opening {}: {}", found_files_file, err); exit(1); });
     let reader = BufReader::new(file);
-
-    // Collect unique file paths.
     let mut files: Vec<String> = reader
         .lines()
-        .filter_map(|line| line.ok())
+        .filter_map(|l| l.ok())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
@@ -71,7 +74,6 @@ fn main() {
     let todo_file_basename = env::var("TODO_FILE_BASENAME").unwrap_or_default();
 
     for file_path in files {
-        // Check if the file exists. If not, log a warning and skip.
         if !Path::new(&file_path).exists() {
             eprintln!("Warning: file {} does not exist, skipping", file_path);
             continue;
@@ -82,22 +84,25 @@ fn main() {
             .unwrap_or(&file_path)
             .to_string();
 
-        // Attempt to process the file using prompt_file_processor.
-        // If that fails, fall back to reading the file content.
-        // Additionally, if the file contains substring markers, try filtering them.
-        let processed_content = match run_command(&prompt_cmd, &[&file_path, &todo_file_basename]) {
-            Ok(content) => content,
-            Err(err) => {
-                eprintln!("Error processing {}: {}. Falling back to file contents.", file_path, err);
-                let raw_content = fs::read_to_string(&file_path).unwrap_or_default();
-                if raw_content.contains("// v") {
-                    // Try filtering using filter_substring_markers.
-                    match run_command(&filter_cmd, &[&file_path]) {
-                        Ok(filtered) => filtered,
-                        Err(_) => raw_content,
+        // Attempt to process the file using an external prompt processor if available,
+        // otherwise fall back to our library function.
+        let processed_content = if which(&prompt_cmd).is_ok() {
+            match run_command(&prompt_cmd, &[&file_path, &todo_file_basename]) {
+                Ok(content) => content,
+                Err(err) => {
+                    eprintln!("Error processing {}: {}. Falling back to library processing.", file_path, err);
+                    match prompt_file_processor::process_file(&file_path, Some(&todo_file_basename)) {
+                        Ok(content) => content,
+                        Err(_) => fs::read_to_string(&file_path).unwrap_or_default(),
                     }
-                } else {
-                    raw_content
+                }
+            }
+        } else {
+            match prompt_file_processor::process_file(&file_path, Some(&todo_file_basename)) {
+                Ok(content) => content,
+                Err(err) => {
+                    eprintln!("Error processing {}: {}. Falling back to raw file contents.", file_path, err);
+                    fs::read_to_string(&file_path).unwrap_or_default()
                 }
             }
         };
@@ -116,7 +121,6 @@ fn main() {
                     String::new()
                 }
             };
-            // If the diff output (after whitespace removal) equals the basename, ignore it.
             if !diff_output.trim().is_empty() && diff_output.trim() != basename {
                 final_prompt.push_str(&format!(
                     "\n--------------------------------------------------\nThe diff for {} (against branch {}) is as follows:\n\n{}\n\n",
@@ -135,7 +139,7 @@ fn main() {
     // Unescape literal "\n" sequences.
     let final_clipboard_content = unescape_newlines(&final_prompt);
 
-    // If the environment variable DISABLE_PBCOPY is not set, copy to the clipboard.
+    // Copy final prompt to clipboard if DISABLE_PBCOPY is not set.
     if env::var("DISABLE_PBCOPY").is_err() {
         let mut pbcopy = Command::new("pbcopy")
             .stdin(Stdio::piped())
@@ -143,12 +147,12 @@ fn main() {
             .unwrap_or_else(|err| { eprintln!("Error running pbcopy: {}", err); exit(1); });
         {
             let pb_stdin = pbcopy.stdin.as_mut().expect("Failed to open pbcopy stdin");
-            pb_stdin.write_all(final_clipboard_content.as_bytes())
+            pb_stdin
+                .write_all(final_clipboard_content.as_bytes())
                 .expect("Failed to write to pbcopy");
         }
         pbcopy.wait().expect("Failed to wait on pbcopy");
     } else {
-        // Optionally, log that we're skipping pbcopy.
         eprintln!("DISABLE_PBCOPY is set; skipping clipboard copy.");
     }
 
