@@ -315,6 +315,7 @@ dependencies = [
  "clap",
  "diff_with_branch",
  "extract_instruction_content",
+ "filter_excluded_files",
  "filter_substring_markers",
  "find_prompt_instruction",
  "get_git_root",

@@ -14,6 +14,8 @@ use find_prompt_instruction::find_prompt_instruction_in_dir;
 use prompt_file_processor::process_file;
 // Use the diff_with_branch library directly.
 use diff_with_branch::run_diff;
+// NEW: Use filter_excluded_files library directly.
+use filter_excluded_files::filter_excluded_files_lines;
 
 fn main() -> Result<()> {
     // Parse command-line arguments using Clap.
@@ -198,13 +200,15 @@ fn main() -> Result<()> {
             .context("Failed to read found files list")?;
         if !excludes.is_empty() {
             println!("Excluding files matching: {:?}", excludes);
-            let mut args = vec!["filter_excluded_files", found_files_path.to_str().unwrap()];
-            for excl in &excludes {
-                args.push(excl);
-            }
-            let found_files = run_command(&args, None)
-                .context("Failed to filter excluded files")?;
-            fs::write(&found_files_path, found_files.trim())
+            let found_files_content = fs::read_to_string(&found_files_path)
+                .context("Failed to read found files list")?;
+            let lines: Vec<String> = found_files_content
+                .lines()
+                .map(|line| line.trim().to_string())
+                .filter(|line| !line.is_empty())
+                .collect();
+            let filtered_lines = filter_excluded_files_lines(lines, &excludes);
+            fs::write(&found_files_path, filtered_lines.join("\n"))
                 .context("Failed to write final excluded list")?;
         }
     }
