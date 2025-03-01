@@ -23,6 +23,7 @@ unescape_newlines = { path = "../unescape_newlines" }
 extract_enclosing_type = { path = "../extract_enclosing_type" }
 find_referencing_files = { path = "../find_referencing_files" }
 extract_enclosing_function = { path = "../extract_enclosing_function" }
+find_definition_files = { path = "../find_definition_files" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
