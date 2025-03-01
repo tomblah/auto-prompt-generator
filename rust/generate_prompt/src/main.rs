@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use which::which;
 use unescape_newlines::unescape_newlines;
 
+// Library dependencies.
 use extract_instruction_content::extract_instruction_content;
 use get_search_roots::get_search_roots;
 use get_git_root::get_git_root;
@@ -21,6 +22,8 @@ use filter_excluded_files::filter_excluded_files_lines;
 use extract_types::extract_types_from_file;
 // NEW: Import the refactored filter_files_singular library.
 use filter_files_singular;
+// NEW: Import extract_enclosing_type as a library instead of calling an external binary.
+use extract_enclosing_type::extract_enclosing_type;
 
 fn main() -> Result<()> {
     // Parse command-line arguments using Clap.
@@ -218,10 +221,14 @@ fn main() -> Result<()> {
     // 7. Optionally include referencing files.
     if include_references {
         println!("Including files that reference the enclosing type");
-        let enclosing_type = run_command(&["extract_enclosing_type", &file_path], None)
-            .unwrap_or_default()
-            .trim()
-            .to_string();
+        // Call the library function directly instead of invoking an external binary.
+        let enclosing_type = match extract_enclosing_type(&file_path) {
+            Ok(ty) => ty,
+            Err(err) => {
+                eprintln!("Error extracting enclosing type: {}", err);
+                String::new()
+            }
+        };
         if !enclosing_type.is_empty() {
             println!("Enclosing type: {}", enclosing_type);
             println!("Searching for files referencing {}", enclosing_type);
