@@ -312,6 +312,7 @@ dependencies = [
  "clap",
  "extract_instruction_content",
  "filter_substring_markers",
+ "find_prompt_instruction",
  "get_git_root",
  "get_package_root",
  "get_search_roots",

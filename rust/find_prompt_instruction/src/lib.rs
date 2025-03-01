@@ -1,8 +1,8 @@
-use std::env;
+// rust/find_prompt_instruction/src/lib.rs
+
 use std::fs;
 use std::io::{self, BufRead};
-use std::path::PathBuf;
-use std::process;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use walkdir::WalkDir;
 
@@ -83,8 +83,8 @@ pub fn find_prompt_instruction_in_dir(search_dir: &str, verbose: bool) -> io::Re
                 .file_name()
                 .and_then(|s| s.to_str())
                 .unwrap_or("<unknown>");
-            let todo_line =
-                extract_first_todo_line(file, todo_marker).unwrap_or_else(|| "<no TODO line found>".to_string());
+            let todo_line = extract_first_todo_line(file, todo_marker)
+                .unwrap_or_else(|| "<no TODO line found>".to_string());
             eprintln!("  - {}: {}", basename, todo_line.trim());
             eprintln!("--------------------------------------------------");
         }
@@ -94,8 +94,8 @@ pub fn find_prompt_instruction_in_dir(search_dir: &str, verbose: bool) -> io::Re
     Ok(chosen_file)
 }
 
-/// Extracts the first line in the file that contains the given marker.
-fn extract_first_todo_line(path: &PathBuf, marker: &str) -> Option<String> {
+/// Private helper: extracts the first line in the file that contains the given marker.
+fn extract_first_todo_line(path: &Path, marker: &str) -> Option<String> {
     if let Ok(file) = fs::File::open(path) {
         let reader = io::BufReader::new(file);
         for line in reader.lines().filter_map(Result::ok) {
@@ -107,30 +107,11 @@ fn extract_first_todo_line(path: &PathBuf, marker: &str) -> Option<String> {
     None
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        eprintln!("Usage: {} <search_directory>", args[0]);
-        process::exit(1);
-    }
-    let search_dir = &args[1];
-    let verbose = env::var("VERBOSE").map(|v| v == "true").unwrap_or(false);
-
-    match find_prompt_instruction_in_dir(search_dir, verbose) {
-        Ok(path) => println!("{}", path.display()),
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            process::exit(1);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use filetime::{set_file_mtime, FileTime};
     use std::fs;
-    use std::io::Write;
     use tempfile::tempdir;
 
     #[test]

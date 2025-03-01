@@ -12,6 +12,7 @@ extract_instruction_content = { path = "../extract_instruction_content" }
 filter_substring_markers = { path = "../filter_substring_markers" }
 get_search_roots = { path = "../get_search_roots" }
 get_git_root = { path = "../get_git_root" }
+find_prompt_instruction = { path = "../find_prompt_instruction" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

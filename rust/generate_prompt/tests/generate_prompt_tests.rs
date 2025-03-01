@@ -45,6 +45,9 @@ mod tests {
         // Dummy assemble_prompt.
         create_dummy_executable(&temp_dir, "assemble_prompt", "dummy");
 
+        // IMPORTANT: Force the instruction file override.
+        env::set_var("GET_INSTRUCTION_FILE", &todo_file);
+
         // Prepend temp_dir to PATH and disable clipboard.
         let original_path = env::var("PATH").unwrap();
         env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
@@ -86,6 +89,9 @@ mod tests {
         create_dummy_executable(&temp_dir, "filter_files_singular", &todo_file);
         create_dummy_executable(&temp_dir, "assemble_prompt", "dummy");
 
+        // Force the instruction file override.
+        env::set_var("GET_INSTRUCTION_FILE", &todo_file);
+
         let original_path = env::var("PATH").unwrap();
         env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
         env::set_var("DISABLE_PBCOPY", "1");
@@ -113,6 +119,9 @@ mod tests {
         create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
         create_dummy_executable(&temp_dir, "get_package_root", "");
         create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Fix bug");
+
+        // IMPORTANT: Force the instruction file override.
+        env::set_var("GET_INSTRUCTION_FILE", &todo_file);
 
         // Create a dummy types file.
         let types_file_path = temp_dir.path().join("types.txt");
@@ -156,6 +165,9 @@ mod tests {
         create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
         create_dummy_executable(&temp_dir, "get_package_root", "");
         create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Fix bug");
+
+        // IMPORTANT: Force the instruction file override.
+        env::set_var("GET_INSTRUCTION_FILE", &todo_file);
 
         let types_file_path = temp_dir.path().join("types.txt");
         fs::write(&types_file_path, "TypeA").unwrap();
