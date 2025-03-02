@@ -14,20 +14,22 @@ use std::path::Path;
 pub fn filter_excluded_files_lines(lines: Vec<String>, exclusions: &[String]) -> Vec<String> {
     lines
         .into_iter()
-        .filter(|line| {
+        .filter_map(|line| {
             let trimmed_line = line.trim();
-            // Skip empty lines or lines ending with a slash.
             if trimmed_line.is_empty() || trimmed_line.ends_with('/') {
-                return false;
+                return None;
             }
-            let path = Path::new(trimmed_line);
-            // Extract the basename.
+            let path = std::path::Path::new(trimmed_line);
             let basename = match path.file_name() {
                 Some(name) => name.to_string_lossy().trim().to_string(),
-                None => return false,
+                None => return None,
             };
-            // Exclude if the basename exactly matches any provided pattern.
-            !exclusions.iter().any(|pattern| &basename == pattern)
+            if exclusions.iter().any(|pattern| &basename == pattern) {
+                None
+            } else {
+                // Return the trimmed line.
+                Some(trimmed_line.to_string())
+            }
         })
         .collect()
 }
@@ -109,5 +111,61 @@ mod tests {
         let filtered = filter_excluded_files_lines(lines, &exclusions);
         // Only the file with a valid basename should be included.
         assert_eq!(filtered, vec!["/path/to/FileA.swift".to_string()]);
+    }
+    
+    #[test]
+    fn test_whitespace_trimming() {
+        let lines = vec![
+            "   /path/to/FileA.swift  ".to_string(),
+            "\t/path/to/FileB.swift\n".to_string(),
+        ];
+        let exclusions: Vec<String> = vec![];
+        let filtered = filter_excluded_files_lines(lines, &exclusions);
+        assert_eq!(
+            filtered,
+            vec![
+                "/path/to/FileA.swift".to_string(),
+                "/path/to/FileB.swift".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_case_sensitivity() {
+        // Expect exclusion to be case sensitive.
+        let lines = vec![
+            "/path/to/FileA.swift".to_string(),
+            "/path/to/fileA.swift".to_string(),
+        ];
+        let exclusions = vec!["FileA.swift".to_string()];
+        let filtered = filter_excluded_files_lines(lines, &exclusions);
+        // Only the exact match ("FileA.swift") should be excluded.
+        assert_eq!(
+            filtered,
+            vec!["/path/to/fileA.swift".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_partial_match_not_excluded() {
+        let lines = vec![
+            "/path/to/FileA.swift".to_string(),
+            "/path/to/FileB.swift".to_string(),
+        ];
+        let exclusions = vec!["File".to_string()]; // Should not match "FileA.swift" exactly.
+        let filtered = filter_excluded_files_lines(lines.clone(), &exclusions);
+        assert_eq!(filtered, lines);
+    }
+
+    #[test]
+    fn test_multiple_trailing_slashes() {
+        let lines = vec![
+            "/path/to/FileA.swift///".to_string(),
+            "/path/to/FileB.swift".to_string(),
+        ];
+        let exclusions: Vec<String> = vec![];
+        // The first path ends with slashes so it should be filtered out.
+        let filtered = filter_excluded_files_lines(lines, &exclusions);
+        assert_eq!(filtered, vec!["/path/to/FileB.swift".to_string()]);
     }
 }
