@@ -520,21 +520,19 @@ mod integration_tests {
 
     /// Sets up a dummy Git project with a realistic structure.
     /// - The project root contains a TODO.swift file with content:
-    ///       "class SomeClass {
-    ///          var foo: DummyType1? = nil
-    ///          var bar: DummyType2? = nil
-    ///        }
-    ///        // TODO: - Fix bug"
+    ///       "class SomeClass {\nvar foo: DummyType1? = nil\nvar bar: DummyType2? = nil\n}\n// TODO: - Fix bug"
     /// - In a "Sources" subdirectory, two definition files are created:
     ///       - Definition1.swift defines DummyType1 with a simple declaration.
     ///       - Definition2.swift defines DummyType2 with a simple declaration.
+    /// - Additionally, a referencing file (Ref.swift) is created in the project root with content:
+    ///       "let instance = SomeClass()"
     ///
     /// Returns a tuple (project_dir, todo_file_path) where project_dir is the TempDir for the project.
     fn setup_dummy_project() -> (TempDir, PathBuf) {
         let project_dir = TempDir::new().unwrap();
         let project_path = project_dir.path();
 
-        // Create the TODO file in the project root.
+        // Create the TODO file in the project root with the exact content you specified.
         let todo_file_path = project_path.join("TODO.swift");
         fs::write(
             &todo_file_path,
@@ -551,6 +549,10 @@ mod integration_tests {
         fs::write(&def1_path, "class DummyType1 { }").unwrap();
         // Definition2.swift defines DummyType2 with a simple declaration.
         fs::write(&def2_path, "class DummyType2 { }").unwrap();
+
+        // Create an additional referencing file in the project root.
+        let ref_file_path = project_path.join("Ref.swift");
+        fs::write(&ref_file_path, "let instance = SomeClass()").unwrap();
 
         (project_dir, todo_file_path)
     }
@@ -578,32 +580,26 @@ mod integration_tests {
     }
 
     /// Integration test for normal mode.
-    /// Expects that generate_prompt (when run without --singular) will include the TODO file
-    /// plus both definition files in the final prompt.
+    /// Expects that generate_prompt (when run without --singular or --include-references)
+    /// will include the TODO file plus both definition files in the final prompt,
+    /// and that the referencing file (Ref.swift) is not included.
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_normal_mode_includes_all_files() {
-        // Set up the dummy project.
         let (project_dir, todo_file_path) = setup_dummy_project();
         let project_path = project_dir.path();
 
-        // Configure environment variables so that generate_prompt uses our dummy project.
         env::set_var("GET_GIT_ROOT", project_path.to_str().unwrap());
         env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap());
-
-        // Ensure that DISABLE_PBCOPY is not set.
         env::remove_var("DISABLE_PBCOPY");
 
-        // Set up dummy pbcopy to capture clipboard output.
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
         env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
 
-        // Run generate_prompt without the --singular flag.
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
         cmd.assert().success();
 
-        // Read the final prompt from the dummy clipboard file.
         let clipboard_content = fs::read_to_string(&clipboard_file)
             .expect("Failed to read dummy clipboard file");
 
@@ -630,7 +626,7 @@ mod integration_tests {
             clipboard_content.contains("class DummyType2 { }"),
             "Expected clipboard to contain the declaration of DummyType2"
         );
-        // Assert that the TODO file's content references the dummy types.
+        // And check that the TODO file's content references the dummy types and includes the TODO comment.
         assert!(
             clipboard_content.contains("DummyType1"),
             "Expected the TODO file to reference DummyType1"
@@ -639,50 +635,47 @@ mod integration_tests {
             clipboard_content.contains("DummyType2"),
             "Expected the TODO file to reference DummyType2"
         );
-        // Assert that the TODO comment appears.
         assert!(
             clipboard_content.contains("// TODO: - Fix bug"),
             "Expected the TODO comment to appear in the prompt"
         );
+        // Assert that the referencing file (Ref.swift) is not included.
+        assert!(
+            !clipboard_content.contains("The contents of Ref.swift is as follows:"),
+            "Did not expect Ref.swift to be included in the prompt"
+        );
     }
 
     /// Integration test for singular mode.
-    /// With the same project setup as above but run with --singular,
-    /// we expect only the TODO file to be present in the final prompt.
+    /// Expects that generate_prompt (when run with --singular) will include only the TODO file
+    /// in the final prompt, and that neither the definition files nor the referencing file (Ref.swift) appear.
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_singular_mode_includes_only_todo_file() {
-        // Set up the dummy project.
         let (project_dir, todo_file_path) = setup_dummy_project();
         let project_path = project_dir.path();
 
-        // Configure environment variables so that generate_prompt uses our dummy project.
         env::set_var("GET_GIT_ROOT", project_path.to_str().unwrap());
         env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap());
-
-        // Ensure that DISABLE_PBCOPY is not set.
         env::remove_var("DISABLE_PBCOPY");
 
-        // Set up dummy pbcopy to capture clipboard output.
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
         env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
 
-        // Run generate_prompt with the --singular flag.
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
         cmd.arg("--singular");
         cmd.assert().success();
 
-        // Read the final prompt from the dummy clipboard file.
         let clipboard_content = fs::read_to_string(&clipboard_file)
             .expect("Failed to read dummy clipboard file");
 
-        // Assert that the prompt contains the header for the TODO file.
+        // Assert that the prompt contains only the header for the TODO file.
         assert!(
             clipboard_content.contains("The contents of TODO.swift is as follows:"),
             "Expected clipboard to include the TODO file header"
         );
-        // Assert that the prompt does NOT contain headers for the definition files.
+        // Assert that it does NOT contain headers for the definition files.
         assert!(
             !clipboard_content.contains("The contents of Definition1.swift is as follows:"),
             "Expected Definition1.swift header to be absent in singular mode"
@@ -691,7 +684,7 @@ mod integration_tests {
             !clipboard_content.contains("The contents of Definition2.swift is as follows:"),
             "Expected Definition2.swift header to be absent in singular mode"
         );
-        // Verify that the TODO file's content still references the dummy types.
+        // Verify that the TODO file's content still references the dummy types and includes the TODO comment.
         assert!(
             clipboard_content.contains("DummyType1"),
             "Expected the TODO file to reference DummyType1"
@@ -700,10 +693,65 @@ mod integration_tests {
             clipboard_content.contains("DummyType2"),
             "Expected the TODO file to reference DummyType2"
         );
-        // Assert that the TODO comment appears.
         assert!(
             clipboard_content.contains("// TODO: - Fix bug"),
             "Expected the TODO comment to appear in the prompt"
+        );
+        // Assert that the referencing file (Ref.swift) is not included.
+        assert!(
+            !clipboard_content.contains("The contents of Ref.swift is as follows:"),
+            "Did not expect Ref.swift to be included in the prompt"
+        );
+    }
+
+    /// Integration test for include-references mode.
+    /// With the same project setup but run with --include-references,
+    /// we expect the referencing file (Ref.swift) to be included in the final prompt.
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_include_references_includes_ref_file() {
+        let (project_dir, todo_file_path) = setup_dummy_project();
+        let project_path = project_dir.path();
+
+        env::set_var("GET_GIT_ROOT", project_path.to_str().unwrap());
+        env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap());
+        env::remove_var("DISABLE_PBCOPY");
+
+        let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
+        let original_path = env::var("PATH").unwrap();
+        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+
+        // Run generate_prompt with the --include-references flag.
+        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.arg("--include-references");
+        cmd.assert().success();
+
+        let clipboard_content = fs::read_to_string(&clipboard_file)
+            .expect("Failed to read dummy clipboard file");
+
+        // Assert that the prompt contains the header for the TODO file.
+        assert!(
+            clipboard_content.contains("The contents of TODO.swift is as follows:"),
+            "Expected clipboard to include the TODO file header"
+        );
+        // Assert that the prompt includes headers for both definition files.
+        assert!(
+            clipboard_content.contains("The contents of Definition1.swift is as follows:"),
+            "Expected clipboard to include Definition1.swift header"
+        );
+        assert!(
+            clipboard_content.contains("The contents of Definition2.swift is as follows:"),
+            "Expected clipboard to include Definition2.swift header"
+        );
+        // And now assert that the referencing file (Ref.swift) is included.
+        assert!(
+            clipboard_content.contains("The contents of Ref.swift is as follows:"),
+            "Expected Ref.swift to be included in the prompt with --include-references"
+        );
+        // Also, verify that the content of Ref.swift is present.
+        assert!(
+            clipboard_content.contains("let instance = SomeClass()"),
+            "Expected the content of Ref.swift to appear in the prompt"
         );
     }
 }
