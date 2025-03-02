@@ -111,3 +111,319 @@ pub fn find_definition_files(
 
     Ok(found_files)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::io::Write;
+    use std::path::PathBuf;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_allowed_extension() {
+        assert!(allowed_extension(Path::new("test.swift")));
+        assert!(allowed_extension(Path::new("test.h")));
+        assert!(allowed_extension(Path::new("test.m")));
+        assert!(allowed_extension(Path::new("test.js")));
+        assert!(!allowed_extension(Path::new("test.txt")));
+    }
+
+    #[test]
+    fn test_file_in_excluded_dir() {
+        let path1 = PathBuf::from("/home/user/Pods/file.swift");
+        let path2 = PathBuf::from("/home/user/.build/file.swift");
+        let path3 = PathBuf::from("/home/user/src/file.swift");
+        assert!(file_in_excluded_dir(&path1));
+        assert!(file_in_excluded_dir(&path2));
+        assert!(!file_in_excluded_dir(&path3));
+    }
+
+    #[test]
+    fn test_get_search_roots_when_root_is_package() {
+        let dir = tempdir().unwrap();
+        // Create a Package.swift file in the temporary directory.
+        let package_path = dir.path().join("Package.swift");
+        fs::write(&package_path, "swift package content").unwrap();
+
+        let roots = get_search_roots(dir.path());
+        // When the root is a Swift package, get_search_roots should return only the root.
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots[0], dir.path());
+    }
+
+    #[test]
+    fn test_find_definition_files_basic() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create a types file containing a type name.
+        let types_file_path = root.join("types.txt");
+        fs::write(&types_file_path, "MyType\n").unwrap();
+
+        // Create a file that contains a valid definition: "class MyType"
+        let good_file_path = root.join("good.swift");
+        fs::write(&good_file_path, "import Foundation\nclass MyType {}\n").unwrap();
+
+        // Create a file that does not contain any matching definition.
+        let bad_file_path = root.join("bad.swift");
+        fs::write(&bad_file_path, "import Foundation\n// no definitions here\n").unwrap();
+
+        // Create a file inside an excluded directory ("Pods").
+        let excluded_dir = root.join("Pods");
+        fs::create_dir_all(&excluded_dir).unwrap();
+        let excluded_file_path = excluded_dir.join("excluded.swift");
+        fs::write(&excluded_file_path, "class MyType {}\n").unwrap();
+
+        let found = find_definition_files(&types_file_path, root).expect("Should succeed");
+
+        // Only the good_file should be detected.
+        assert!(found.contains(&good_file_path));
+        assert!(!found.contains(&bad_file_path));
+        assert!(!found.contains(&excluded_file_path));
+    }
+
+    // --- Converted tests from bats ---
+
+    #[test]
+    fn test_excludes_build_directory() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create a Swift file in a normal directory.
+        let sources_dir = root.join("Sources");
+        fs::create_dir_all(&sources_dir).unwrap();
+        let normal_file = sources_dir.join("MyType.swift");
+        fs::write(&normal_file, "class MyType {}\n").unwrap();
+
+        // Create a Swift file in a .build directory.
+        let build_dir = root.join(".build/somepath");
+        fs::create_dir_all(&build_dir).unwrap();
+        let build_file = build_dir.join("MyType.swift");
+        fs::write(&build_file, "class MyType {}\n").unwrap();
+
+        // Create a types file listing the type "MyType".
+        let types_file = root.join("types.txt");
+        fs::write(&types_file, "MyType\n").unwrap();
+
+        let found = find_definition_files(&types_file, root).expect("find_definition_files failed");
+
+        // The result should include the file in Sources but not the one in .build.
+        assert!(found.contains(&normal_file));
+        assert!(!found.contains(&build_file));
+    }
+
+    #[test]
+    fn test_deduplicated_files_combined_regex() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create a directory "Combined" with multiple files.
+        let combined_dir = root.join("Combined");
+        fs::create_dir_all(&combined_dir).unwrap();
+
+        // File with both TypeOne and TypeTwo definitions.
+        let both_file = combined_dir.join("BothTypes.swift");
+        fs::write(&both_file, "class TypeOne {}\nstruct TypeTwo {}\n").unwrap();
+
+        // File with only TypeOne definition.
+        let only_file = combined_dir.join("OnlyTypeOne.swift");
+        fs::write(&only_file, "enum TypeOne {}\n").unwrap();
+
+        // File with an unrelated definition.
+        let other_file = combined_dir.join("Other.swift");
+        fs::write(&other_file, "protocol OtherType {}\n").unwrap();
+
+        // Create a types file with both TypeOne and TypeTwo.
+        let types_file = combined_dir.join("new_types.txt");
+        fs::write(&types_file, "TypeOne\nTypeTwo\n").unwrap();
+
+        let found = find_definition_files(&types_file, &combined_dir).expect("find_definition_files failed");
+
+        // Expect BothTypes.swift and OnlyTypeOne.swift to be found, but not Other.swift.
+        assert!(found.contains(&both_file));
+        assert!(found.contains(&only_file));
+        assert!(!found.contains(&other_file));
+
+        // Since the return type is a BTreeSet, files are deduplicated.
+        assert_eq!(found.len(), 2);
+    }
+
+    #[test]
+    fn test_excludes_pods_directory() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create a Swift file in the Sources directory.
+        let sources_dir = root.join("Sources");
+        fs::create_dir_all(&sources_dir).unwrap();
+        let source_file = sources_dir.join("MyType.swift");
+        fs::write(&source_file, "class MyType {}\n").unwrap();
+
+        // Create a Swift file in the Pods directory.
+        let pods_dir = root.join("Pods");
+        fs::create_dir_all(&pods_dir).unwrap();
+        let pods_file = pods_dir.join("MyType.swift");
+        fs::write(&pods_file, "class MyType {}\n").unwrap();
+
+        // Create a types file.
+        let types_file = root.join("types.txt");
+        fs::write(&types_file, "MyType\n").unwrap();
+
+        let found = find_definition_files(&types_file, root).expect("find_definition_files failed");
+
+        // The result should include the file in Sources but not the one in Pods.
+        assert!(found.contains(&source_file));
+        assert!(!found.contains(&pods_file));
+    }
+
+    #[test]
+    fn test_empty_when_only_pods_exist() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Only create files in the Pods directory.
+        let pods_dir = root.join("Pods/SubModule");
+        fs::create_dir_all(&pods_dir).unwrap();
+        let pods_file = pods_dir.join("MyType.swift");
+        fs::write(&pods_file, "class MyType {}\n").unwrap();
+
+        // Create a types file.
+        let types_file = root.join("types.txt");
+        fs::write(&types_file, "MyType\n").unwrap();
+
+        let found = find_definition_files(&types_file, root).expect("find_definition_files failed");
+
+        // Expect no files to be found.
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn test_includes_objc_files() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create a directory for Objective-C files.
+        let objc_dir = root.join("ObjC");
+        fs::create_dir_all(&objc_dir).unwrap();
+        let header_file = objc_dir.join("MyType.h");
+        let impl_file = objc_dir.join("MyType.m");
+        fs::write(&header_file, "class MyType { }").unwrap();
+        fs::write(&impl_file, "class MyType { }").unwrap();
+
+        // Create a types file.
+        let types_file = root.join("types.txt");
+        fs::write(&types_file, "MyType\n").unwrap();
+
+        let found = find_definition_files(&types_file, root).expect("find_definition_files failed");
+
+        // Both the header and implementation files should be included.
+        assert!(found.contains(&header_file));
+        assert!(found.contains(&impl_file));
+    }
+    
+    #[test]
+    fn test_missing_types_file() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        let missing_types_file = root.join("nonexistent.txt");
+
+        // Since the types file does not exist, we expect an error.
+        let result = find_definition_files(&missing_types_file, root);
+        assert!(result.is_err(), "Expected error when types file is missing");
+    }
+
+    #[test]
+    fn test_empty_types_file() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        let empty_types_file = root.join("empty.txt");
+        fs::write(&empty_types_file, "").unwrap();
+
+        // The function should error out if no types are found.
+        let result = find_definition_files(&empty_types_file, root);
+        assert!(result.is_err(), "Expected error when types file is empty");
+    }
+
+    #[test]
+    fn test_non_swift_file_ignored() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create a types file containing the type name.
+        let types_file = root.join("types.txt");
+        fs::write(&types_file, "MyType\n").unwrap();
+
+        // Create a file with a valid definition but with a .txt extension.
+        let non_swift_file = root.join("definition.txt");
+        fs::write(&non_swift_file, "class MyType {}\n").unwrap();
+
+        let found = find_definition_files(&types_file, root).expect("find_definition_files failed");
+
+        // The non-Swift file should not be included.
+        assert!(!found.contains(&non_swift_file));
+    }
+
+    #[test]
+    fn test_case_sensitivity() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create a types file with "MyType".
+        let types_file = root.join("types.txt");
+        fs::write(&types_file, "MyType\n").unwrap();
+
+        // Create one file with the correct case.
+        let correct_case = root.join("correct.swift");
+        fs::write(&correct_case, "class MyType {}\n").unwrap();
+
+        // Create another file with a lower-case variant.
+        let wrong_case = root.join("wrong.swift");
+        fs::write(&wrong_case, "class mytype {}\n").unwrap();
+
+        let found = find_definition_files(&types_file, root).expect("find_definition_files failed");
+
+        // Only the file with the correct case should be included.
+        assert!(found.contains(&correct_case));
+        assert!(!found.contains(&wrong_case));
+    }
+
+    #[test]
+    fn test_duplicate_definitions_deduplicated() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create a types file.
+        let types_file = root.join("types.txt");
+        fs::write(&types_file, "MyType\n").unwrap();
+
+        // Create a file that contains two definitions of "MyType".
+        let dup_file = root.join("dup.swift");
+        fs::write(&dup_file, "class MyType {}\nclass MyType {}\n").unwrap();
+
+        let found = find_definition_files(&types_file, root).expect("find_definition_files failed");
+
+        // The file should appear only once.
+        assert_eq!(found.iter().filter(|&p| *p == dup_file).count(), 1);
+    }
+
+    #[test]
+    fn test_no_matching_definitions() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create a types file with a type name.
+        let types_file = root.join("types.txt");
+        fs::write(&types_file, "NonExistentType\n").unwrap();
+
+        // Create a Swift file that does not contain the definition.
+        let non_match = root.join("non_match.swift");
+        fs::write(&non_match, "class SomeOtherType {}\n").unwrap();
+
+        let found = find_definition_files(&types_file, root).expect("find_definition_files failed");
+
+        // Expect an empty set if nothing matches.
+        assert!(found.is_empty());
+    }
+}
