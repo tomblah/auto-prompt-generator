@@ -4,63 +4,70 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
-use tree_sitter::{Parser, Node};
+use tree_sitter::Parser;
 
-// Make sure to add tree-sitter and tree-sitter-swift as dependencies in your Cargo.toml
+// Ensure you have the following dependency in your Cargo.toml:
+// tree-sitter-swift = "0.7.0"
 extern crate tree_sitter_swift;
 
-/// Uses Tree-sitter to parse the Swift source code and extract type names.
-/// It looks for nodes corresponding to type declarations:
-/// "class_declaration", "struct_declaration", "enum_declaration",
-/// "protocol_declaration", and "typealias_declaration".
+/// Recursively traverses the syntax tree starting at `node`, and if the node is one of the
+/// target type declarations ("class_declaration", "struct_declaration", "enum_declaration",
+/// "protocol_declaration", or "typealias_declaration"), it attempts to extract the identifier child.
+fn extract_nodes(node: tree_sitter::Node, source: &[u8], types: &mut BTreeSet<String>) {
+    match node.kind() {
+        "class_declaration"
+        | "struct_declaration"
+        | "enum_declaration"
+        | "protocol_declaration"
+        | "typealias_declaration" => {
+            let mut cursor = node.walk();
+            for child in node.named_children(&mut cursor) {
+                if child.kind() == "identifier" {
+                    if let Ok(text) = child.utf8_text(source) {
+                        types.insert(text.to_string());
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    // Recurse into children.
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        extract_nodes(child, source, types);
+    }
+}
+
+/// Uses Tree-sitter to parse the Swift source and extract type names.
 fn extract_types_tree_sitter(source: &str) -> BTreeSet<String> {
     let mut types = BTreeSet::new();
     let mut parser = Parser::new();
-    // Set the Swift language for parsing.
     parser
-        .set_language(tree_sitter_swift::language())
+        .set_language(unsafe {
+            &*(&tree_sitter_swift::LANGUAGE as *const _ as *const tree_sitter::Language)
+        })
         .expect("Error loading Swift grammar");
     if let Some(tree) = parser.parse(source, None) {
         let root_node = tree.root_node();
-        let mut cursor = root_node.walk();
-        for node in root_node.descendants(&mut cursor) {
-            match node.kind() {
-                "class_declaration"
-                | "struct_declaration"
-                | "enum_declaration"
-                | "protocol_declaration"
-                | "typealias_declaration" => {
-                    // Look for a child node with kind "identifier" to extract the type name.
-                    let mut child_cursor = node.walk();
-                    for child in node.named_children(&mut child_cursor) {
-                        if child.kind() == "identifier" {
-                            if let Ok(text) = child.utf8_text(source.as_bytes()) {
-                                types.insert(text.to_string());
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
+        extract_nodes(root_node, source.as_bytes(), &mut types);
     }
     types
 }
 
-/// Reads a Swift file, extracts type names using Tree-sitter, writes the sorted unique
-/// type names to a temporary file (persisted), and returns the path to that file as a String.
+/// Reads a Swift file, extracts type names using Tree-sitter, writes the sorted unique type names
+/// to a temporary file (persisted), and returns the path to that file as a String.
 pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> {
-    // Read the entire Swift file into a string.
+    // Read the entire Swift file.
     let source = fs::read_to_string(&swift_file)
         .with_context(|| format!("Failed to open file {}", swift_file.as_ref().display()))?;
-    // Use Tree-sitter to extract type names.
+    // Extract types with Tree-sitter.
     let types = extract_types_tree_sitter(&source);
     // Write the sorted type names to a temporary file.
     let mut temp_file = NamedTempFile::new()?;
     for type_name in &types {
         writeln!(temp_file, "{}", type_name)?;
     }
-    // Persist the temporary file so it won't be deleted when dropped.
+    // Persist the temporary file so it isn’t deleted on drop.
     let temp_path: PathBuf = temp_file
         .into_temp_path()
         .keep()
