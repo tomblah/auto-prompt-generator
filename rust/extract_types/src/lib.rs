@@ -6,6 +6,63 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 
+/// A helper struct to encapsulate type extraction logic.
+struct TypeExtractor {
+    re_simple: Regex,
+    re_bracket: Regex,
+}
+
+impl TypeExtractor {
+    /// Creates a new `TypeExtractor` with precompiled regexes.
+    fn new() -> Result<Self, regex::Error> {
+        Ok(Self {
+            re_simple: Regex::new(r"^[A-Z][A-Za-z0-9]+$")?,
+            re_bracket: Regex::new(r"^\[([A-Z][A-Za-z0-9]+)\]$")?,
+        })
+    }
+
+    /// Cleans a line by replacing non-alphanumeric characters with whitespace,
+    /// trimming it, and then splitting it into tokens.
+    /// Returns `None` if the cleaned line is empty or starts with "import " or "//".
+    fn extract_tokens(&self, line: &str) -> Option<Vec<String>> {
+        let trimmed = line.trim();
+        // Check the original trimmed line before cleaning.
+        if trimmed.is_empty() || trimmed.starts_with("import ") || trimmed.starts_with("//") {
+            return None;
+        }
+        // Now perform the cleaning.
+        let cleaned: String = line
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { ' ' })
+            .collect();
+        let cleaned = cleaned.trim();
+        Some(cleaned.split_whitespace().map(String::from).collect())
+    }
+
+
+    /// Processes an iterator over lines and returns a sorted set of type names.
+    fn extract_types<I>(&self, lines: I) -> BTreeSet<String>
+    where
+        I: Iterator<Item = String>,
+    {
+        let mut types = BTreeSet::new();
+        for line in lines {
+            if let Some(tokens) = self.extract_tokens(&line) {
+                for token in tokens {
+                    if self.re_simple.is_match(&token) {
+                        types.insert(token);
+                    } else if let Some(caps) = self.re_bracket.captures(&token) {
+                        if let Some(inner) = caps.get(1) {
+                            types.insert(inner.as_str().to_string());
+                        }
+                    }
+                }
+            }
+        }
+        types
+    }
+}
+
 /// Reads a Swift file, extracts potential type names using two regexes,
 /// writes the sorted unique type names to a temporary file (persisted),
 /// and returns the path to that file as a String.
@@ -15,38 +72,9 @@ pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> 
         .with_context(|| format!("Failed to open file {}", swift_file.as_ref().display()))?;
     let reader = BufReader::new(file);
 
-    // Regex to match tokens that start with a capital letter.
-    let re_simple = Regex::new(r"^[A-Z][A-Za-z0-9]+$")?;
-    // Regex to match tokens in bracket notation (e.g. [TypeName]).
-    let re_bracket = Regex::new(r"^\[([A-Z][A-Za-z0-9]+)\]$")?;
-
-    // Use a BTreeSet to store unique type names (sorted alphabetically).
-    let mut types = BTreeSet::new();
-
-    for line in reader.lines() {
-        let mut line = line?;
-        // Preprocessing: replace non-alphanumeric characters with whitespace.
-        line = line.chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c } else { ' ' })
-            .collect();
-        let line = line.trim();
-
-        // Skip empty lines or lines starting with "import " or "//".
-        if line.is_empty() || line.starts_with("import ") || line.starts_with("//") {
-            continue;
-        }
-
-        // Split the line into tokens and check each one.
-        for token in line.split_whitespace() {
-            if re_simple.is_match(token) {
-                types.insert(token.to_string());
-            } else if let Some(caps) = re_bracket.captures(token) {
-                if let Some(inner) = caps.get(1) {
-                    types.insert(inner.as_str().to_string());
-                }
-            }
-        }
-    }
+    // Create the extractor and process the file lines.
+    let extractor = TypeExtractor::new()?;
+    let types = extractor.extract_types(reader.lines().filter_map(Result::ok));
 
     // Write the sorted type names to a temporary file.
     let mut temp_file = NamedTempFile::new()?;
@@ -166,5 +194,92 @@ enum MyEnum {{}}"
         // The trailing punctuation should be removed.
         assert_eq!(result.trim(), "MyEnum");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod type_extractor_tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn test_type_extractor_new() {
+        let extractor = TypeExtractor::new().expect("Failed to create TypeExtractor");
+        // Simply verify that an instance can be created.
+        assert!(extractor.re_simple.is_match("MyType"));
+    }
+
+    #[test]
+    fn test_extract_tokens_returns_none_for_empty_or_non_eligible_lines() {
+        let extractor = TypeExtractor::new().unwrap();
+        // Empty or whitespace-only lines return None.
+        assert!(extractor.extract_tokens("").is_none());
+        assert!(extractor.extract_tokens("   ").is_none());
+        // Lines that start with "import " or "//" should be skipped.
+        assert!(extractor.extract_tokens("import Foundation").is_none());
+        assert!(extractor.extract_tokens("// comment").is_none());
+    }
+
+    #[test]
+    fn test_extract_tokens_splits_and_cleans_input() {
+        let extractor = TypeExtractor::new().unwrap();
+        // Input with punctuation: non-alphanumeric chars become spaces.
+        let tokens = extractor.extract_tokens("MyClass,struct MyStruct").unwrap();
+        // "MyClass,struct MyStruct" becomes "MyClass struct MyStruct", then splits into tokens.
+        assert_eq!(tokens, vec!["MyClass", "struct", "MyStruct"]);
+    }
+
+    #[test]
+    fn test_extract_types_basic() {
+        let extractor = TypeExtractor::new().unwrap();
+        let lines = vec![
+            "class MyClass {}".to_string(),
+            "struct MyStruct {}".to_string(),
+            "enum MyEnum {}".to_string(),
+        ];
+        let types = extractor.extract_types(lines.into_iter());
+        let expected: BTreeSet<String> = ["MyClass", "MyEnum", "MyStruct"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(types, expected);
+    }
+
+    #[test]
+    fn test_extract_types_with_bracket_notation() {
+        let extractor = TypeExtractor::new().unwrap();
+        let lines = vec![
+            "let array: [CustomType] = []".to_string(),
+        ];
+        let types = extractor.extract_types(lines.into_iter());
+        let expected: BTreeSet<String> = ["CustomType"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(types, expected);
+    }
+
+    #[test]
+    fn test_extract_types_mixed_tokens() {
+        let extractor = TypeExtractor::new().unwrap();
+        let lines = vec![
+            "class MyClass, struct MyStruct; enum MyEnum.".to_string(),
+        ];
+        let types = extractor.extract_types(lines.into_iter());
+        let expected: BTreeSet<String> = ["MyClass", "MyEnum", "MyStruct"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(types, expected);
+    }
+
+    #[test]
+    fn test_extract_types_deduplication() {
+        let extractor = TypeExtractor::new().unwrap();
+        let lines = vec![
+            "class DuplicateType {}".to_string(),
+            "struct DuplicateType {}".to_string(),
+            "enum DuplicateType {}".to_string(),
+        ];
+        let types = extractor.extract_types(lines.into_iter());
+        let expected: BTreeSet<String> = ["DuplicateType"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(types, expected);
     }
 }
