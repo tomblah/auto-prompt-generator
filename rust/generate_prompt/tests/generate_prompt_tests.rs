@@ -567,7 +567,7 @@ mod integration_tests {
         let instruction_file_path = package_dir.join("Instruction.swift");
         fs::write(
             &instruction_file_path,
-            "class SomeClass {\n    var foo: DummyType1? = nil\n    var bar: DummyType2? = nil\n}\n// TODO: - Fix bug",
+            "class SomeClass {\n    var foo: DummyType1? = nil\n    var bar: DummyType2? = nil\n    var dummy: DummyType3? = nil\n}\n// TODO: - Fix bug",
         )
         .unwrap();
 
