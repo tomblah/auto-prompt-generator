@@ -527,7 +527,7 @@ mod integration_tests {
     /// git_root/
     /// ├── my_package/
     /// │   ├── Package.swift           // Marks this directory as a Swift package.
-    /// │   ├── TODO.swift              // Contains the main TODO with the bug-fix instruction.
+    /// │   ├── Instruction.swift       // Contains the main instruction with the bug-fix instruction.
     /// │   ├── OldTodo.swift           // Contains an old TODO marker (with an earlier modification time).
     /// │   ├── Ref.swift               // A referencing file that should be excluded.
     /// │   └── Sources/
@@ -535,7 +535,7 @@ mod integration_tests {
     /// │       └── Definition2.swift   // Defines DummyType2.
     /// └── Outside.swift               // (Outside the package) Defines DummyType3.
     ///
-    /// The TODO.swift file (inside my_package) contains:
+    /// The Instruction.swift file (inside my_package) contains:
     ///     class SomeClass {
     ///         var foo: DummyType1? = nil
     ///         var bar: DummyType2? = nil
@@ -545,8 +545,8 @@ mod integration_tests {
     /// In addition, this function sets the environment variable GET_GIT_ROOT to the git root,
     /// so that tests using --force-global will search the entire Git repository and include Outside.swift.
     ///
-    /// Returns a tuple (git_root_dir, todo_file_path) where git_root_dir is the TempDir for the project,
-    /// and todo_file_path points to my_package/TODO.swift.
+    /// Returns a tuple (git_root_dir, instruction_file_path) where git_root_dir is the TempDir for the project,
+    /// and instruction_file_path points to my_package/Instruction.swift.
     fn setup_dummy_project() -> (TempDir, PathBuf) {
         // Create the git root (which is not a Swift package by itself)
         let git_root_dir = TempDir::new().unwrap();
@@ -563,10 +563,10 @@ mod integration_tests {
         let package_file_path = package_dir.join("Package.swift");
         fs::write(&package_file_path, "// swift package").unwrap();
 
-        // Create the main TODO.swift file inside the package.
-        let todo_file_path = package_dir.join("TODO.swift");
+        // Create the main Instruction.swift file inside the package.
+        let instruction_file_path = package_dir.join("Instruction.swift");
         fs::write(
-            &todo_file_path,
+            &instruction_file_path,
             "class SomeClass {\n    var foo: DummyType1? = nil\n    var bar: DummyType2? = nil\n}\n// TODO: - Fix bug",
         )
         .unwrap();
@@ -574,7 +574,6 @@ mod integration_tests {
         // Create an extra file with an old TODO marker inside the package.
         let old_todo_path = package_dir.join("OldTodo.swift");
         fs::write(&old_todo_path, "class OldClass { } // TODO: - Old marker").unwrap();
-        // (Assume set_file_mtime is imported)
         set_file_mtime(&old_todo_path, FileTime::from_unix_time(1000, 0)).unwrap();
 
         // Create a Sources directory inside the package with two definition files.
@@ -593,7 +592,7 @@ mod integration_tests {
         let outside_file = git_root_path.join("Outside.swift");
         fs::write(&outside_file, "class DummyType3 { }").unwrap();
 
-        (git_root_dir, todo_file_path)
+        (git_root_dir, instruction_file_path)
     }
 
     /// Sets up a dummy pbcopy executable that writes its stdin to a temporary file.
@@ -620,15 +619,15 @@ mod integration_tests {
 
     /// Integration test for normal mode.
     /// Expects that generate_prompt (without --singular or --include-references)
-    /// will include the TODO.swift file and both definition files,
+    /// will include the Instruction.swift file and both definition files,
     /// while excluding the referencing file (Ref.swift) and OldTodo.swift.
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_normal_mode_includes_all_files() {
-        let (project_dir, todo_file_path) = setup_dummy_project();
+        let (project_dir, instruction_file_path) = setup_dummy_project();
         let project_path = project_dir.path();
 
-        env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap()); // FIXME: hack workaround
+        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
@@ -642,8 +641,8 @@ mod integration_tests {
             .expect("Failed to read dummy clipboard file");
 
         assert!(
-            clipboard_content.contains("The contents of TODO.swift is as follows:"),
-            "Expected clipboard to include the TODO file header"
+            clipboard_content.contains("The contents of Instruction.swift is as follows:"),
+            "Expected clipboard to include the Instruction.swift file header"
         );
         assert!(
             clipboard_content.contains("The contents of Definition1.swift is as follows:"),
@@ -663,11 +662,11 @@ mod integration_tests {
         );
         assert!(
             clipboard_content.contains("DummyType1"),
-            "Expected the TODO file to reference DummyType1"
+            "Expected the Instruction.swift file to reference DummyType1"
         );
         assert!(
             clipboard_content.contains("DummyType2"),
-            "Expected the TODO file to reference DummyType2"
+            "Expected the Instruction.swift file to reference DummyType2"
         );
         assert!(
             clipboard_content.contains("// TODO: - Fix bug"),
@@ -688,15 +687,15 @@ mod integration_tests {
     }
 
     /// Integration test for singular mode.
-    /// Expects that generate_prompt (with --singular) will include only the TODO.swift file,
+    /// Expects that generate_prompt (with --singular) will include only the Instruction.swift file,
     /// excluding definition files, Ref.swift, and OldTodo.swift.
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_singular_mode_includes_only_todo_file() {
-        let (project_dir, todo_file_path) = setup_dummy_project();
+        let (project_dir, instruction_file_path) = setup_dummy_project();
         let project_path = project_dir.path();
 
-        env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap()); // FIXME: hack workaround
+        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
@@ -711,8 +710,8 @@ mod integration_tests {
             .expect("Failed to read dummy clipboard file");
 
         assert!(
-            clipboard_content.contains("The contents of TODO.swift is as follows:"),
-            "Expected clipboard to include the TODO file header"
+            clipboard_content.contains("The contents of Instruction.swift is as follows:"),
+            "Expected clipboard to include the Instruction.swift file header"
         );
         assert!(
             !clipboard_content.contains("The contents of Definition1.swift is as follows:"),
@@ -724,11 +723,11 @@ mod integration_tests {
         );
         assert!(
             clipboard_content.contains("DummyType1"),
-            "Expected the TODO file to reference DummyType1"
+            "Expected the Instruction.swift file to reference DummyType1"
         );
         assert!(
             clipboard_content.contains("DummyType2"),
-            "Expected the TODO file to reference DummyType2"
+            "Expected the Instruction.swift file to reference DummyType2"
         );
         assert!(
             clipboard_content.contains("// TODO: - Fix bug"),
@@ -750,14 +749,14 @@ mod integration_tests {
 
     /// Integration test for include-references mode.
     /// Expects that generate_prompt (with --include-references) will include Ref.swift,
-    /// in addition to the TODO.swift and definition files, while still excluding OldTodo.swift.
+    /// in addition to the Instruction.swift and definition files, while still excluding OldTodo.swift.
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_include_references_includes_ref_file() {
-        let (project_dir, todo_file_path) = setup_dummy_project();
+        let (project_dir, instruction_file_path) = setup_dummy_project();
         let project_path = project_dir.path();
 
-        env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap()); // FIXME: hack workaround
+        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
@@ -772,8 +771,8 @@ mod integration_tests {
             .expect("Failed to read dummy clipboard file");
 
         assert!(
-            clipboard_content.contains("The contents of TODO.swift is as follows:"),
-            "Expected clipboard to include the TODO file header"
+            clipboard_content.contains("The contents of Instruction.swift is as follows:"),
+            "Expected clipboard to include the Instruction.swift file header"
         );
         assert!(
             clipboard_content.contains("The contents of Definition1.swift is as follows:"),
@@ -807,15 +806,15 @@ mod integration_tests {
     
     /// Integration test for exclusion flags.
     /// Here we run generate_prompt with the --exclude flag for "Definition1.swift".
-    /// We expect that the final prompt includes the TODO file and Definition2.swift,
+    /// We expect that the final prompt includes the Instruction.swift file and Definition2.swift,
     /// but does NOT include Definition1.swift.
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_excludes_definition1() {
-        let (project_dir, todo_file_path) = setup_dummy_project();
+        let (project_dir, instruction_file_path) = setup_dummy_project();
         let project_path = project_dir.path();
 
-        env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap()); // FIXME: hack workaround
+        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
@@ -830,10 +829,10 @@ mod integration_tests {
         let clipboard_content = fs::read_to_string(&clipboard_file)
             .expect("Failed to read dummy clipboard file");
 
-        // Assert that the prompt still includes the TODO file header.
+        // Assert that the prompt still includes the Instruction.swift file header.
         assert!(
-            clipboard_content.contains("The contents of TODO.swift is as follows:"),
-            "Expected clipboard to include the TODO file header"
+            clipboard_content.contains("The contents of Instruction.swift is as follows:"),
+            "Expected clipboard to include the Instruction.swift file header"
         );
         // Assert that the prompt does NOT include the header for Definition1.swift.
         assert!(
@@ -845,7 +844,7 @@ mod integration_tests {
             clipboard_content.contains("The contents of Definition2.swift is as follows:"),
             "Expected Definition2.swift to be included"
         );
-        // Verify that the TODO file's content (including the TODO comment) is present.
+        // Verify that the Instruction.swift file's content (including the TODO comment) is present.
         assert!(
             clipboard_content.contains("// TODO: - Fix bug"),
             "Expected the TODO comment to appear in the prompt"
