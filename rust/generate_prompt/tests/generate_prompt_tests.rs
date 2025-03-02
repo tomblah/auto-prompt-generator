@@ -621,13 +621,11 @@ mod integration_tests {
     /// Integration test for normal mode.
     /// Expects that generate_prompt (without --singular or --include-references)
     /// will include the Instruction.swift file and both definition files,
-    /// while excluding the referencing file (Ref.swift) and OldTodo.swift.
+    /// while excluding the referencing file (Ref.swift), OldTodo.swift, and Outside.swift.
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_normal_mode_includes_all_files() {
         let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
-
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
 
@@ -641,61 +639,31 @@ mod integration_tests {
         let clipboard_content = fs::read_to_string(&clipboard_file)
             .expect("Failed to read dummy clipboard file");
 
-        assert!(
-            clipboard_content.contains("The contents of Instruction.swift is as follows:"),
-            "Expected clipboard to include the Instruction.swift file header"
-        );
-        assert!(
-            clipboard_content.contains("The contents of Definition1.swift is as follows:"),
-            "Expected clipboard to include Definition1.swift header"
-        );
-        assert!(
-            clipboard_content.contains("The contents of Definition2.swift is as follows:"),
-            "Expected clipboard to include Definition2.swift header"
-        );
-        assert!(
-            clipboard_content.contains("class DummyType1 { }"),
-            "Expected clipboard to contain the declaration of DummyType1"
-        );
-        assert!(
-            clipboard_content.contains("class DummyType2 { }"),
-            "Expected clipboard to contain the declaration of DummyType2"
-        );
-        assert!(
-            clipboard_content.contains("DummyType1"),
-            "Expected the Instruction.swift file to reference DummyType1"
-        );
-        assert!(
-            clipboard_content.contains("DummyType2"),
-            "Expected the Instruction.swift file to reference DummyType2"
-        );
-        assert!(
-            clipboard_content.contains("// TODO: - Fix bug"),
-            "Expected the TODO comment to appear in the prompt"
-        );
-        assert!(
-            !clipboard_content.contains("The contents of Ref.swift is as follows:"),
-            "Did not expect Ref.swift to be included in the prompt"
-        );
-        assert!(
-            !clipboard_content.contains("The contents of OldTodo.swift is as follows:"),
-            "Did not expect OldTodo.swift to be included in the prompt"
-        );
-        assert!(
-            !clipboard_content.contains("Old marker"),
-            "Did not expect the old TODO marker to appear in the prompt"
-        );
+        // Verify that the prompt includes the package files...
+        assert!(clipboard_content.contains("The contents of Instruction.swift is as follows:"), "Expected clipboard to include the Instruction.swift file header");
+        assert!(clipboard_content.contains("The contents of Definition1.swift is as follows:"), "Expected clipboard to include Definition1.swift header");
+        assert!(clipboard_content.contains("The contents of Definition2.swift is as follows:"), "Expected clipboard to include Definition2.swift header");
+        // ...and that it includes the expected content.
+        assert!(clipboard_content.contains("class DummyType1 { }"), "Expected clipboard to contain the declaration of DummyType1");
+        assert!(clipboard_content.contains("class DummyType2 { }"), "Expected clipboard to contain the declaration of DummyType2");
+        assert!(clipboard_content.contains("DummyType1"), "Expected the Instruction.swift file to reference DummyType1");
+        assert!(clipboard_content.contains("DummyType2"), "Expected the Instruction.swift file to reference DummyType2");
+        assert!(clipboard_content.contains("// TODO: - Fix bug"), "Expected the TODO comment to appear in the prompt");
+        // Verify that files outside the package are not included.
+        assert!(!clipboard_content.contains("The contents of Outside.swift is as follows:"), "Did not expect Outside.swift to be included in normal mode");
+        // Also verify that Ref.swift and OldTodo.swift are not present.
+        assert!(!clipboard_content.contains("The contents of Ref.swift is as follows:"), "Did not expect Ref.swift to be included in the prompt");
+        assert!(!clipboard_content.contains("The contents of OldTodo.swift is as follows:"), "Did not expect OldTodo.swift to be included in the prompt");
+        assert!(!clipboard_content.contains("Old marker"), "Did not expect the old TODO marker to appear in the prompt");
     }
 
     /// Integration test for singular mode.
     /// Expects that generate_prompt (with --singular) will include only the Instruction.swift file,
-    /// excluding definition files, Ref.swift, and OldTodo.swift.
+    /// excluding definition files, Ref.swift, OldTodo.swift, and Outside.swift.
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_singular_mode_includes_only_todo_file() {
         let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
-
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
 
@@ -710,53 +678,28 @@ mod integration_tests {
         let clipboard_content = fs::read_to_string(&clipboard_file)
             .expect("Failed to read dummy clipboard file");
 
-        assert!(
-            clipboard_content.contains("The contents of Instruction.swift is as follows:"),
-            "Expected clipboard to include the Instruction.swift file header"
-        );
-        assert!(
-            !clipboard_content.contains("The contents of Definition1.swift is as follows:"),
-            "Expected Definition1.swift header to be absent in singular mode"
-        );
-        assert!(
-            !clipboard_content.contains("The contents of Definition2.swift is as follows:"),
-            "Expected Definition2.swift header to be absent in singular mode"
-        );
-        assert!(
-            clipboard_content.contains("DummyType1"),
-            "Expected the Instruction.swift file to reference DummyType1"
-        );
-        assert!(
-            clipboard_content.contains("DummyType2"),
-            "Expected the Instruction.swift file to reference DummyType2"
-        );
-        assert!(
-            clipboard_content.contains("// TODO: - Fix bug"),
-            "Expected the TODO comment to appear in the prompt"
-        );
-        assert!(
-            !clipboard_content.contains("The contents of Ref.swift is as follows:"),
-            "Did not expect Ref.swift to be included in singular mode"
-        );
-        assert!(
-            !clipboard_content.contains("The contents of OldTodo.swift is as follows:"),
-            "Did not expect OldTodo.swift to be included in singular mode"
-        );
-        assert!(
-            !clipboard_content.contains("Old marker"),
-            "Did not expect the old TODO marker to appear in the prompt"
-        );
+        assert!(clipboard_content.contains("The contents of Instruction.swift is as follows:"), "Expected clipboard to include the Instruction.swift file header");
+        assert!(!clipboard_content.contains("The contents of Definition1.swift is as follows:"), "Expected Definition1.swift header to be absent in singular mode");
+        assert!(!clipboard_content.contains("The contents of Definition2.swift is as follows:"), "Expected Definition2.swift header to be absent in singular mode");
+        assert!(clipboard_content.contains("DummyType1"), "Expected the Instruction.swift file to reference DummyType1");
+        assert!(clipboard_content.contains("DummyType2"), "Expected the Instruction.swift file to reference DummyType2");
+        assert!(clipboard_content.contains("// TODO: - Fix bug"), "Expected the TODO comment to appear in the prompt");
+        // Verify that files outside the package are not included.
+        assert!(!clipboard_content.contains("The contents of Outside.swift is as follows:"), "Did not expect Outside.swift to be included in singular mode");
+        // Also verify that Ref.swift and OldTodo.swift are not present.
+        assert!(!clipboard_content.contains("The contents of Ref.swift is as follows:"), "Did not expect Ref.swift to be included in singular mode");
+        assert!(!clipboard_content.contains("The contents of OldTodo.swift is as follows:"), "Did not expect OldTodo.swift to be included in singular mode");
+        assert!(!clipboard_content.contains("Old marker"), "Did not expect the old TODO marker to appear in the prompt");
     }
 
     /// Integration test for include-references mode.
     /// Expects that generate_prompt (with --include-references) will include Ref.swift,
-    /// in addition to the Instruction.swift and definition files, while still excluding OldTodo.swift.
+    /// in addition to the Instruction.swift and definition files,
+    /// while still excluding OldTodo.swift and Outside.swift.
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_include_references_includes_ref_file() {
         let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
-
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
 
@@ -771,50 +714,26 @@ mod integration_tests {
         let clipboard_content = fs::read_to_string(&clipboard_file)
             .expect("Failed to read dummy clipboard file");
 
-        assert!(
-            clipboard_content.contains("The contents of Instruction.swift is as follows:"),
-            "Expected clipboard to include the Instruction.swift file header"
-        );
-        assert!(
-            clipboard_content.contains("The contents of Definition1.swift is as follows:"),
-            "Expected clipboard to include Definition1.swift header"
-        );
-        assert!(
-            clipboard_content.contains("The contents of Definition2.swift is as follows:"),
-            "Expected clipboard to include Definition2.swift header"
-        );
-        assert!(
-            clipboard_content.contains("// TODO: - Fix bug"),
-            "Expected the TODO comment to appear in the prompt"
-        );
-        assert!(
-            clipboard_content.contains("The contents of Ref.swift is as follows:"),
-            "Expected Ref.swift to be included with --include-references"
-        );
-        assert!(
-            clipboard_content.contains("let instance = SomeClass()"),
-            "Expected the content of Ref.swift to appear in the prompt"
-        );
-        assert!(
-            !clipboard_content.contains("The contents of OldTodo.swift is as follows:"),
-            "Did not expect OldTodo.swift to be included in the prompt"
-        );
-        assert!(
-            !clipboard_content.contains("Old marker"),
-            "Did not expect the old TODO marker to appear in the prompt"
-        );
+        assert!(clipboard_content.contains("The contents of Instruction.swift is as follows:"), "Expected clipboard to include the Instruction.swift file header");
+        assert!(clipboard_content.contains("The contents of Definition1.swift is as follows:"), "Expected clipboard to include Definition1.swift header");
+        assert!(clipboard_content.contains("The contents of Definition2.swift is as follows:"), "Expected clipboard to include Definition2.swift header");
+        assert!(clipboard_content.contains("// TODO: - Fix bug"), "Expected the TODO comment to appear in the prompt");
+        assert!(clipboard_content.contains("The contents of Ref.swift is as follows:"), "Expected Ref.swift to be included with --include-references");
+        assert!(clipboard_content.contains("let instance = SomeClass()"), "Expected the content of Ref.swift to appear in the prompt");
+        // Verify that files outside the package are not included.
+        assert!(!clipboard_content.contains("The contents of Outside.swift is as follows:"), "Did not expect Outside.swift to be included in include-references mode");
+        assert!(!clipboard_content.contains("The contents of OldTodo.swift is as follows:"), "Did not expect OldTodo.swift to be included in the prompt");
+        assert!(!clipboard_content.contains("Old marker"), "Did not expect the old TODO marker to appear in the prompt");
     }
     
     /// Integration test for exclusion flags.
     /// Here we run generate_prompt with the --exclude flag for "Definition1.swift".
     /// We expect that the final prompt includes the Instruction.swift file and Definition2.swift,
-    /// but does NOT include Definition1.swift.
+    /// but does NOT include Definition1.swift or Outside.swift.
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_excludes_definition1() {
         let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
-
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
 
@@ -830,26 +749,12 @@ mod integration_tests {
         let clipboard_content = fs::read_to_string(&clipboard_file)
             .expect("Failed to read dummy clipboard file");
 
-        // Assert that the prompt still includes the Instruction.swift file header.
-        assert!(
-            clipboard_content.contains("The contents of Instruction.swift is as follows:"),
-            "Expected clipboard to include the Instruction.swift file header"
-        );
-        // Assert that the prompt does NOT include the header for Definition1.swift.
-        assert!(
-            !clipboard_content.contains("The contents of Definition1.swift is as follows:"),
-            "Expected Definition1.swift to be excluded"
-        );
-        // Assert that the prompt still includes the header for Definition2.swift.
-        assert!(
-            clipboard_content.contains("The contents of Definition2.swift is as follows:"),
-            "Expected Definition2.swift to be included"
-        );
-        // Verify that the Instruction.swift file's content (including the TODO comment) is present.
-        assert!(
-            clipboard_content.contains("// TODO: - Fix bug"),
-            "Expected the TODO comment to appear in the prompt"
-        );
+        assert!(clipboard_content.contains("The contents of Instruction.swift is as follows:"), "Expected clipboard to include the Instruction.swift file header");
+        assert!(!clipboard_content.contains("The contents of Definition1.swift is as follows:"), "Expected Definition1.swift to be excluded");
+        assert!(clipboard_content.contains("The contents of Definition2.swift is as follows:"), "Expected Definition2.swift to be included");
+        assert!(clipboard_content.contains("// TODO: - Fix bug"), "Expected the TODO comment to appear in the prompt");
+        // Verify that files outside the package are not included.
+        assert!(!clipboard_content.contains("The contents of Outside.swift is as follows:"), "Did not expect Outside.swift to be included in exclusion mode");
     }
 
     /// Integration test for force-global mode.
@@ -859,8 +764,6 @@ mod integration_tests {
     #[cfg(unix)]
     fn test_generate_prompt_force_global_includes_outside_file() {
         let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
-
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
 
@@ -875,14 +778,8 @@ mod integration_tests {
         let clipboard_content = fs::read_to_string(&clipboard_file)
             .expect("Failed to read dummy clipboard file");
 
-        // Verify that the global search has included Outside.swift.
-        assert!(
-            clipboard_content.contains("The contents of Outside.swift is as follows:"),
-            "Expected clipboard to include the Outside.swift file header in force-global mode"
-        );
-        assert!(
-            clipboard_content.contains("class DummyType3 { }"),
-            "Expected clipboard to contain the declaration of DummyType3"
-        );
+        // In force-global mode, the global search should include Outside.swift.
+        assert!(clipboard_content.contains("The contents of Outside.swift is as follows:"), "Expected clipboard to include the Outside.swift file header in force-global mode");
+        assert!(clipboard_content.contains("class DummyType3 { }"), "Expected clipboard to contain the declaration of DummyType3");
     }
 }
