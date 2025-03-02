@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 prompt_file_processor = { path = "../prompt_file_processor" }
 unescape_newlines = { path = "../unescape_newlines" }
+diff_with_branch = { path = "../diff_with_branch" }
 anyhow = { workspace = true }
 
 [dev-dependencies]

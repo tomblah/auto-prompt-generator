@@ -54,14 +54,11 @@ pub fn assemble_prompt(found_files_file: &str, _instruction_content: &str) -> Re
 
         // If DIFF_WITH_BRANCH is set, append a diff report.
         if let Ok(diff_branch) = env::var("DIFF_WITH_BRANCH") {
-            let diff_output = match run_command("diff_with_branch", &[&file_path]) {
-                Ok(diff) => diff,
-                Err(err) => {
-                    eprintln!("Error running diff on {}: {}", file_path, err);
-                    String::new()
-                }
+            let diff_output = match diff_with_branch::run_diff(&file_path) {
+                Ok(Some(diff)) => diff,
+                _ => String::new(),
             };
-            if !diff_output.trim().is_empty() && diff_output.trim() != basename {
+            if !diff_output.trim().is_empty() {
                 final_prompt.push_str(&format!(
                     "\n--------------------------------------------------\nThe diff for {} (against branch {}) is as follows:\n\n{}\n\n",
                     basename, diff_branch, diff_output
