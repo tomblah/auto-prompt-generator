@@ -520,7 +520,11 @@ mod integration_tests {
 
     /// Sets up a dummy Git project with a realistic structure.
     /// - The project root contains a TODO.swift file with content:
-    ///       "class SomeClass {\nvar foo: DummyType1? = nil\nvar bar: DummyType2? = nil\n}\n// TODO: - Fix bug"
+    ///       "class SomeClass {
+    ///           var foo: DummyType1? = nil
+    ///           var bar: DummyType2? = nil
+    ///        }
+    ///        // TODO: - Fix bug"
     /// - In a "Sources" subdirectory, two definition files are created:
     ///       - Definition1.swift defines DummyType1 with a simple declaration.
     ///       - Definition2.swift defines DummyType2 with a simple declaration.
@@ -532,7 +536,7 @@ mod integration_tests {
         let project_dir = TempDir::new().unwrap();
         let project_path = project_dir.path();
 
-        // Create the TODO file in the project root with the exact content you specified.
+        // Create the TODO file in the project root with the specified content.
         let todo_file_path = project_path.join("TODO.swift");
         fs::write(
             &todo_file_path,
@@ -626,7 +630,7 @@ mod integration_tests {
             clipboard_content.contains("class DummyType2 { }"),
             "Expected clipboard to contain the declaration of DummyType2"
         );
-        // And check that the TODO file's content references the dummy types and includes the TODO comment.
+        // Assert that the TODO file's content references the dummy types.
         assert!(
             clipboard_content.contains("DummyType1"),
             "Expected the TODO file to reference DummyType1"
@@ -635,6 +639,7 @@ mod integration_tests {
             clipboard_content.contains("DummyType2"),
             "Expected the TODO file to reference DummyType2"
         );
+        // Assert that the TODO comment appears.
         assert!(
             clipboard_content.contains("// TODO: - Fix bug"),
             "Expected the TODO comment to appear in the prompt"
@@ -684,7 +689,7 @@ mod integration_tests {
             !clipboard_content.contains("The contents of Definition2.swift is as follows:"),
             "Expected Definition2.swift header to be absent in singular mode"
         );
-        // Verify that the TODO file's content still references the dummy types and includes the TODO comment.
+        // Assert that the TODO file's content references the dummy types.
         assert!(
             clipboard_content.contains("DummyType1"),
             "Expected the TODO file to reference DummyType1"
@@ -693,6 +698,7 @@ mod integration_tests {
             clipboard_content.contains("DummyType2"),
             "Expected the TODO file to reference DummyType2"
         );
+        // Assert that the TODO comment appears.
         assert!(
             clipboard_content.contains("// TODO: - Fix bug"),
             "Expected the TODO comment to appear in the prompt"
@@ -742,6 +748,11 @@ mod integration_tests {
         assert!(
             clipboard_content.contains("The contents of Definition2.swift is as follows:"),
             "Expected clipboard to include Definition2.swift header"
+        );
+        // Assert that the TODO comment appears.
+        assert!(
+            clipboard_content.contains("// TODO: - Fix bug"),
+            "Expected the TODO comment to appear in the prompt"
         );
         // And now assert that the referencing file (Ref.swift) is included.
         assert!(
