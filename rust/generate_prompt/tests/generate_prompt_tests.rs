@@ -539,10 +539,16 @@ mod integration_tests {
     ///     }
     ///     // TODO: - Fix bug
     ///
+    /// In addition, this function sets the environment variable GET_GIT_ROOT to the project root,
+    /// so that all integration tests use the same dummy project.
+    ///
     /// Returns a tuple (project_dir, todo_file_path) where project_dir is the TempDir for the project.
     fn setup_dummy_project() -> (TempDir, PathBuf) {
         let project_dir = TempDir::new().unwrap();
         let project_path = project_dir.path();
+
+        // Set the Git root to the project root.
+        env::set_var("GET_GIT_ROOT", project_path.to_str().unwrap());
 
         // Create Package.swift to indicate this is a Swift package.
         let package_file_path = project_path.join("Package.swift");
@@ -608,7 +614,6 @@ mod integration_tests {
         let (project_dir, todo_file_path) = setup_dummy_project();
         let project_path = project_dir.path();
 
-        env::set_var("GET_GIT_ROOT", project_path.to_str().unwrap());
         env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap());
         env::remove_var("DISABLE_PBCOPY");
 
@@ -677,7 +682,6 @@ mod integration_tests {
         let (project_dir, todo_file_path) = setup_dummy_project();
         let project_path = project_dir.path();
 
-        env::set_var("GET_GIT_ROOT", project_path.to_str().unwrap());
         env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap());
         env::remove_var("DISABLE_PBCOPY");
 
@@ -739,7 +743,6 @@ mod integration_tests {
         let (project_dir, todo_file_path) = setup_dummy_project();
         let project_path = project_dir.path();
 
-        env::set_var("GET_GIT_ROOT", project_path.to_str().unwrap());
         env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap());
         env::remove_var("DISABLE_PBCOPY");
 
@@ -798,7 +801,6 @@ mod integration_tests {
         let (project_dir, todo_file_path) = setup_dummy_project();
         let project_path = project_dir.path();
 
-        env::set_var("GET_GIT_ROOT", project_path.to_str().unwrap());
         env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap());
         env::remove_var("DISABLE_PBCOPY");
 
