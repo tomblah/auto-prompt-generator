@@ -6,58 +6,110 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-/// Checks if the file has an allowed extension.
-fn allowed_extension(path: &Path) -> bool {
-    match path.extension().and_then(|s| s.to_str()) {
-        Some(ext) => {
-            let ext_lower = ext.to_lowercase();
-            ext_lower == "swift" || ext_lower == "h" || ext_lower == "m" || ext_lower == "js"
+/// A helper struct that encapsulates the information needed to find definition files.
+struct DefinitionFinder {
+    regex: Regex,
+    search_roots: Vec<PathBuf>,
+}
+
+impl DefinitionFinder {
+    /// Constructs a new `DefinitionFinder` from the given types file and root directory.
+    fn new(types_file: &Path, root: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+        // Read and parse the types file.
+        let types_content = fs::read_to_string(types_file)?;
+        let types: Vec<String> = types_content
+            .lines()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect();
+        if types.is_empty() {
+            return Err("No types found in the types file.".into());
         }
-        None => false,
+        // Build the regex to match definitions like "class MyType", "struct MyType", etc.
+        let types_regex = types.join("|");
+        let pattern = format!(
+            r"\b(?:class|struct|enum|protocol|typealias)\s+(?:{})\b",
+            types_regex
+        );
+        let regex = Regex::new(&pattern)?;
+
+        // Determine the search roots.
+        let search_roots = Self::get_search_roots(root);
+
+        Ok(Self { regex, search_roots })
     }
-}
 
-/// Checks if any component of the path is named ".build" or "Pods".
-fn file_in_excluded_dir(path: &Path) -> bool {
-    path.components().any(|c| {
-        let s = c.as_os_str().to_string_lossy();
-        s == ".build" || s == "Pods"
-    })
-}
-
-/// Given a root directory, returns a vector of search roots:
-/// - If the provided root itself contains a "Package.swift", returns only that directory.
-/// - Otherwise, returns the root (if not named ".build") and all subdirectories containing "Package.swift",
-///   skipping any that lie under a ".build" directory.
-fn get_search_roots(root: &Path) -> Vec<PathBuf> {
-    let mut roots = BTreeSet::new();
-    // If the root itself is a Swift package, use it.
-    if root.join("Package.swift").is_file() {
-        roots.insert(root.to_path_buf());
-    } else {
-        // Include the provided root unless its basename is ".build".
-        if root.file_name().map(|s| s != ".build").unwrap_or(true) {
+    /// Returns a vector of search roots given a starting directory.
+    /// If the root itself contains a "Package.swift", returns only that directory.
+    /// Otherwise, returns the root (if not named ".build") and all subdirectories
+    /// containing "Package.swift", skipping any under a ".build" directory.
+    fn get_search_roots(root: &Path) -> Vec<PathBuf> {
+        let mut roots = BTreeSet::new();
+        if root.join("Package.swift").is_file() {
             roots.insert(root.to_path_buf());
-        }
-        // Recursively search for "Package.swift" files.
-        for entry in WalkDir::new(root)
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|e| e.file_type().is_file() && e.file_name() == "Package.swift")
-        {
-            if entry
-                .path()
-                .components()
-                .any(|c| c.as_os_str() == ".build")
+        } else {
+            if root.file_name().map(|s| s != ".build").unwrap_or(true) {
+                roots.insert(root.to_path_buf());
+            }
+            for entry in WalkDir::new(root)
+                .into_iter()
+                .filter_map(Result::ok)
+                .filter(|e| e.file_type().is_file() && e.file_name() == "Package.swift")
             {
-                continue;
-            }
-            if let Some(parent) = entry.path().parent() {
-                roots.insert(parent.to_path_buf());
+                if entry.path().components().any(|c| c.as_os_str() == ".build") {
+                    continue;
+                }
+                if let Some(parent) = entry.path().parent() {
+                    roots.insert(parent.to_path_buf());
+                }
             }
         }
+        roots.into_iter().collect()
     }
-    roots.into_iter().collect()
+
+    /// Returns true if the file has one of the allowed extensions.
+    fn allowed_extension(path: &Path) -> bool {
+        path.extension()
+            .and_then(|s| s.to_str())
+            .map(|ext| {
+                let ext_lower = ext.to_lowercase();
+                ext_lower == "swift" || ext_lower == "h" || ext_lower == "m" || ext_lower == "js"
+            })
+            .unwrap_or(false)
+    }
+
+    /// Returns true if any component of the path is named ".build" or "Pods".
+    fn file_in_excluded_dir(path: &Path) -> bool {
+        path.components().any(|c| {
+            let s = c.as_os_str().to_string_lossy();
+            s == ".build" || s == "Pods"
+        })
+    }
+
+    /// Scans all search roots for files whose allowed extension is valid and which are not in
+    /// an excluded directory, then checks if their content matches the definition regex.
+    fn find_files(&self) -> BTreeSet<PathBuf> {
+        let mut found_files = BTreeSet::new();
+        for sr in &self.search_roots {
+            for entry in WalkDir::new(sr)
+                .into_iter()
+                .filter_map(Result::ok)
+                .filter(|e| e.file_type().is_file())
+            {
+                let path = entry.path();
+                if !Self::allowed_extension(path) || Self::file_in_excluded_dir(path) {
+                    continue;
+                }
+                if let Ok(content) = fs::read_to_string(path) {
+                    if self.regex.is_match(&content) {
+                        found_files.insert(path.to_path_buf());
+                    }
+                }
+            }
+        }
+        found_files
+    }
 }
 
 /// Public function: given a types file and a root directory,
@@ -67,50 +119,27 @@ pub fn find_definition_files(
     types_file: &Path,
     root: &Path,
 ) -> Result<BTreeSet<PathBuf>, Box<dyn std::error::Error>> {
-    // Read the types file.
-    let types_content = fs::read_to_string(types_file)?;
-    let types: Vec<String> = types_content
-        .lines()
-        .map(|line| line.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-    if types.is_empty() {
-        return Err("No types found in the types file.".into());
-    }
-    let types_regex = types.join("|");
-
-    // Build a regex that matches definitions like:
-    // "class MyType", "struct MyType", "enum MyType", etc.
-    let pattern = format!(
-        r"\b(?:class|struct|enum|protocol|typealias)\s+(?:{})\b",
-        types_regex
-    );
-    let re = Regex::new(&pattern)?;
-
-    let search_roots = get_search_roots(root);
-    let mut found_files = BTreeSet::new();
-
-    // Traverse each search root.
-    for sr in search_roots {
-        for entry in WalkDir::new(&sr)
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|e| e.file_type().is_file())
-        {
-            let path = entry.path();
-            if !allowed_extension(path) || file_in_excluded_dir(path) {
-                continue;
-            }
-            if let Ok(content) = fs::read_to_string(path) {
-                if re.is_match(&content) {
-                    found_files.insert(path.to_path_buf());
-                }
-            }
-        }
-    }
-
-    Ok(found_files)
+    let finder = DefinitionFinder::new(types_file, root)?;
+    Ok(finder.find_files())
 }
+
+/// The following free functions are re-exported for testing purposes so that the tests
+/// can continue to call them as before without any changes.
+#[cfg(test)]
+pub fn allowed_extension(path: &Path) -> bool {
+    DefinitionFinder::allowed_extension(path)
+}
+
+#[cfg(test)]
+pub fn file_in_excluded_dir(path: &Path) -> bool {
+    DefinitionFinder::file_in_excluded_dir(path)
+}
+
+#[cfg(test)]
+pub fn get_search_roots(root: &Path) -> Vec<PathBuf> {
+    DefinitionFinder::get_search_roots(root)
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -516,5 +545,97 @@ mod tests {
         let mut perms = fs::metadata(&unreadable_file).unwrap().permissions();
         perms.set_mode(0o644);
         fs::set_permissions(&unreadable_file, perms).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod internal_tests {
+    use super::*;
+    use std::fs;
+    use std::io::Write;
+    use tempfile::tempdir;
+    use std::path::Path;
+
+    #[test]
+    fn test_definition_finder_new_error_on_empty_types() {
+        let dir = tempdir().unwrap();
+        let types_path = dir.path().join("empty_types.txt");
+        fs::write(&types_path, "").unwrap();
+
+        // Attempting to create a DefinitionFinder with an empty types file should error.
+        let result = DefinitionFinder::new(&types_path, dir.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_definition_finder_new_valid() {
+        let dir = tempdir().unwrap();
+        let types_path = dir.path().join("types.txt");
+        fs::write(&types_path, "MyType\n").unwrap();
+
+        // Create a dummy file to ensure get_search_roots returns something.
+        let dummy_file = dir.path().join("dummy.swift");
+        fs::write(&dummy_file, "class MyType {}\n").unwrap();
+
+        let finder = DefinitionFinder::new(&types_path, dir.path());
+        assert!(finder.is_ok());
+        let finder = finder.unwrap();
+        // The regex should match the definition in our dummy file.
+        assert!(finder.regex.is_match("class MyType {}"));
+    }
+
+    #[test]
+    fn test_definition_finder_find_files() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create a types file.
+        let types_path = root.join("types.txt");
+        fs::write(&types_path, "MyType\n").unwrap();
+
+        // Create a valid file.
+        let valid_file = root.join("valid.swift");
+        fs::write(&valid_file, "class MyType {}\n").unwrap();
+
+        // Create an invalid file (should not match).
+        let invalid_file = root.join("invalid.swift");
+        fs::write(&invalid_file, "class NotMyType {}\n").unwrap();
+
+        // Create a file in an excluded directory.
+        let pods_dir = root.join("Pods");
+        fs::create_dir_all(&pods_dir).unwrap();
+        let excluded_file = pods_dir.join("excluded.swift");
+        fs::write(&excluded_file, "class MyType {}\n").unwrap();
+
+        // Build the finder and get found files.
+        let finder = DefinitionFinder::new(&types_path, root).unwrap();
+        let found = finder.find_files();
+
+        // Only valid_file should be found.
+        assert!(found.contains(&valid_file));
+        assert!(!found.contains(&invalid_file));
+        assert!(!found.contains(&excluded_file));
+    }
+
+    #[test]
+    fn test_get_search_roots_multiple_subpackages() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create two subdirectories with a Package.swift file.
+        let sub1 = root.join("Sub1");
+        fs::create_dir_all(&sub1).unwrap();
+        fs::write(&sub1.join("Package.swift"), "content").unwrap();
+
+        let sub2 = root.join("Sub2");
+        fs::create_dir_all(&sub2).unwrap();
+        fs::write(&sub2.join("Package.swift"), "content").unwrap();
+
+        let roots = DefinitionFinder::get_search_roots(root);
+        // Expect the root itself (if its not named ".build") and the two subpackages.
+        assert!(roots.contains(&root.to_path_buf()));
+        assert!(roots.contains(&sub1));
+        assert!(roots.contains(&sub2));
+        assert_eq!(roots.len(), 3);
     }
 }
