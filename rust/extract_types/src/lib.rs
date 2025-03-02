@@ -67,6 +67,7 @@ mod tests {
     use std::fs;
     use std::io::Write;
     use tempfile::NamedTempFile;
+    use anyhow::Result;
 
     #[test]
     fn test_extract_types_returns_empty_for_file_with_no_capitalized_words() -> Result<()> {
@@ -107,6 +108,63 @@ enum MyEnum {{}}"
         let result_path = extract_types_from_file(swift_file.path())?;
         let result = fs::read_to_string(&result_path)?;
         assert_eq!(result.trim(), "CustomType");
+        Ok(())
+    }
+
+    #[test]
+    fn test_extract_types_deduplicates_type_names() -> Result<()> {
+        // Create a file with duplicate declarations of the same type.
+        let mut swift_file = NamedTempFile::new()?;
+        writeln!(swift_file, "class DuplicateType {{}}")?;
+        writeln!(swift_file, "struct DuplicateType {{}}")?;
+        writeln!(swift_file, "enum DuplicateType {{}}")?;
+        let result_path = extract_types_from_file(swift_file.path())?;
+        let result = fs::read_to_string(&result_path)?;
+        // Only one instance should appear.
+        assert_eq!(result.trim(), "DuplicateType");
+        Ok(())
+    }
+
+    #[test]
+    fn test_extract_types_mixed_tokens_in_one_line() -> Result<()> {
+        // Create a file with multiple declarations separated by punctuation.
+        let mut swift_file = NamedTempFile::new()?;
+        writeln!(swift_file, "class MyClass, struct MyStruct; enum MyEnum.")?;
+        let result_path = extract_types_from_file(swift_file.path())?;
+        let result = fs::read_to_string(&result_path)?;
+        // The tokens should be split correctly and sorted alphabetically.
+        let expected = "MyClass\nMyEnum\nMyStruct";
+        assert_eq!(result.trim(), expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_extract_types_with_underscores() -> Result<()> {
+        // Create a file where a type name includes an underscore.
+        // The preprocessing replaces non-alphanumeric characters with spaces,
+        // so "My_Class" should not appear as a single token.
+        let mut swift_file = NamedTempFile::new()?;
+        writeln!(swift_file, "class My_Class {{}}")?;
+        let result_path = extract_types_from_file(swift_file.path())?;
+        let result = fs::read_to_string(&result_path)?;
+        // Ensure that the token "My_Class" does not appear.
+        for token in result.lines() {
+            assert_ne!(token, "My_Class", "Found token 'My_Class', which should have been split.");
+        }
+        // Optionally, you could check for the presence of the split tokens "My" and "Class".
+        // (Depending on your intended behavior, you might want to adjust the extraction logic.)
+        Ok(())
+    }
+
+    #[test]
+    fn test_extract_types_trailing_punctuation() -> Result<()> {
+        // Create a file where the type declaration is followed by punctuation.
+        let mut swift_file = NamedTempFile::new()?;
+        writeln!(swift_file, "enum MyEnum.")?;
+        let result_path = extract_types_from_file(swift_file.path())?;
+        let result = fs::read_to_string(&result_path)?;
+        // The trailing punctuation should be removed.
+        assert_eq!(result.trim(), "MyEnum");
         Ok(())
     }
 }
