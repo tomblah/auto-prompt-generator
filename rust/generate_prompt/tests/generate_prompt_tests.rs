@@ -519,67 +519,81 @@ mod integration_tests {
     use tempfile::TempDir;
     use filetime::{set_file_mtime, FileTime};
 
-    /// Sets up a dummy Git project that is inside a Swift package.
+    /// Sets up a dummy Git project that is inside a Swift package,
+    /// but with one extra file outside the package.
     ///
     /// Dummy Project Structure:
     ///
-    /// project_root/
-    /// ├── Package.swift           // Marks the directory as a Swift package.
-    /// ├── TODO.swift              // Contains the main TODO with the bug-fix instruction.
-    /// ├── OldTodo.swift           // Contains an old TODO marker (with an earlier modification time).
-    /// ├── Ref.swift               // A referencing file that should be excluded.
-    /// └── Sources/
-    ///     ├── Definition1.swift   // Defines DummyType1.
-    ///     └── Definition2.swift   // Defines DummyType2.
+    /// git_root/
+    /// ├── my_package/
+    /// │   ├── Package.swift           // Marks this directory as a Swift package.
+    /// │   ├── TODO.swift              // Contains the main TODO with the bug-fix instruction.
+    /// │   ├── OldTodo.swift           // Contains an old TODO marker (with an earlier modification time).
+    /// │   ├── Ref.swift               // A referencing file that should be excluded.
+    /// │   └── Sources/
+    /// │       ├── Definition1.swift   // Defines DummyType1.
+    /// │       └── Definition2.swift   // Defines DummyType2.
+    /// └── Outside.swift               // (Outside the package) Defines DummyType3.
     ///
-    /// The TODO.swift file contains:
+    /// The TODO.swift file (inside my_package) contains:
     ///     class SomeClass {
     ///         var foo: DummyType1? = nil
     ///         var bar: DummyType2? = nil
     ///     }
     ///     // TODO: - Fix bug
     ///
-    /// In addition, this function sets the environment variable GET_GIT_ROOT to the project root,
-    /// so that all integration tests use the same dummy project.
+    /// In addition, this function sets the environment variable GET_GIT_ROOT to the git root,
+    /// so that tests using --force-global will search the entire Git repository and include Outside.swift.
     ///
-    /// Returns a tuple (project_dir, todo_file_path) where project_dir is the TempDir for the project.
+    /// Returns a tuple (git_root_dir, todo_file_path) where git_root_dir is the TempDir for the project,
+    /// and todo_file_path points to my_package/TODO.swift.
     fn setup_dummy_project() -> (TempDir, PathBuf) {
-        let project_dir = TempDir::new().unwrap();
-        let project_path = project_dir.path();
+        // Create the git root (which is not a Swift package by itself)
+        let git_root_dir = TempDir::new().unwrap();
+        let git_root_path = git_root_dir.path();
 
-        // Set the Git root to the project root.
-        env::set_var("GET_GIT_ROOT", project_path.to_str().unwrap());
+        // Set GET_GIT_ROOT to the git root.
+        env::set_var("GET_GIT_ROOT", git_root_path.to_str().unwrap());
 
-        // Create Package.swift to indicate this is a Swift package.
-        let package_file_path = project_path.join("Package.swift");
+        // Create the package directory inside the git root.
+        let package_dir = git_root_path.join("my_package");
+        fs::create_dir_all(&package_dir).unwrap();
+
+        // Create Package.swift inside the package directory.
+        let package_file_path = package_dir.join("Package.swift");
         fs::write(&package_file_path, "// swift package").unwrap();
 
-        // Create the main TODO.swift file.
-        let todo_file_path = project_path.join("TODO.swift");
+        // Create the main TODO.swift file inside the package.
+        let todo_file_path = package_dir.join("TODO.swift");
         fs::write(
             &todo_file_path,
-            "class SomeClass {\nvar foo: DummyType1? = nil\nvar bar: DummyType2? = nil\n}\n// TODO: - Fix bug",
+            "class SomeClass {\n    var foo: DummyType1? = nil\n    var bar: DummyType2? = nil\n}\n// TODO: - Fix bug",
         )
         .unwrap();
 
-        // Create an extra file with an old TODO marker.
-        let old_todo_path = project_path.join("OldTodo.swift");
+        // Create an extra file with an old TODO marker inside the package.
+        let old_todo_path = package_dir.join("OldTodo.swift");
         fs::write(&old_todo_path, "class OldClass { } // TODO: - Old marker").unwrap();
+        // (Assume set_file_mtime is imported)
         set_file_mtime(&old_todo_path, FileTime::from_unix_time(1000, 0)).unwrap();
 
-        // Create a Sources directory with two definition files.
-        let sources_dir = project_path.join("Sources");
+        // Create a Sources directory inside the package with two definition files.
+        let sources_dir = package_dir.join("Sources");
         fs::create_dir_all(&sources_dir).unwrap();
         let def1_path = sources_dir.join("Definition1.swift");
         let def2_path = sources_dir.join("Definition2.swift");
         fs::write(&def1_path, "class DummyType1 { }").unwrap();
         fs::write(&def2_path, "class DummyType2 { }").unwrap();
 
-        // Create an additional referencing file in the project root.
-        let ref_file_path = project_path.join("Ref.swift");
+        // Create a referencing file in the package root.
+        let ref_file_path = package_dir.join("Ref.swift");
         fs::write(&ref_file_path, "let instance = SomeClass()").unwrap();
 
-        (project_dir, todo_file_path)
+        // Now add a file outside the package (at the Git root) that defines another type.
+        let outside_file = git_root_path.join("Outside.swift");
+        fs::write(&outside_file, "class DummyType3 { }").unwrap();
+
+        (git_root_dir, todo_file_path)
     }
 
     /// Sets up a dummy pbcopy executable that writes its stdin to a temporary file.
