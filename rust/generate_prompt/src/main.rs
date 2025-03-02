@@ -4,7 +4,6 @@ use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use which::which;
 use unescape_newlines::unescape_newlines;
 
 // Library dependencies.
@@ -22,6 +21,8 @@ use extract_enclosing_function::extract_enclosing_block;
 
 // Import the assemble_prompt library.
 use assemble_prompt;
+// NEW: Import the new find_definition_files library function.
+use find_definition_files::find_definition_files;
 
 fn main() -> Result<()> {
     let matches = Command::new("generate_prompt")
@@ -180,19 +181,23 @@ fn main() -> Result<()> {
         println!("{}", types_content.trim());
         println!("--------------------------------------------------");
 
-        let def_files_content = run_command(
-            &[
-                "find_definition_files",
-                types_file_path.as_str(),
-                search_root.to_str().unwrap(),
-            ],
-            None,
+        // Call the library function directly.
+        let def_files_set = find_definition_files(
+            Path::new(&types_file_path),
+            &search_root,
         )
-        .context("Failed to find definition files")?;
+        .map_err(|err| anyhow::anyhow!("Failed to find definition files: {}", err))?;
+        let def_files_content = def_files_set
+            .iter()
+            .map(|p| p.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("\n");
+
         found_files_path = {
             let mut temp = tempfile::NamedTempFile::new()
                 .context("Failed to create temporary file for found files")?;
-            write!(temp, "{}", def_files_content)
+            // Ensure trailing newline using format!
+            write!(temp, "{}\n", def_files_content)
                 .context("Failed to write to temporary found files file")?;
             temp.into_temp_path()
                 .keep()
@@ -204,22 +209,22 @@ fn main() -> Result<()> {
                 .append(true)
                 .open(&found_files_path)
                 .context(format!("Failed to open found files list at {}", found_files_path.display()))?;
+            // Append the TODO file on its own line.
             writeln!(f, "{}", file_path).context("Failed to append TODO file")?;
         }
-        let _found_files = fs::read_to_string(&found_files_path)
-            .context("Failed to read found files list")?;
+        // Apply initial exclusion filtering.
         if !excludes.is_empty() {
             println!("Excluding files matching: {:?}", excludes);
-            let found_files_content = fs::read_to_string(&found_files_path)
-                .context("Failed to read found files list")?;
-            let lines: Vec<String> = found_files_content
+            let initial_found_files_content = fs::read_to_string(&found_files_path)
+                .context("Failed to read found files list for initial filtering")?;
+            let lines: Vec<String> = initial_found_files_content
                 .lines()
                 .map(|line| line.trim().to_string())
                 .filter(|line| !line.is_empty())
                 .collect();
             let filtered_lines = filter_excluded_files_lines(lines, &excludes);
-            fs::write(&found_files_path, filtered_lines.join("\n"))
-                .context("Failed to write final excluded list")?;
+            fs::write(&found_files_path, format!("{}\n", filtered_lines.join("\n")))
+                .context("Failed to write initial excluded list")?;
         }
     }
 
@@ -247,11 +252,26 @@ fn main() -> Result<()> {
                     .append(true)
                     .open(&found_files_path)
                     .context("Failed to open found files list for appending referencing files")?;
+                // Append referencing files with a trailing newline.
                 writeln!(f, "{}", referencing_files.join("\n"))
                     .context("Failed to append referencing files")?;
             }
         } else {
             println!("No enclosing type found; skipping reference search.");
+        }
+        // Reapply exclusion filtering after referencing files have been appended.
+        if !excludes.is_empty() {
+            println!("Excluding files matching: {:?}", excludes);
+            let final_found_files_content = fs::read_to_string(&found_files_path)
+                .context("Failed to re-read found files list for final filtering")?;
+            let lines: Vec<String> = final_found_files_content
+                .lines()
+                .map(|line| line.trim().to_string())
+                .filter(|line| !line.is_empty())
+                .collect();
+            let final_filtered_lines = filter_excluded_files_lines(lines, &excludes);
+            fs::write(&found_files_path, format!("{}\n", final_filtered_lines.join("\n")))
+                .context("Failed to write final excluded list after appending referencing files")?;
         }
     }
 
