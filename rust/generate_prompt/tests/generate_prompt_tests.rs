@@ -515,12 +515,11 @@ mod integration_tests {
     // ========================================================================
     // Integration Testing Strategy:
     //
-    // Our integration tests simulate a realistic user interaction by constructing a
-    // "holistic dummy project" that mimics a real Git repository. The repository's
-    // structure is as follows:
+    // We simulate a realistic Git repository that contains a Swift package as a
+    // subdirectory ("MyPackage") along with extra files. The repository structure:
     //
     // parent_dir/                  <-- Git repository root
-    // ├── MyPackage/               <-- Swift package directory (detected by Package.swift)
+    // ├── MyPackage/               <-- Swift package directory
     // │   ├── Package.swift       // Minimal content marking it as a Swift package
     // │   ├── TODO.swift          // Contains:
     // │   │    "class SomeClass {
@@ -535,22 +534,13 @@ mod integration_tests {
     // │   └── Ref.swift           // Contains: "let instance = SomeClass()"
     // └── ExternalDummy.swift      // Contains: "class DummyType3 { }" (outside the package)
     //
-    // In our tests, GET_GIT_ROOT is set to the repository's root (the parent_dir), and
-    // GET_INSTRUCTION_FILE is set to the TODO.swift file inside the package. The search
-    // logic should detect that MyPackage is the Swift package and then restrict its search
-    // to that directory. As a result, files outside MyPackage (like ExternalDummy.swift) are
-    // not included in the final prompt.
+    // GET_GIT_ROOT is set to the repository's root (parent_dir) so that generate_prompt
+    // will search for the Swift package within the repo and ignore files outside it.
+    // We intentionally do NOT set GET_INSTRUCTION_FILE so that generate_prompt must find
+    // the TODO.swift file automatically.
     //
-    // We then run the generate_prompt binary with various command-line flags:
-    // - Normal mode (no extra flags) should include TODO.swift and the definition files,
-    //   while excluding Ref.swift, OldTodo.swift, and ExternalDummy.swift.
-    // - Singular mode (--singular) should include only TODO.swift.
-    // - Include-references mode (--include-references) should include Ref.swift in addition
-    //   to TODO.swift and the definition files.
-    // - Exclusion tests can also be added (e.g. using --exclude) to filter out specific files.
-    //
-    // This approach allows us to simulate real user interactions with a heterogeneous
-    // repository without duplicating the project setup across tests.
+    // We then run generate_prompt with various flags (--singular, --include-references, or
+    // --exclude) and assert that only the expected files appear in the final prompt.
     // ========================================================================
 
     use assert_cmd::Command;
@@ -592,7 +582,7 @@ mod integration_tests {
         let package_dir = parent_path.join("MyPackage");
         fs::create_dir(&package_dir).unwrap();
 
-        // Create Package.swift to mark this as a Swift package.
+        // Create Package.swift in the package directory.
         fs::write(package_dir.join("Package.swift"), "// swift package").unwrap();
 
         // Create the main TODO.swift file in the package.
@@ -648,13 +638,10 @@ mod integration_tests {
         (pbcopy_dir, clipboard_file)
     }
 
-    /// Common environment initialization: sets GET_GIT_ROOT and GET_INSTRUCTION_FILE.
-    /// GET_GIT_ROOT is set to the repository's root (parent_dir), ensuring that external files
-    /// (like ExternalDummy.swift) are not within the package. GET_INSTRUCTION_FILE is set to the
-    /// TODO.swift file inside the package.
-    fn init_env(parent_dir: &TempDir, todo_file_path: &PathBuf) {
+    /// Common environment initialization.
+    /// Sets GET_GIT_ROOT to the repository's root (the parent directory).
+    fn init_env(parent_dir: &TempDir) {
         env::set_var("GET_GIT_ROOT", parent_dir.path().to_str().unwrap());
-        env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap());
     }
 
     /// Integration test for normal mode.
@@ -664,8 +651,9 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_normal_mode_includes_all_files() {
-        let (parent_dir, package_dir, todo_file_path) = setup_dummy_project();
-        init_env(&parent_dir, &todo_file_path);
+        let (parent_dir, _package_dir, todo_file_path) = setup_dummy_project();
+        init_env(&parent_dir);
+        // We do not set GET_INSTRUCTION_FILE so generate_prompt must find the TODO.swift automatically.
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
@@ -734,8 +722,8 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_singular_mode_includes_only_todo_file() {
-        let (parent_dir, package_dir, todo_file_path) = setup_dummy_project();
-        init_env(&parent_dir, &todo_file_path);
+        let (parent_dir, _package_dir, todo_file_path) = setup_dummy_project();
+        init_env(&parent_dir);
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
@@ -798,8 +786,8 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_include_references_includes_ref_file() {
-        let (parent_dir, package_dir, todo_file_path) = setup_dummy_project();
-        init_env(&parent_dir, &todo_file_path);
+        let (parent_dir, _package_dir, todo_file_path) = setup_dummy_project();
+        init_env(&parent_dir);
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
@@ -829,7 +817,7 @@ mod integration_tests {
             clipboard_content.contains("// TODO: - Fix bug"),
             "Expected the TODO comment to appear in the prompt"
         );
-        // Assert that the referencing file (Ref.swift) is included.
+        // Assert that the referencing file (Ref.swift) is now included.
         assert!(
             clipboard_content.contains("The contents of Ref.swift is as follows:"),
             "Expected Ref.swift to be included in the prompt with --include-references"
@@ -838,7 +826,6 @@ mod integration_tests {
             clipboard_content.contains("let instance = SomeClass()"),
             "Expected the content of Ref.swift to appear in the prompt"
         );
-        // Assert that OldTodo.swift and ExternalDummy.swift are not included.
         assert!(
             !clipboard_content.contains("The contents of OldTodo.swift is as follows:"),
             "Did not expect OldTodo.swift to be included in the prompt"
@@ -853,3 +840,4 @@ mod integration_tests {
         );
     }
 }
+
