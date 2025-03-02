@@ -510,6 +510,7 @@ Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs
     }
 }
 
+// FIXME: I don't trust these integration tests as they require setting internal environment variables and therefore they can't be trusted as adding coverage or being valid tests. For now, integration tests will be done through bats files.
 #[cfg(test)]
 mod integration_tests {
     use assert_cmd::Command;
