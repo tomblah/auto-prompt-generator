@@ -114,4 +114,53 @@ struct LateStruct {
         let extracted = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
         assert_eq!(extracted, "Empty");
     }
+
+    // --- Additional Tests ---
+
+    #[test]
+    fn test_no_todo_marker_returns_last_type() {
+        // Test a file with several type declarations but without any TODO marker.
+        let content = "\
+class FirstClass {
+    // Some code here
+}
+struct SecondStruct {
+    // Some code here
+}
+enum ThirdEnum {
+    // Some code here
+}";
+        // Expect the last type ("ThirdEnum") to be returned.
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let file_path = tmp_dir.path().join("NoTodo.swift");
+        fs::write(&file_path, content).unwrap();
+
+        let extracted = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
+        assert_eq!(extracted, "ThirdEnum");
+    }
+
+    #[test]
+    fn test_type_on_same_line_as_todo_marker() {
+        // Test a file where the type declaration appears on the same line as the TODO marker.
+        // In this case the line is skipped before updating the last_type, and the function should fall back to the file's basename.
+        let content = "class MyClass { // TODO: - Do something important }";
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let file_path = tmp_dir.path().join("SameLine.swift");
+        fs::write(&file_path, content).unwrap();
+
+        let extracted = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
+        // Expect fallback to the file stem "SameLine" rather than "MyClass".
+        assert_eq!(extracted, "SameLine");
+    }
+
+    #[test]
+    fn test_nonexistent_file_error() {
+        // Attempt to call extract_enclosing_type on a file that doesn't exist.
+        let file_path = "/path/to/nonexistent/file.swift";
+        let result = extract_enclosing_type(file_path);
+        assert!(result.is_err());
+        // Optionally, check that the error message contains expected text.
+        let err_msg = result.err().unwrap();
+        assert!(err_msg.contains("Error reading file"));
+    }
 }
