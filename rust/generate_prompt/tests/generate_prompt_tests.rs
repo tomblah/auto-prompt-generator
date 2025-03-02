@@ -338,45 +338,39 @@ mod additional_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_multiple_markers() {
+        // Create a temporary directory for dummy executables.
         let temp_dir = TempDir::new().unwrap();
+        // Create a fake Git root.
         let fake_git_root = TempDir::new().unwrap();
         let fake_git_root_path = fake_git_root.path().to_str().unwrap();
 
         // Dummy "get_git_root" returns our fake Git root.
         create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
 
-        // Create a dummy TODO instruction file path.
+        // Create a dummy instruction file with multiple markers.
         let instruction_path = format!("{}/Instruction.swift", fake_git_root_path);
-        // Create the file with expected content.
-        fs::write(&instruction_path, "   // TODO: - Fix issue").unwrap();
-        create_dummy_executable(&temp_dir, "find_prompt_instruction", &instruction_path);
+        let multi_marker_content = "\
+            // TODO: - Marker One\n\
+            Some content here\n\
+            // TODO: - Marker Two\n\
+            More content here\n\
+            // TODO: -\n";
+        fs::write(&instruction_path, multi_marker_content).unwrap();
+        // Set the environment override so generate_prompt picks this file.
+        env::set_var("GET_INSTRUCTION_FILE", &instruction_path);
 
+        // Dummy "find_prompt_instruction" returns the instruction path.
+        create_dummy_executable(&temp_dir, "find_prompt_instruction", &instruction_path);
         // Dummy "get_package_root" returns an empty string.
         create_dummy_executable(&temp_dir, "get_package_root", "");
-
-        // Dummy "extract_instruction_content" returns a line with a TODO marker.
-        create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Fix issue");
-
-        // Create a dummy types file and return its path via "extract_types".
+        // We allow extract_instruction_content to read directly from the file.
+        // Create a dummy types file.
         let types_file = temp_dir.path().join("types.txt");
         fs::write(&types_file, "TypeA").unwrap();
         create_dummy_executable(&temp_dir, "extract_types", types_file.to_str().unwrap());
-
-        // Add dummy for find_definition_files so it succeeds.
+        // Dummy for find_definition_files.
         create_dummy_executable(&temp_dir, "find_definition_files", "dummy_definitions");
-
-        // For this test we want the final prompt to have multiple markers.
-        // Our dummy "assemble_prompt" outputs a prompt with three marker lines:
-        // Two markers from content plus the final CTA marker.
-        let multi_marker_prompt = "\
-    The contents of Instruction.swift is as follows:\n\n\
-    // TODO: - Marker One\nSome content here\n\n\
-    // TODO: - Marker Two\nMore content here\n\n\
-     // TODO: -\n";
-        create_dummy_executable(&temp_dir, "assemble_prompt", multi_marker_prompt);
-
-        // For the file list we need at least one file.
-        // Dummy "filter_files_singular" simply echoes the instruction path.
+        // Dummy for filter_files_singular – simply echo back the instruction file path.
         create_dummy_executable(&temp_dir, "filter_files_singular", &instruction_path);
 
         // Prepend our temporary directory to PATH and disable clipboard copying.
@@ -386,7 +380,8 @@ mod additional_tests {
 
         // Run the generate_prompt binary.
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-        cmd.assert().failure()
+        cmd.assert()
+            .failure()
             .stderr(predicate::str::contains("Multiple // TODO: - markers found. Exiting."));
     }
 }

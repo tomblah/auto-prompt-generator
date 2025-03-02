@@ -313,6 +313,7 @@ name = "generate_prompt"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "assemble_prompt",
  "assert_cmd",
  "clap",
  "diff_with_branch",
