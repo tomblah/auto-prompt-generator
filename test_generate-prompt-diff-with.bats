@@ -21,7 +21,6 @@ EOF
   
   # Copy required scripts to TMP_DIR (adjust paths if necessary)
   cp "${BATS_TEST_DIRNAME}/generate-prompt.sh" "$TMP_DIR/"
-  cp "${BATS_TEST_DIRNAME}/find-definition-files.sh" "$TMP_DIR/"
   cp -R "${BATS_TEST_DIRNAME}/rust" "$TMP_DIR/"
   
   # Change to TMP_DIR which will act as our repository root.
