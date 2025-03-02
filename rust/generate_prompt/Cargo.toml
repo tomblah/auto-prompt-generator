@@ -29,3 +29,5 @@ find_definition_files = { path = "../find_definition_files" }
 tempfile = { workspace = true }
 assert_cmd = { workspace = true }
 predicates = { workspace = true }
+filetime = "0.2"
+
