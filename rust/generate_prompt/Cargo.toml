@@ -24,6 +24,7 @@ extract_enclosing_type = { path = "../extract_enclosing_type" }
 find_referencing_files = { path = "../find_referencing_files" }
 extract_enclosing_function = { path = "../extract_enclosing_function" }
 assemble_prompt = { path = "../assemble_prompt" }
+find_definition_files = { path = "../find_definition_files" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

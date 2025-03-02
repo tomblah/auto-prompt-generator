@@ -180,15 +180,22 @@ fn main() -> Result<()> {
         println!("{}", types_content.trim());
         println!("--------------------------------------------------");
 
-        let def_files_content = run_command(
-            &[
-                "find_definition_files",
-                types_file_path.as_str(),
-                search_root.to_str().unwrap(),
-            ],
-            None,
+        // Call the find_definition_files library directly.
+        use std::path::Path;
+        use find_definition_files;
+
+        let found_files_set = find_definition_files::find_definition_files(
+            Path::new(&types_file_path),
+            &search_root,
         )
         .context("Failed to find definition files")?;
+
+        let def_files_content = found_files_set
+            .into_iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<String>>()
+            .join("\n");
+
         found_files_path = {
             let mut temp = tempfile::NamedTempFile::new()
                 .context("Failed to create temporary file for found files")?;
@@ -353,3 +360,5 @@ fn run_command(args: &[&str], envs: Option<&[(&str, &str)]>) -> Result<String, a
     let stdout = String::from_utf8(output.stdout).context("Output not valid UTF-8")?;
     Ok(stdout)
 }
+
+// Note: rust file unit tests not shown here for brevity.
