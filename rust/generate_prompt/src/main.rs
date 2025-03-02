@@ -12,25 +12,18 @@ use extract_instruction_content::extract_instruction_content;
 use get_search_roots::get_search_roots;
 use get_git_root::get_git_root;
 use find_prompt_instruction::find_prompt_instruction_in_dir;
-// Use our library to process files.
-use prompt_file_processor::process_file;
-// Use the diff_with_branch library directly.
 use diff_with_branch::run_diff;
-// NEW: Use filter_excluded_files library directly.
 use filter_excluded_files::filter_excluded_files_lines;
-// NEW: Use the extract_types library function directly.
 use extract_types::extract_types_from_file;
-// NEW: Import the refactored filter_files_singular library.
 use filter_files_singular;
-// NEW: Import extract_enclosing_type as a library instead of calling an external binary.
 use extract_enclosing_type::extract_enclosing_type;
-// NEW: Import the refactored find_referencing_files library.
 use find_referencing_files;
-// NEW: Import extract_enclosing_function library.
 use extract_enclosing_function::extract_enclosing_block;
 
+// Import the assemble_prompt library.
+use assemble_prompt;
+
 fn main() -> Result<()> {
-    // Parse command-line arguments using Clap.
     let matches = Command::new("generate_prompt")
         .version("0.1.0")
         .about("Generates an AI prompt by delegating to existing Rust libraries and binaries")
@@ -80,7 +73,7 @@ fn main() -> Result<()> {
     let force_global = *matches.get_one::<bool>("force_global").unwrap();
     let include_references = *matches.get_one::<bool>("include_references").unwrap();
     let _diff_branch_arg = matches.get_one::<String>("diff_with").map(String::as_str);
-    let _verbose = *matches.get_one::<bool>("verbose").unwrap(); // unused, so underscore-prefixed
+    let _verbose = *matches.get_one::<bool>("verbose").unwrap();
     let excludes: Vec<String> = matches
         .get_many::<String>("exclude")
         .unwrap_or_default()
@@ -92,7 +85,6 @@ fn main() -> Result<()> {
     println!("--------------------------------------------------");
     println!("Current directory: {}", current_dir.display());
 
-    // Allow override for Git root in tests.
     let git_root = if let Ok(git_root_override) = env::var("GET_GIT_ROOT") {
         git_root_override
     } else {
@@ -158,7 +150,7 @@ fn main() -> Result<()> {
         .context("Failed to extract instruction content")?;
     println!("Instruction content: {}", instruction_content.trim());
 
-    // NEW: Extract enclosing function block using the new extract_enclosing_function library.
+    // NEW: Extract enclosing function block.
     let enclosing_context = match fs::read_to_string(&file_path) {
         Ok(content) => match extract_enclosing_block(&content) {
             Some(block) => block,
@@ -180,18 +172,14 @@ fn main() -> Result<()> {
             .map_err(|e| anyhow::anyhow!(e))
             .context("Failed to create singular temp file")?;
     } else {
-        // Instead of invoking an external command for extract_types,
-        // we now call the library function directly.
         let types_file_path = extract_types_from_file(&file_path)
             .context("Failed to extract types")?;
-        // Read and print the types from the temporary file.
         let types_content = fs::read_to_string(&types_file_path)
             .context("Failed to read extracted types")?;
         println!("Types found:");
         println!("{}", types_content.trim());
         println!("--------------------------------------------------");
 
-        // For find_definition_files, we use the types file directly.
         let def_files_content = run_command(
             &[
                 "find_definition_files",
@@ -212,11 +200,10 @@ fn main() -> Result<()> {
         };
         {
             use std::fs::OpenOptions;
-            let found_files_path_str = found_files_path.to_string_lossy();
             let mut f = OpenOptions::new()
                 .append(true)
                 .open(&found_files_path)
-                .context(format!("Failed to open found files list at {}", found_files_path_str))?;
+                .context(format!("Failed to open found files list at {}", found_files_path.display()))?;
             writeln!(f, "{}", file_path).context("Failed to append TODO file")?;
         }
         let _found_files = fs::read_to_string(&found_files_path)
@@ -239,7 +226,6 @@ fn main() -> Result<()> {
     // 7. Optionally include referencing files.
     if include_references {
         println!("Including files that reference the enclosing type");
-        // Call the library function directly instead of invoking an external binary.
         let enclosing_type = match extract_enclosing_type(&file_path) {
             Ok(ty) => ty,
             Err(err) => {
@@ -250,7 +236,6 @@ fn main() -> Result<()> {
         if !enclosing_type.is_empty() {
             println!("Enclosing type: {}", enclosing_type);
             println!("Searching for files referencing {}", enclosing_type);
-            // NEW: call the refactored library function for find_referencing_files directly.
             let referencing_files = find_referencing_files::find_files_referencing(
                 &enclosing_type,
                 search_root.to_str().unwrap(),
@@ -291,42 +276,12 @@ fn main() -> Result<()> {
         println!("{}", basename);
     }
 
-    // 9. Assemble the final prompt.
-    let fixed_instruction = "Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen";
-    let final_prompt = if which("assemble_prompt").is_ok() {
-        run_command(
-            &[
-                "assemble_prompt",
-                found_files_path.to_str().unwrap(),
-                instruction_content.trim(),
-            ],
-            None,
-        )
-        .context("Failed to assemble prompt")?
-    } else {
-        // Fallback: assemble using library processing.
-        let mut prompt = String::new();
-        for file in &file_paths {
-            let processed_content = match process_file(file, Some(&todo_file_basename)) {
-                Ok(content) => content,
-                Err(err) => {
-                    eprintln!("Error processing {}: {}. Falling back to file contents.", file, err);
-                    fs::read_to_string(file).unwrap_or_default()
-                }
-            };
-            let basename = Path::new(file)
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy();
-            prompt.push_str(&format!(
-                "\nThe contents of {} is as follows:\n\n{}\n",
-                basename, processed_content
-            ));
-            prompt.push_str("\n--------------------------------------------------\n");
-        }
-        prompt.push_str(&format!("\n\n{}", fixed_instruction));
-        prompt
-    };
+    // 9. Assemble the final prompt by calling the library function.
+    let final_prompt = assemble_prompt::assemble_prompt(
+        found_files_path.to_str().unwrap(),
+        instruction_content.trim(),
+    )
+    .context("Failed to assemble prompt")?;
 
     // 10. Check for multiple "// TODO: -" markers.
     let marker = "// TODO: -";
