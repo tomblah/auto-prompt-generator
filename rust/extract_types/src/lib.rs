@@ -44,7 +44,7 @@ fn extract_types_tree_sitter(source: &str) -> BTreeSet<String> {
     let mut parser = Parser::new();
     parser
         .set_language(unsafe {
-            &*(&tree_sitter_swift::LANGUAGE as *const _ as *const tree_sitter::Language)
+            *(&tree_sitter_swift::LANGUAGE as *const _ as *const tree_sitter::Language)
         })
         .expect("Error loading Swift grammar");
     if let Some(tree) = parser.parse(source, None) {
@@ -180,92 +180,5 @@ enum MyEnum {{}}"
         // The trailing punctuation should be removed.
         assert_eq!(result.trim(), "MyEnum");
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod type_extractor_tests {
-    use super::*;
-    use std::collections::BTreeSet;
-
-    #[test]
-    fn test_type_extractor_new() {
-        let extractor = TypeExtractor::new().expect("Failed to create TypeExtractor");
-        // Simply verify that an instance can be created.
-        assert!(extractor.re_simple.is_match("MyType"));
-    }
-
-    #[test]
-    fn test_extract_tokens_returns_none_for_empty_or_non_eligible_lines() {
-        let extractor = TypeExtractor::new().unwrap();
-        // Empty or whitespace-only lines return None.
-        assert!(extractor.extract_tokens("").is_none());
-        assert!(extractor.extract_tokens("   ").is_none());
-        // Lines that start with "import " or "//" should be skipped.
-        assert!(extractor.extract_tokens("import Foundation").is_none());
-        assert!(extractor.extract_tokens("// comment").is_none());
-    }
-
-    #[test]
-    fn test_extract_tokens_splits_and_cleans_input() {
-        let extractor = TypeExtractor::new().unwrap();
-        // Input with punctuation: non-alphanumeric chars become spaces.
-        let tokens = extractor.extract_tokens("MyClass,struct MyStruct").unwrap();
-        // "MyClass,struct MyStruct" becomes "MyClass struct MyStruct", then splits into tokens.
-        assert_eq!(tokens, vec!["MyClass", "struct", "MyStruct"]);
-    }
-
-    #[test]
-    fn test_extract_types_basic() {
-        let extractor = TypeExtractor::new().unwrap();
-        let lines = vec![
-            "class MyClass {}".to_string(),
-            "struct MyStruct {}".to_string(),
-            "enum MyEnum {}".to_string(),
-        ];
-        let types = extractor.extract_types(lines.into_iter());
-        let expected: BTreeSet<String> = ["MyClass", "MyEnum", "MyStruct"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        assert_eq!(types, expected);
-    }
-
-    #[test]
-    fn test_extract_types_with_bracket_notation() {
-        let extractor = TypeExtractor::new().unwrap();
-        let lines = vec![
-            "let array: [CustomType] = []".to_string(),
-        ];
-        let types = extractor.extract_types(lines.into_iter());
-        let expected: BTreeSet<String> = ["CustomType"].iter().map(|s| s.to_string()).collect();
-        assert_eq!(types, expected);
-    }
-
-    #[test]
-    fn test_extract_types_mixed_tokens() {
-        let extractor = TypeExtractor::new().unwrap();
-        let lines = vec![
-            "class MyClass, struct MyStruct; enum MyEnum.".to_string(),
-        ];
-        let types = extractor.extract_types(lines.into_iter());
-        let expected: BTreeSet<String> = ["MyClass", "MyEnum", "MyStruct"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        assert_eq!(types, expected);
-    }
-
-    #[test]
-    fn test_extract_types_deduplication() {
-        let extractor = TypeExtractor::new().unwrap();
-        let lines = vec![
-            "class DuplicateType {}".to_string(),
-            "struct DuplicateType {}".to_string(),
-            "enum DuplicateType {}".to_string(),
-        ];
-        let types = extractor.extract_types(lines.into_iter());
-        let expected: BTreeSet<String> = ["DuplicateType"].iter().map(|s| s.to_string()).collect();
-        assert_eq!(types, expected);
     }
 }

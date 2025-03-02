@@ -28,7 +28,6 @@ walkdir = "2.3"
 assert_cmd = "2.0"
 predicates = "2.1"
 anyhow = "1.0"
-tree-sitter = "0.25"
+tree-sitter = "=0.20.7"
 tree-sitter-swift = "0.7.0"
-
 
