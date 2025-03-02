@@ -520,22 +520,24 @@ mod integration_tests {
     use filetime::{set_file_mtime, FileTime};
 
     /// Sets up a dummy Git project that is inside a Swift package.
-    /// - The project root now contains a Package.swift file (with minimal content)
-    ///   to mark it as a Swift package.
-    /// - The project root contains a TODO.swift file with content:
-    ///       "class SomeClass {
-    ///           var foo: DummyType1? = nil
-    ///           var bar: DummyType2? = nil
-    ///        }
-    ///        // TODO: - Fix bug"
-    /// - In a "Sources" subdirectory, two definition files are created:
-    ///       - Definition1.swift defines DummyType1 with a simple declaration.
-    ///       - Definition2.swift defines DummyType2 with a simple declaration.
-    /// - Additionally, a referencing file (Ref.swift) is created in the project root with content:
-    ///       "let instance = SomeClass()"
-    /// - And an extra file, OldTodo.swift, is created with a TODO marker:
-    ///       "class OldClass { } // TODO: - Old marker"
-    ///   Its modification time is set to an earlier timestamp than that of TODO.swift.
+    ///
+    /// Dummy Project Structure:
+    ///
+    /// project_root/
+    /// ├── Package.swift           // Marks the directory as a Swift package.
+    /// ├── TODO.swift              // Contains the main TODO with the bug-fix instruction.
+    /// ├── OldTodo.swift           // Contains an old TODO marker (with an earlier modification time).
+    /// ├── Ref.swift               // A referencing file that should be excluded.
+    /// └── Sources/
+    ///     ├── Definition1.swift   // Defines DummyType1.
+    ///     └── Definition2.swift   // Defines DummyType2.
+    ///
+    /// The TODO.swift file contains:
+    ///     class SomeClass {
+    ///         var foo: DummyType1? = nil
+    ///         var bar: DummyType2? = nil
+    ///     }
+    ///     // TODO: - Fix bug
     ///
     /// Returns a tuple (project_dir, todo_file_path) where project_dir is the TempDir for the project.
     fn setup_dummy_project() -> (TempDir, PathBuf) {
