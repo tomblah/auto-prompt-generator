@@ -321,6 +321,7 @@ dependencies = [
  "extract_enclosing_type",
  "extract_instruction_content",
  "extract_types",
+ "filetime",
  "filter_excluded_files",
  "filter_files_singular",
  "filter_substring_markers",

@@ -517,6 +517,7 @@ mod integration_tests {
     use std::fs;
     use std::path::PathBuf;
     use tempfile::TempDir;
+    use filetime::{set_file_mtime, FileTime};
 
     /// Sets up a dummy Git project with a realistic structure.
     /// - The project root contains a TODO.swift file with content:
@@ -530,13 +531,16 @@ mod integration_tests {
     ///       - Definition2.swift defines DummyType2 with a simple declaration.
     /// - Additionally, a referencing file (Ref.swift) is created in the project root with content:
     ///       "let instance = SomeClass()"
+    /// - And an extra file, OldTodo.swift, is created with a TODO marker:
+    ///       "class OldClass { } // TODO: - Old marker"
+    ///   Its modification time is set to an earlier timestamp than that of TODO.swift.
     ///
     /// Returns a tuple (project_dir, todo_file_path) where project_dir is the TempDir for the project.
     fn setup_dummy_project() -> (TempDir, PathBuf) {
         let project_dir = TempDir::new().unwrap();
         let project_path = project_dir.path();
 
-        // Create the TODO file in the project root with the specified content.
+        // Create the main TODO.swift file.
         let todo_file_path = project_path.join("TODO.swift");
         fs::write(
             &todo_file_path,
@@ -544,17 +548,25 @@ mod integration_tests {
         )
         .unwrap();
 
+        // Create an extra file with a TODO marker that should be ignored.
+        let old_todo_path = project_path.join("OldTodo.swift");
+        fs::write(
+            &old_todo_path,
+            "class OldClass { } // TODO: - Old marker",
+        )
+        .unwrap();
+        // Set OldTodo.swift's modification time to an earlier timestamp.
+        set_file_mtime(&old_todo_path, FileTime::from_unix_time(1000, 0)).unwrap();
+
         // Create a Sources directory with two definition files.
         let sources_dir = project_path.join("Sources");
         fs::create_dir_all(&sources_dir).unwrap();
         let def1_path = sources_dir.join("Definition1.swift");
         let def2_path = sources_dir.join("Definition2.swift");
-        // Definition1.swift defines DummyType1 with a simple declaration.
         fs::write(&def1_path, "class DummyType1 { }").unwrap();
-        // Definition2.swift defines DummyType2 with a simple declaration.
         fs::write(&def2_path, "class DummyType2 { }").unwrap();
 
-        // Create an additional referencing file in the project root.
+        // Create a referencing file in the project root.
         let ref_file_path = project_path.join("Ref.swift");
         fs::write(&ref_file_path, "let instance = SomeClass()").unwrap();
 
@@ -586,7 +598,7 @@ mod integration_tests {
     /// Integration test for normal mode.
     /// Expects that generate_prompt (when run without --singular or --include-references)
     /// will include the TODO file plus both definition files in the final prompt,
-    /// and that the referencing file (Ref.swift) is not included.
+    /// and that neither the referencing file (Ref.swift) nor OldTodo.swift appear.
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_normal_mode_includes_all_files() {
@@ -630,7 +642,7 @@ mod integration_tests {
             clipboard_content.contains("class DummyType2 { }"),
             "Expected clipboard to contain the declaration of DummyType2"
         );
-        // Assert that the TODO file's content references the dummy types.
+        // Assert that the TODO file's content references the dummy types and includes the TODO comment.
         assert!(
             clipboard_content.contains("DummyType1"),
             "Expected the TODO file to reference DummyType1"
@@ -639,21 +651,29 @@ mod integration_tests {
             clipboard_content.contains("DummyType2"),
             "Expected the TODO file to reference DummyType2"
         );
-        // Assert that the TODO comment appears.
         assert!(
             clipboard_content.contains("// TODO: - Fix bug"),
             "Expected the TODO comment to appear in the prompt"
         );
-        // Assert that the referencing file (Ref.swift) is not included.
+        // Assert that neither the referencing file (Ref.swift) nor OldTodo.swift are included.
         assert!(
             !clipboard_content.contains("The contents of Ref.swift is as follows:"),
             "Did not expect Ref.swift to be included in the prompt"
+        );
+        assert!(
+            !clipboard_content.contains("The contents of OldTodo.swift is as follows:"),
+            "Did not expect OldTodo.swift to be included in the prompt"
+        );
+        // Also assert that the old marker is not present.
+        assert!(
+            !clipboard_content.contains("Old marker"),
+            "Did not expect the old TODO marker to appear in the prompt"
         );
     }
 
     /// Integration test for singular mode.
     /// Expects that generate_prompt (when run with --singular) will include only the TODO file
-    /// in the final prompt, and that neither the definition files nor the referencing file (Ref.swift) appear.
+    /// in the final prompt, and that neither the definition files, the referencing file, nor OldTodo.swift appear.
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_singular_mode_includes_only_todo_file() {
@@ -689,7 +709,7 @@ mod integration_tests {
             !clipboard_content.contains("The contents of Definition2.swift is as follows:"),
             "Expected Definition2.swift header to be absent in singular mode"
         );
-        // Assert that the TODO file's content references the dummy types.
+        // Assert that the TODO file's content references the dummy types and includes the TODO comment.
         assert!(
             clipboard_content.contains("DummyType1"),
             "Expected the TODO file to reference DummyType1"
@@ -698,21 +718,29 @@ mod integration_tests {
             clipboard_content.contains("DummyType2"),
             "Expected the TODO file to reference DummyType2"
         );
-        // Assert that the TODO comment appears.
         assert!(
             clipboard_content.contains("// TODO: - Fix bug"),
             "Expected the TODO comment to appear in the prompt"
         );
-        // Assert that the referencing file (Ref.swift) is not included.
+        // Assert that neither the referencing file (Ref.swift) nor OldTodo.swift appear.
         assert!(
             !clipboard_content.contains("The contents of Ref.swift is as follows:"),
             "Did not expect Ref.swift to be included in the prompt"
+        );
+        assert!(
+            !clipboard_content.contains("The contents of OldTodo.swift is as follows:"),
+            "Did not expect OldTodo.swift to be included in the prompt"
+        );
+        assert!(
+            !clipboard_content.contains("Old marker"),
+            "Did not expect the old TODO marker to appear in the prompt"
         );
     }
 
     /// Integration test for include-references mode.
     /// With the same project setup but run with --include-references,
-    /// we expect the referencing file (Ref.swift) to be included in the final prompt.
+    /// we expect the referencing file (Ref.swift) to be included in the final prompt,
+    /// while OldTodo.swift remains excluded.
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_include_references_includes_ref_file() {
@@ -763,6 +791,15 @@ mod integration_tests {
         assert!(
             clipboard_content.contains("let instance = SomeClass()"),
             "Expected the content of Ref.swift to appear in the prompt"
+        );
+        // Finally, assert that OldTodo.swift (and its marker) is not included.
+        assert!(
+            !clipboard_content.contains("The contents of OldTodo.swift is as follows:"),
+            "Did not expect OldTodo.swift to be included in the prompt"
+        );
+        assert!(
+            !clipboard_content.contains("Old marker"),
+            "Did not expect the old TODO marker to appear in the prompt"
         );
     }
 }
