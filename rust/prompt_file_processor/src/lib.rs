@@ -296,4 +296,94 @@ func myFunction() {
         let block = extract_enclosing_block(path);
         assert!(block.is_none(), "Expected no enclosing block because the TODO is inside markers");
     }
+    
+    // Test that if the file does not contain any marker,
+    // process_file returns the raw file content.
+    #[test]
+    fn test_process_file_no_markers() {
+        let raw_content = "fn main() {\n    println!(\"Hello, world!\");\n}\n";
+        let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        write!(temp_file, "{}", raw_content).expect("Failed to write to temp file");
+        // Pass None for todo_file_basename (or any value) since there are no markers.
+        let result = process_file(temp_file.path(), Some("irrelevant.txt"))
+            .expect("process_file should succeed for file without markers");
+        // Without markers, process_file should return the raw content.
+        assert_eq!(result, raw_content);
+    }
+
+    // Test that if markers are present but the provided expected basename does not match,
+    // the function returns the filtered marker content without appending the enclosing block.
+    #[test]
+    fn test_process_file_markers_basename_mismatch() {
+        // A file that uses markers and contains a TODO.
+        let content_with_markers = r#"
+func sampleFunction() {
+    println("Start");
+}
+
+// v
+// Marker block content line 1
+// Marker block content line 2
+// ^
+
+ // TODO: - perform a task
+"#;
+        let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        write!(temp_file, "{}", content_with_markers).expect("Failed to write to temp file");
+        let file_path = temp_file.path();
+        // Use an expected basename that does NOT match the file's actual basename.
+        let wrong_basename = "mismatch.txt";
+        let result = process_file(file_path, Some(wrong_basename))
+            .expect("process_file should succeed");
+        // Expect that the result equals the filtered content produced by filter_substring_markers,
+        // without the appended enclosing block.
+        let expected_filtered = filter_substring_markers(content_with_markers);
+        assert_eq!(result, expected_filtered, "When the expected basename does not match, no context should be appended");
+    }
+
+    // Test that if markers are present and the provided expected basename matches,
+    // the function returns the filtered marker content with the extracted enclosing block appended.
+    #[test]
+    fn test_process_file_markers_basename_match() {
+        // This content has markers and a TODO outside the marker block.
+        let content_with_markers = r#"
+func myFunction() {
+    println("Hello");
+}
+
+// v
+// Extra context that is not part of the function block.
+// ^
+ // TODO: - perform important task
+"#;
+        let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        write!(temp_file, "{}", content_with_markers).expect("Failed to write to temp file");
+        let file_path = temp_file.path();
+        // Provide the expected basename that exactly matches the file's basename.
+        let expected_basename = file_path.file_name().unwrap().to_str().unwrap();
+        let result = process_file(file_path, Some(expected_basename))
+            .expect("process_file should succeed");
+
+        // The expected result is the filtered content (from markers) plus the enclosing block context appended.
+        let filtered = filter_substring_markers(content_with_markers);
+        let expected_context = extract_enclosing_block(file_path.to_str().unwrap())
+            .expect("Expected to extract an enclosing block");
+        let expected = format!("{}\
+\n\n// Enclosing function context:\n{}",
+                                filtered, expected_context);
+        assert_eq!(result, expected, "When the expected basename matches, the enclosing block should be appended");
+    }
+
+    // Test that process_file returns an error when the file does not exist.
+    #[test]
+    fn test_process_file_file_not_found() {
+        // Create a temporary file path and then delete the file so it no longer exists.
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let file_path = temp_file.into_temp_path().keep().expect("Failed to persist temp file");
+        // Delete the file.
+        fs::remove_file(&file_path).expect("Failed to delete temporary file");
+
+        let result = process_file(&file_path, Some("dummy.txt"));
+        assert!(result.is_err(), "Expected process_file to error when file does not exist");
+    }
 }
