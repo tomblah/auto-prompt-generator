@@ -13,85 +13,108 @@ use walkdir::WalkDir;
 /// Allowed extensions are: `swift`, `h`, `m`, and `js`.
 /// The marker searched for is: "// TODO: - "
 pub fn find_prompt_instruction_in_dir(search_dir: &str, verbose: bool) -> io::Result<PathBuf> {
-    let allowed_extensions = ["swift", "h", "m", "js"];
-    let todo_marker = "// TODO: - ";
-    let mut matching_files: Vec<PathBuf> = Vec::new();
+    // Internally use the finder struct.
+    let finder = PromptInstructionFinder::new(search_dir, verbose);
+    finder.find()
+}
 
-    for entry in WalkDir::new(search_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-    {
-        let path = entry.into_path();
-        if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-            if !allowed_extensions.contains(&ext) {
-                continue;
-            }
-        } else {
-            continue;
-        }
-        if let Ok(file) = fs::File::open(&path) {
-            let reader = io::BufReader::new(file);
-            if reader
-                .lines()
-                .filter_map(Result::ok)
-                .any(|line| line.contains(todo_marker))
-            {
-                matching_files.push(path);
-            }
+// === Private Implementation === //
+
+struct PromptInstructionFinder<'a> {
+    search_dir: &'a str,
+    verbose: bool,
+    allowed_extensions: &'static [&'static str],
+    todo_marker: &'static str,
+}
+
+impl<'a> PromptInstructionFinder<'a> {
+    fn new(search_dir: &'a str, verbose: bool) -> Self {
+        Self {
+            search_dir,
+            verbose,
+            allowed_extensions: &["swift", "h", "m", "js"],
+            todo_marker: "// TODO: - ",
         }
     }
 
-    if matching_files.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("No files found containing '{}'", todo_marker),
-        ));
-    }
-
-    if matching_files.len() == 1 {
-        if verbose {
-            eprintln!(
-                "[VERBOSE] Only one matching file found: {}",
-                matching_files[0].display()
-            );
-        }
-        return Ok(matching_files[0].clone());
-    }
-
-    // Choose the file with the most recent modification time.
-    let mut chosen_file = matching_files[0].clone();
-    let mut chosen_mod_time = fs::metadata(&chosen_file)
-        .and_then(|meta| meta.modified())
-        .unwrap_or(SystemTime::UNIX_EPOCH);
-
-    for file in &matching_files {
-        if let Ok(meta) = fs::metadata(file) {
-            if let Ok(mod_time) = meta.modified() {
-                if mod_time > chosen_mod_time {
-                    chosen_file = file.clone();
-                    chosen_mod_time = mod_time;
+    fn find(&self) -> io::Result<PathBuf> {
+        // Collect matching files using iterator combinators.
+        let matching_files: Vec<PathBuf> = WalkDir::new(self.search_dir)
+            .into_iter()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_type().is_file())
+            .map(|entry| entry.into_path())
+            .filter(|path| {
+                // Check if the file has an allowed extension.
+                path.extension()
+                    .and_then(|s| s.to_str())
+                    .map(|ext| self.allowed_extensions.contains(&ext))
+                    .unwrap_or(false)
+            })
+            .filter(|path| {
+                // Open the file and check if any line contains the TODO marker.
+                if let Ok(file) = fs::File::open(path) {
+                    let reader = io::BufReader::new(file);
+                    reader
+                        .lines()
+                        .filter_map(Result::ok)
+                        .any(|line| line.contains(self.todo_marker))
+                } else {
+                    false
                 }
+            })
+            .collect();
+
+        if matching_files.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("No files found containing '{}'", self.todo_marker),
+            ));
+        }
+
+        // Choose the file with the most recent modification time.
+        let chosen_file = matching_files
+            .iter()
+            .max_by(|a, b| {
+                let mod_a = fs::metadata(a)
+                    .and_then(|m| m.modified())
+                    .unwrap_or(SystemTime::UNIX_EPOCH);
+                let mod_b = fs::metadata(b)
+                    .and_then(|m| m.modified())
+                    .unwrap_or(SystemTime::UNIX_EPOCH);
+                mod_a.cmp(&mod_b)
+            })
+            .expect("At least one file exists")
+            .clone();
+
+        if self.verbose {
+            eprintln!("[VERBOSE] {} matching file(s) found.", matching_files.len());
+            if matching_files.len() > 1 {
+                eprintln!("[VERBOSE] Ignoring the following files:");
+                for file in matching_files.iter().filter(|&f| f != &chosen_file) {
+                    let basename = file
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("<unknown>");
+                    let todo_line = extract_first_todo_line(file, self.todo_marker)
+                        .unwrap_or_else(|| "<no TODO line found>".to_string());
+                    eprintln!("  - {}: {}", basename, todo_line.trim());
+                    eprintln!("--------------------------------------------------");
+                }
+                eprintln!(
+                    "[VERBOSE] Chosen file: {}",
+                    chosen_file.display()
+                );
+            } else {
+                eprintln!(
+                    "[VERBOSE] Only one matching file found: {}",
+                    chosen_file.display()
+                );
             }
         }
-    }
 
-    if verbose {
-        eprintln!("[VERBOSE] Multiple matching files found. Ignoring the following files:");
-        for file in matching_files.iter().filter(|&f| f != &chosen_file) {
-            let basename = file
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("<unknown>");
-            let todo_line = extract_first_todo_line(file, todo_marker)
-                .unwrap_or_else(|| "<no TODO line found>".to_string());
-            eprintln!("  - {}: {}", basename, todo_line.trim());
-            eprintln!("--------------------------------------------------");
-        }
-        eprintln!("[VERBOSE] Chosen file: {}", chosen_file.display());
+        Ok(chosen_file)
     }
-
-    Ok(chosen_file)
 }
 
 /// Private helper: extracts the first line in the file that contains the given marker.
@@ -256,3 +279,113 @@ mod tests {
     }
 }
 
+// --- Additional internal tests for find_prompt_instruction ---
+
+#[cfg(test)]
+mod internal_tests {
+    use super::*;
+    use std::fs::{self, File};
+    use std::io::Write;
+    use std::path::Path;
+    use tempfile::{tempdir, NamedTempFile};
+    use filetime::{set_file_mtime, FileTime};
+    use std::time::SystemTime;
+
+    // Test the helper that extracts the first TODO line.
+    #[test]
+    fn test_extract_first_todo_line_found() {
+        // Create a temporary file with a TODO marker.
+        let mut temp_file = NamedTempFile::new().unwrap();
+        writeln!(temp_file, "Line one").unwrap();
+        writeln!(temp_file, "// TODO: - This is the todo line").unwrap();
+        writeln!(temp_file, "Line three").unwrap();
+
+        let path = temp_file.path();
+        let result = extract_first_todo_line(path, "// TODO: - ");
+        assert!(result.is_some(), "Expected to find a TODO line");
+        let line = result.unwrap();
+        assert!(line.contains("This is the todo line"), "Unexpected TODO line: {}", line);
+    }
+
+    #[test]
+    fn test_extract_first_todo_line_not_found() {
+        // Create a file that does not include the marker.
+        let mut temp_file = NamedTempFile::new().unwrap();
+        writeln!(temp_file, "Line one").unwrap();
+        writeln!(temp_file, "Line two without marker").unwrap();
+
+        let path = temp_file.path();
+        let result = extract_first_todo_line(path, "// TODO: - ");
+        assert!(result.is_none(), "Did not expect a TODO line to be found");
+    }
+
+    // Directly test the PromptInstructionFinder's internal logic.
+    #[test]
+    fn test_prompt_instruction_finder_with_multiple_files() {
+        let dir = tempdir().unwrap();
+        let file1 = dir.path().join("file1.swift");
+        let file2 = dir.path().join("file2.swift");
+
+        // Write content with the TODO marker in both files.
+        fs::write(&file1, "Some content\n// TODO: - First todo\nMore content").unwrap();
+        fs::write(&file2, "Other content\n// TODO: - Second todo\nExtra content").unwrap();
+
+        // Set explicit modification times so file2 is more recent.
+        let ft1 = FileTime::from_unix_time(1000, 0);
+        let ft2 = FileTime::from_unix_time(2000, 0);
+        set_file_mtime(&file1, ft1).unwrap();
+        set_file_mtime(&file2, ft2).unwrap();
+
+        // Create a finder instance manually.
+        let finder = PromptInstructionFinder::new(dir.path().to_str().unwrap(), false);
+        let chosen_file = finder.find().expect("Expected to find a valid file");
+        // Since file2 is more recent, it should be chosen.
+        assert_eq!(chosen_file, file2, "Expected file2 to be chosen as the most recent file");
+    }
+
+    // Test that files with disallowed extensions are ignored.
+    #[test]
+    fn test_finder_excludes_disallowed_extension() {
+        let dir = tempdir().unwrap();
+        let file_txt = dir.path().join("ignored.txt"); // .txt is not an allowed extension.
+        fs::write(&file_txt, "Text content\n// TODO: - This should not be picked\nMore text").unwrap();
+
+        let finder = PromptInstructionFinder::new(dir.path().to_str().unwrap(), false);
+        let result = finder.find();
+        assert!(result.is_err(), "Expected an error because no allowed files were found");
+    }
+
+    // (Optional) Test the behavior when a file is unreadable.
+    #[cfg(unix)]
+    #[test]
+    fn test_finder_skips_unreadable_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempdir().unwrap();
+        let unreadable = dir.path().join("unreadable.swift");
+        let readable = dir.path().join("readable.swift");
+
+        fs::write(&unreadable, "Content\n// TODO: - Unreadable todo\nMore").unwrap();
+        fs::write(&readable, "Valid content\n// TODO: - Readable todo\nFooter").unwrap();
+
+        // Remove read permissions for the unreadable file.
+        let mut perms = fs::metadata(&unreadable).unwrap().permissions();
+        perms.set_mode(0o000);
+        fs::set_permissions(&unreadable, perms).unwrap();
+
+        // Set modification times so the readable file is more recent.
+        let ft_unreadable = FileTime::from_unix_time(1000, 0);
+        let ft_readable = FileTime::from_unix_time(2000, 0);
+        set_file_mtime(&unreadable, ft_unreadable).unwrap();
+        set_file_mtime(&readable, ft_readable).unwrap();
+
+        let finder = PromptInstructionFinder::new(dir.path().to_str().unwrap(), false);
+        let chosen_file = finder.find().expect("Expected to pick a valid file");
+        // Since the unreadable file should be skipped, the readable file is expected.
+        assert_eq!(chosen_file, readable, "Expected the readable file to be chosen");
+
+        // Restore permissions for cleanup.
+        let mut perms = fs::metadata(&unreadable).unwrap().permissions();
+        perms.set_mode(0o644);
+        fs::set_permissions(&unreadable, perms).unwrap();
+    }
+}
