@@ -354,6 +354,7 @@ dependencies = [
 name = "get_search_roots"
 version = "0.1.0"
 dependencies = [
+ "tempfile",
  "walkdir",
 ]
 
