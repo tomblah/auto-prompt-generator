@@ -539,6 +539,7 @@ mod integration_tests {
     ///     class SomeClass {
     ///         var foo: DummyType1? = nil
     ///         var bar: DummyType2? = nil
+    ///         var dummy: DummyType3? = nil
     ///     }
     ///     // TODO: - Fix bug
     ///
@@ -848,6 +849,40 @@ mod integration_tests {
         assert!(
             clipboard_content.contains("// TODO: - Fix bug"),
             "Expected the TODO comment to appear in the prompt"
+        );
+    }
+
+    /// Integration test for force-global mode.
+    /// Expects that generate_prompt (with --force-global) will include the file Outside.swift,
+    /// which defines DummyType3, in addition to the Instruction.swift and definition files.
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_force_global_includes_outside_file() {
+        let (project_dir, instruction_file_path) = setup_dummy_project();
+        let project_path = project_dir.path();
+
+        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
+        env::remove_var("DISABLE_PBCOPY");
+
+        let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
+        let original_path = env::var("PATH").unwrap();
+        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+
+        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.arg("--force-global");
+        cmd.assert().success();
+
+        let clipboard_content = fs::read_to_string(&clipboard_file)
+            .expect("Failed to read dummy clipboard file");
+
+        // Verify that the global search has included Outside.swift.
+        assert!(
+            clipboard_content.contains("The contents of Outside.swift is as follows:"),
+            "Expected clipboard to include the Outside.swift file header in force-global mode"
+        );
+        assert!(
+            clipboard_content.contains("class DummyType3 { }"),
+            "Expected clipboard to contain the declaration of DummyType3"
         );
     }
 }
