@@ -802,4 +802,52 @@ mod integration_tests {
             "Did not expect the old TODO marker to appear in the prompt"
         );
     }
+    
+    /// Integration test for exclusion flags.
+    /// Here we run generate_prompt with the --exclude flag for "Definition1.swift".
+    /// We expect that the final prompt includes the TODO file and Definition2.swift,
+    /// but does NOT include Definition1.swift.
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_excludes_definition1() {
+        let (project_dir, todo_file_path) = setup_dummy_project();
+        let project_path = project_dir.path();
+
+        env::set_var("GET_GIT_ROOT", project_path.to_str().unwrap());
+        env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap());
+        env::remove_var("DISABLE_PBCOPY");
+
+        let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
+        let original_path = env::var("PATH").unwrap();
+        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+
+        // Run generate_prompt with the exclusion flag for "Definition1.swift"
+        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.arg("--exclude").arg("Definition1.swift");
+        cmd.assert().success();
+
+        let clipboard_content = fs::read_to_string(&clipboard_file)
+            .expect("Failed to read dummy clipboard file");
+
+        // Assert that the prompt still includes the TODO file header.
+        assert!(
+            clipboard_content.contains("The contents of TODO.swift is as follows:"),
+            "Expected clipboard to include the TODO file header"
+        );
+        // Assert that the prompt does NOT include the header for Definition1.swift.
+        assert!(
+            !clipboard_content.contains("The contents of Definition1.swift is as follows:"),
+            "Expected Definition1.swift to be excluded"
+        );
+        // Assert that the prompt still includes the header for Definition2.swift.
+        assert!(
+            clipboard_content.contains("The contents of Definition2.swift is as follows:"),
+            "Expected Definition2.swift to be included"
+        );
+        // Verify that the TODO file's content (including the TODO comment) is present.
+        assert!(
+            clipboard_content.contains("// TODO: - Fix bug"),
+            "Expected the TODO comment to appear in the prompt"
+        );
+    }
 }
