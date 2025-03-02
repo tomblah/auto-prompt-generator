@@ -228,6 +228,7 @@ name = "extract_instruction_content"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "tempfile",
 ]
 
 [[package]]

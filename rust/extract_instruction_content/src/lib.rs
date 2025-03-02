@@ -29,3 +29,61 @@ pub fn extract_instruction_content<P: AsRef<Path>>(file_path: P) -> Result<Strin
 
     anyhow::bail!("No valid TODO instruction found in {}", file_path_ref.display());
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+    use std::path::Path;
+
+    #[test]
+    fn test_extract_valid_todo() {
+        // Create a temporary file with a valid TODO marker.
+        let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let content = "\n// Some comment\n    // TODO: - Fix the bug\n// Another comment";
+        write!(temp_file, "{}", content).expect("Failed to write to temp file");
+
+        let result = extract_instruction_content(temp_file.path());
+        assert!(result.is_ok());
+        let extracted = result.unwrap();
+        // The function should trim leading whitespace.
+        assert_eq!(extracted, "// TODO: - Fix the bug");
+    }
+
+    #[test]
+    fn test_extract_multiple_todo_returns_first() {
+        // Create a file with multiple TODO markers.
+        let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let content = "\n// TODO: - First todo\nSome code\n// TODO: - Second todo";
+        write!(temp_file, "{}", content).expect("Failed to write to temp file");
+
+        let result = extract_instruction_content(temp_file.path());
+        assert!(result.is_ok());
+        let extracted = result.unwrap();
+        assert_eq!(extracted, "// TODO: - First todo");
+    }
+
+    #[test]
+    fn test_extract_no_todo() {
+        // Create a file that does not contain a TODO marker.
+        let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let content = "\n// Some comment\n// Another comment without marker";
+        write!(temp_file, "{}", content).expect("Failed to write to temp file");
+
+        let result = extract_instruction_content(temp_file.path());
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("No valid TODO instruction found"));
+    }
+
+    #[test]
+    fn test_non_existent_file() {
+        // Pass a non-existent file path.
+        let fake_path = Path::new("non_existent_file.swift");
+        let result = extract_instruction_content(fake_path);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Error opening file"));
+    }
+}
