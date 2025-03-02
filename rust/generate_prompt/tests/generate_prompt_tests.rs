@@ -621,7 +621,7 @@ mod integration_tests {
     /// Integration test for normal mode.
     /// Expects that generate_prompt (without --singular or --include-references)
     /// will include the Instruction.swift file and both definition files,
-    /// while excluding the referencing file (Ref.swift), OldTodo.swift, and Outside.swift.
+    /// while excluding the referencing file (Ref.swift), OldTodo.swift, and files outside the package (Outside.swift).
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_normal_mode_includes_all_files() {
@@ -639,17 +639,18 @@ mod integration_tests {
         let clipboard_content = fs::read_to_string(&clipboard_file)
             .expect("Failed to read dummy clipboard file");
 
-        // Verify that the prompt includes the package files...
+        // Assert that package files are included.
         assert!(clipboard_content.contains("The contents of Instruction.swift is as follows:"), "Expected clipboard to include the Instruction.swift file header");
         assert!(clipboard_content.contains("The contents of Definition1.swift is as follows:"), "Expected clipboard to include Definition1.swift header");
         assert!(clipboard_content.contains("The contents of Definition2.swift is as follows:"), "Expected clipboard to include Definition2.swift header");
-        // ...and that it includes the expected content.
+        // Assert that the expected definitions are present.
         assert!(clipboard_content.contains("class DummyType1 { }"), "Expected clipboard to contain the declaration of DummyType1");
         assert!(clipboard_content.contains("class DummyType2 { }"), "Expected clipboard to contain the declaration of DummyType2");
+        // Assert that the instruction file references the types.
         assert!(clipboard_content.contains("DummyType1"), "Expected the Instruction.swift file to reference DummyType1");
         assert!(clipboard_content.contains("DummyType2"), "Expected the Instruction.swift file to reference DummyType2");
         assert!(clipboard_content.contains("// TODO: - Fix bug"), "Expected the TODO comment to appear in the prompt");
-        // Verify that files outside the package are not included.
+        // Assert that files outside the package are not included.
         assert!(!clipboard_content.contains("The contents of Outside.swift is as follows:"), "Did not expect Outside.swift to be included in normal mode");
         // Also verify that Ref.swift and OldTodo.swift are not present.
         assert!(!clipboard_content.contains("The contents of Ref.swift is as follows:"), "Did not expect Ref.swift to be included in the prompt");
@@ -659,7 +660,7 @@ mod integration_tests {
 
     /// Integration test for singular mode.
     /// Expects that generate_prompt (with --singular) will include only the Instruction.swift file,
-    /// excluding definition files, Ref.swift, OldTodo.swift, and Outside.swift.
+    /// excluding definition files, Ref.swift, OldTodo.swift, and files outside the package.
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_singular_mode_includes_only_todo_file() {
@@ -684,7 +685,7 @@ mod integration_tests {
         assert!(clipboard_content.contains("DummyType1"), "Expected the Instruction.swift file to reference DummyType1");
         assert!(clipboard_content.contains("DummyType2"), "Expected the Instruction.swift file to reference DummyType2");
         assert!(clipboard_content.contains("// TODO: - Fix bug"), "Expected the TODO comment to appear in the prompt");
-        // Verify that files outside the package are not included.
+        // Assert that files outside the package are not included.
         assert!(!clipboard_content.contains("The contents of Outside.swift is as follows:"), "Did not expect Outside.swift to be included in singular mode");
         // Also verify that Ref.swift and OldTodo.swift are not present.
         assert!(!clipboard_content.contains("The contents of Ref.swift is as follows:"), "Did not expect Ref.swift to be included in singular mode");
@@ -695,7 +696,7 @@ mod integration_tests {
     /// Integration test for include-references mode.
     /// Expects that generate_prompt (with --include-references) will include Ref.swift,
     /// in addition to the Instruction.swift and definition files,
-    /// while still excluding OldTodo.swift and Outside.swift.
+    /// while still excluding OldTodo.swift and files outside the package.
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_include_references_includes_ref_file() {
@@ -720,7 +721,7 @@ mod integration_tests {
         assert!(clipboard_content.contains("// TODO: - Fix bug"), "Expected the TODO comment to appear in the prompt");
         assert!(clipboard_content.contains("The contents of Ref.swift is as follows:"), "Expected Ref.swift to be included with --include-references");
         assert!(clipboard_content.contains("let instance = SomeClass()"), "Expected the content of Ref.swift to appear in the prompt");
-        // Verify that files outside the package are not included.
+        // Assert that files outside the package are not included.
         assert!(!clipboard_content.contains("The contents of Outside.swift is as follows:"), "Did not expect Outside.swift to be included in include-references mode");
         assert!(!clipboard_content.contains("The contents of OldTodo.swift is as follows:"), "Did not expect OldTodo.swift to be included in the prompt");
         assert!(!clipboard_content.contains("Old marker"), "Did not expect the old TODO marker to appear in the prompt");
@@ -729,7 +730,7 @@ mod integration_tests {
     /// Integration test for exclusion flags.
     /// Here we run generate_prompt with the --exclude flag for "Definition1.swift".
     /// We expect that the final prompt includes the Instruction.swift file and Definition2.swift,
-    /// but does NOT include Definition1.swift or Outside.swift.
+    /// but does NOT include Definition1.swift or files outside the package.
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_excludes_definition1() {
@@ -753,7 +754,7 @@ mod integration_tests {
         assert!(!clipboard_content.contains("The contents of Definition1.swift is as follows:"), "Expected Definition1.swift to be excluded");
         assert!(clipboard_content.contains("The contents of Definition2.swift is as follows:"), "Expected Definition2.swift to be included");
         assert!(clipboard_content.contains("// TODO: - Fix bug"), "Expected the TODO comment to appear in the prompt");
-        // Verify that files outside the package are not included.
+        // Assert that files outside the package are not included.
         assert!(!clipboard_content.contains("The contents of Outside.swift is as follows:"), "Did not expect Outside.swift to be included in exclusion mode");
     }
 
