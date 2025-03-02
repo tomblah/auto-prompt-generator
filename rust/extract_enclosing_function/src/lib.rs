@@ -263,4 +263,77 @@ func myFunction() {
         let block = extract_enclosing_block(MARKER_TEST_INSIDE);
         assert!(block.is_none(), "Expected no enclosing block because the TODO is inside markers");
     }
+
+    // ---- Additional test cases for missing coverage ----
+
+    #[test]
+    fn test_no_todo_marker() {
+        // Content without any "// TODO: - " should return None for todo_index
+        let content = "function foo() { console.log('hello'); }";
+        assert_eq!(todo_index(content), None);
+        // Since no TODO marker exists, extract_enclosing_block should also return None.
+        assert_eq!(extract_enclosing_block(content), None);
+    }
+
+    #[test]
+    fn test_no_valid_function_header() {
+        // Content has a TODO marker but no line qualifies as a function header by our heuristic.
+        let content = r#"
+Some random text.
+Another line.
+ // TODO: - stray todo with no function header
+More random text.
+"#;
+        // Ensure we do have a TODO marker.
+        let idx = todo_index(content);
+        assert!(idx.is_some());
+        // Since no candidate function header exists, find_enclosing_function_start should return None.
+        assert_eq!(find_enclosing_function_start(content, idx.unwrap()), None);
+        // Thus, extract_enclosing_block should return None.
+        assert_eq!(extract_enclosing_block(content), None);
+    }
+
+    #[test]
+    fn test_extract_block_with_missing_closing_brace() {
+        // Test a block where the opening brace is present but the closing brace is missing.
+        let content = r#"
+func incomplete() {
+    let x = 10;
+    let y = 20;
+    // No closing brace here.
+Some random text.
+"#;
+        // Call extract_block from the beginning of the block.
+        let block = extract_block(content, 1);
+        // Since there is no matching closing brace, the block should include all lines from the start index.
+        assert!(block.contains("func incomplete()"));
+        assert!(block.contains("let x = 10;"));
+        assert!(block.contains("Some random text."));
+    }
+
+    #[test]
+    fn test_is_todo_inside_markers_direct() {
+        // Directly test is_todo_inside_markers with a TODO inside markers.
+        let content_inside = r#"
+func example() {
+    // v
+    // TODO: - inside todo
+    // ^
+}
+"#;
+        let idx_inside = todo_index(content_inside).unwrap();
+        assert!(is_todo_inside_markers(content_inside, idx_inside));
+
+        // Now test with a TODO that is outside the marker block.
+        let content_outside = r#"
+ // v
+Some context here.
+ // ^
+func example() {
+    // TODO: - outside todo
+}
+"#;
+        let idx_outside = todo_index(content_outside).unwrap();
+        assert!(!is_todo_inside_markers(content_outside, idx_outside));
+    }
 }
