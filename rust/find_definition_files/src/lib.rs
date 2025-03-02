@@ -426,4 +426,95 @@ mod tests {
         // Expect an empty set if nothing matches.
         assert!(found.is_empty());
     }
+    
+    // Test that when the provided root is not a package but one or more subdirectories contain a Package.swift,
+    // get_search_roots returns both the root (if its basename isn’t ".build") and each subdirectory.
+    #[test]
+    fn test_get_search_roots_with_subpackages() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create a subdirectory "SubPackage" that contains a Package.swift file.
+        let subpackage = root.join("SubPackage");
+        fs::create_dir_all(&subpackage).unwrap();
+        fs::write(&subpackage.join("Package.swift"), "swift package content").unwrap();
+
+        let roots = get_search_roots(root);
+        // Should include both the root and the subpackage directory.
+        assert!(roots.contains(&root.to_path_buf()));
+        assert!(roots.contains(&subpackage));
+        assert_eq!(roots.len(), 2);
+    }
+
+    // Test that JavaScript (.js) files are included if they contain a valid definition.
+    #[test]
+    fn test_includes_javascript_files() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create a JavaScript file with a valid class definition.
+        let js_file = root.join("script.js");
+        fs::write(&js_file, "class MyType {}").unwrap();
+
+        // Create a types file that contains "MyType".
+        let types_file = root.join("types.txt");
+        fs::write(&types_file, "MyType\n").unwrap();
+
+        let found = find_definition_files(&types_file, root).expect("find_definition_files failed");
+        assert!(found.contains(&js_file));
+    }
+
+    // Test that definitions using keywords like "protocol" and "typealias" are matched.
+    #[test]
+    fn test_additional_definition_keywords() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create a file with a protocol definition.
+        let protocol_file = root.join("protocol.swift");
+        fs::write(&protocol_file, "protocol MyProtocol {}").unwrap();
+
+        // Create a file with a typealias definition.
+        let typealias_file = root.join("typealias.swift");
+        fs::write(&typealias_file, "typealias MyAlias = Int").unwrap();
+
+        // Create a types file with both keywords.
+        let types_file = root.join("types.txt");
+        fs::write(&types_file, "MyProtocol\nMyAlias\n").unwrap();
+
+        let found = find_definition_files(&types_file, root).expect("find_definition_files failed");
+        assert!(found.contains(&protocol_file));
+        assert!(found.contains(&typealias_file));
+    }
+
+    // Test that unreadable files are skipped.
+    #[test]
+    #[cfg(unix)]
+    fn test_unreadable_files() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create a file that contains a valid definition.
+        let unreadable_file = root.join("unreadable.swift");
+        fs::write(&unreadable_file, "class MyType {}").unwrap();
+
+        // Remove read permission.
+        let mut perms = fs::metadata(&unreadable_file).unwrap().permissions();
+        perms.set_mode(0o000);
+        fs::set_permissions(&unreadable_file, perms).unwrap();
+
+        // Create a types file.
+        let types_file = root.join("types.txt");
+        fs::write(&types_file, "MyType\n").unwrap();
+
+        let found = find_definition_files(&types_file, root).expect("find_definition_files failed");
+        // The unreadable file should be skipped.
+        assert!(!found.contains(&unreadable_file));
+
+        // Restore permissions so that the temporary file can be cleaned up.
+        let mut perms = fs::metadata(&unreadable_file).unwrap().permissions();
+        perms.set_mode(0o644);
+        fs::set_permissions(&unreadable_file, perms).unwrap();
+    }
 }
