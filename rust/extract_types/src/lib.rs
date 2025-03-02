@@ -1,89 +1,68 @@
-use anyhow::{Result, Context};
-use regex::Regex;
+use anyhow::{Context, Result};
 use std::collections::BTreeSet;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
+use tree_sitter::{Parser, Node};
 
-/// A helper struct to encapsulate type extraction logic.
-struct TypeExtractor {
-    re_simple: Regex,
-    re_bracket: Regex,
-}
+// Make sure to add tree-sitter and tree-sitter-swift as dependencies in your Cargo.toml
+extern crate tree_sitter_swift;
 
-impl TypeExtractor {
-    /// Creates a new `TypeExtractor` with precompiled regexes.
-    fn new() -> Result<Self, regex::Error> {
-        Ok(Self {
-            re_simple: Regex::new(r"^[A-Z][A-Za-z0-9]+$")?,
-            re_bracket: Regex::new(r"^\[([A-Z][A-Za-z0-9]+)\]$")?,
-        })
-    }
-
-    /// Cleans a line by replacing non-alphanumeric characters with whitespace,
-    /// trimming it, and then splitting it into tokens.
-    /// Returns `None` if the cleaned line is empty or starts with "import " or "//".
-    fn extract_tokens(&self, line: &str) -> Option<Vec<String>> {
-        let trimmed = line.trim();
-        // Check the original trimmed line before cleaning.
-        if trimmed.is_empty() || trimmed.starts_with("import ") || trimmed.starts_with("//") {
-            return None;
-        }
-        // Now perform the cleaning.
-        let cleaned: String = line
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c } else { ' ' })
-            .collect();
-        let cleaned = cleaned.trim();
-        Some(cleaned.split_whitespace().map(String::from).collect())
-    }
-
-
-    /// Processes an iterator over lines and returns a sorted set of type names.
-    fn extract_types<I>(&self, lines: I) -> BTreeSet<String>
-    where
-        I: Iterator<Item = String>,
-    {
-        let mut types = BTreeSet::new();
-        for line in lines {
-            if let Some(tokens) = self.extract_tokens(&line) {
-                for token in tokens {
-                    if self.re_simple.is_match(&token) {
-                        types.insert(token);
-                    } else if let Some(caps) = self.re_bracket.captures(&token) {
-                        if let Some(inner) = caps.get(1) {
-                            types.insert(inner.as_str().to_string());
+/// Uses Tree-sitter to parse the Swift source code and extract type names.
+/// It looks for nodes corresponding to type declarations:
+/// "class_declaration", "struct_declaration", "enum_declaration",
+/// "protocol_declaration", and "typealias_declaration".
+fn extract_types_tree_sitter(source: &str) -> BTreeSet<String> {
+    let mut types = BTreeSet::new();
+    let mut parser = Parser::new();
+    // Set the Swift language for parsing.
+    parser
+        .set_language(tree_sitter_swift::language())
+        .expect("Error loading Swift grammar");
+    if let Some(tree) = parser.parse(source, None) {
+        let root_node = tree.root_node();
+        let mut cursor = root_node.walk();
+        for node in root_node.descendants(&mut cursor) {
+            match node.kind() {
+                "class_declaration"
+                | "struct_declaration"
+                | "enum_declaration"
+                | "protocol_declaration"
+                | "typealias_declaration" => {
+                    // Look for a child node with kind "identifier" to extract the type name.
+                    let mut child_cursor = node.walk();
+                    for child in node.named_children(&mut child_cursor) {
+                        if child.kind() == "identifier" {
+                            if let Ok(text) = child.utf8_text(source.as_bytes()) {
+                                types.insert(text.to_string());
+                            }
                         }
                     }
                 }
+                _ => {}
             }
         }
-        types
     }
+    types
 }
 
-/// Reads a Swift file, extracts potential type names using two regexes,
-/// writes the sorted unique type names to a temporary file (persisted),
-/// and returns the path to that file as a String.
+/// Reads a Swift file, extracts type names using Tree-sitter, writes the sorted unique
+/// type names to a temporary file (persisted), and returns the path to that file as a String.
 pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> {
-    // Open the Swift file.
-    let file = File::open(&swift_file)
+    // Read the entire Swift file into a string.
+    let source = fs::read_to_string(&swift_file)
         .with_context(|| format!("Failed to open file {}", swift_file.as_ref().display()))?;
-    let reader = BufReader::new(file);
-
-    // Create the extractor and process the file lines.
-    let extractor = TypeExtractor::new()?;
-    let types = extractor.extract_types(reader.lines().filter_map(Result::ok));
-
+    // Use Tree-sitter to extract type names.
+    let types = extract_types_tree_sitter(&source);
     // Write the sorted type names to a temporary file.
     let mut temp_file = NamedTempFile::new()?;
     for type_name in &types {
         writeln!(temp_file, "{}", type_name)?;
     }
-
     // Persist the temporary file so it won't be deleted when dropped.
-    let temp_path: PathBuf = temp_file.into_temp_path()
+    let temp_path: PathBuf = temp_file
+        .into_temp_path()
         .keep()
         .context("Failed to persist temporary file")?;
     Ok(temp_path.display().to_string())
