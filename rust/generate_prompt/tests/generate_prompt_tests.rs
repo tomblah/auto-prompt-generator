@@ -614,7 +614,7 @@ mod integration_tests {
         let (project_dir, todo_file_path) = setup_dummy_project();
         let project_path = project_dir.path();
 
-        env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap());
+        env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
@@ -682,7 +682,7 @@ mod integration_tests {
         let (project_dir, todo_file_path) = setup_dummy_project();
         let project_path = project_dir.path();
 
-        env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap());
+        env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
@@ -743,7 +743,7 @@ mod integration_tests {
         let (project_dir, todo_file_path) = setup_dummy_project();
         let project_path = project_dir.path();
 
-        env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap());
+        env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
@@ -801,7 +801,7 @@ mod integration_tests {
         let (project_dir, todo_file_path) = setup_dummy_project();
         let project_path = project_dir.path();
 
-        env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap());
+        env::set_var("GET_INSTRUCTION_FILE", todo_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
