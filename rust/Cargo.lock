@@ -324,6 +324,7 @@ dependencies = [
  "filter_excluded_files",
  "filter_files_singular",
  "filter_substring_markers",
+ "find_definition_files",
  "find_prompt_instruction",
  "find_referencing_files",
  "get_git_root",
