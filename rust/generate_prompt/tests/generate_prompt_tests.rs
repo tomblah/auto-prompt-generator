@@ -510,7 +510,7 @@ Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs
     }
 }
 
-// FIXME: I don't trust these integration tests as they require setting internal environment variables and therefore they can't be trusted as adding coverage or being valid tests. For now, integration tests will be done through bats files.
+// FIXME: I don't trust these integration tests as they require setting internal environment variables and therefore they can't be trusted as adding coverage or being valid tests. For now, integration tests will be done through bats files (which I also don't trust and will need to be fixed...).
 #[cfg(test)]
 mod integration_tests {
     use assert_cmd::Command;
@@ -528,12 +528,16 @@ mod integration_tests {
     /// git_root/
     /// ├── my_package/
     /// │   ├── Package.swift           // Marks this directory as a Swift package.
-    /// │   ├── Instruction.swift       // Contains the main instruction with the bug-fix instruction.
-    /// │   ├── OldTodo.swift           // Contains an old TODO marker (with an earlier modification time).
+    /// │   ├── Instruction.swift       // Contains the main instruction.
+    /// │   │                           // It has a TODO trigger for "TriggerCommentType"
+    /// │   │                           // and a non-trigger comment mentioning "CommentReferencedType".
+    /// │   ├── OldTodo.swift           // Contains an old TODO marker.
     /// │   ├── Ref.swift               // A referencing file that should be excluded.
     /// │   └── Sources/
     /// │       ├── Definition1.swift   // Defines DummyType1.
-    /// │       └── Definition2.swift   // Defines DummyType2.
+    /// │       ├── Definition2.swift   // Defines DummyType2.
+    /// │       ├── TriggerCommentReferenced.swift   // Defines TriggerCommentType.
+    /// │       └── CommentReferenced.swift            // Defines CommentReferencedType.
     /// └── Outside.swift               // (Outside the package) Defines DummyType3.
     ///
     /// The Instruction.swift file (inside my_package) contains:
@@ -542,10 +546,8 @@ mod integration_tests {
     ///         var bar: DummyType2? = nil
     ///         var dummy: DummyType3? = nil
     ///     }
-    ///     // TODO: - Fix bug
-    ///
-    /// In addition, this function sets the environment variable GET_GIT_ROOT to the git root,
-    /// so that tests using --force-global will search the entire Git repository and include Outside.swift.
+    ///     // TODO: - Let's fix TriggerCommentType
+    ///     // Note: CommentReferencedType is mentioned here but is not a trigger.
     ///
     /// Returns a tuple (git_root_dir, instruction_file_path) where git_root_dir is the TempDir for the project,
     /// and instruction_file_path points to my_package/Instruction.swift.
@@ -566,10 +568,18 @@ mod integration_tests {
         fs::write(&package_file_path, "// swift package").unwrap();
 
         // Create the main Instruction.swift file inside the package.
+        // Note: The TODO trigger now directly references "TriggerCommentType".
+        // Also, a non-trigger comment mentions "CommentReferencedType".
         let instruction_file_path = package_dir.join("Instruction.swift");
         fs::write(
             &instruction_file_path,
-            "class SomeClass {\n    var foo: DummyType1? = nil\n    var bar: DummyType2? = nil\n    var dummy: DummyType3? = nil\n}\n// TODO: - Fix bug",
+            "class SomeClass {
+    var foo: DummyType1? = nil
+    var bar: DummyType2? = nil
+    var dummy: DummyType3? = nil
+}
+ // TODO: - Let's fix TriggerCommentType
+ // Note: CommentReferencedType is mentioned here but should not trigger inclusion.",
         )
         .unwrap();
 
@@ -578,13 +588,19 @@ mod integration_tests {
         fs::write(&old_todo_path, "class OldClass { } // TODO: - Old marker").unwrap();
         set_file_mtime(&old_todo_path, FileTime::from_unix_time(1000, 0)).unwrap();
 
-        // Create a Sources directory inside the package with two definition files.
+        // Create a Sources directory inside the package with definition files.
         let sources_dir = package_dir.join("Sources");
         fs::create_dir_all(&sources_dir).unwrap();
         let def1_path = sources_dir.join("Definition1.swift");
         let def2_path = sources_dir.join("Definition2.swift");
         fs::write(&def1_path, "class DummyType1 { }").unwrap();
         fs::write(&def2_path, "class DummyType2 { }").unwrap();
+
+        let trigger_file = sources_dir.join("TriggerCommentReferenced.swift");
+        fs::write(&trigger_file, "class TriggerCommentType { }").unwrap();
+
+        let comment_file = sources_dir.join("CommentReferenced.swift");
+        fs::write(&comment_file, "class CommentReferencedType { }").unwrap();
 
         // Create a referencing file in the package root.
         let ref_file_path = package_dir.join("Ref.swift");
@@ -671,7 +687,7 @@ mod integration_tests {
             "Expected the Instruction.swift file to reference DummyType2"
         );
         assert!(
-            clipboard_content.contains("// TODO: - Fix bug"),
+            clipboard_content.contains("// TODO: - Let's fix TriggerCommentType"),
             "Expected the TODO comment to appear in the prompt"
         );
         assert!(
@@ -732,7 +748,7 @@ mod integration_tests {
             "Expected the Instruction.swift file to reference DummyType2"
         );
         assert!(
-            clipboard_content.contains("// TODO: - Fix bug"),
+            clipboard_content.contains("// TODO: - Let's fix TriggerCommentType"),
             "Expected the TODO comment to appear in the prompt"
         );
         assert!(
@@ -785,7 +801,7 @@ mod integration_tests {
             "Expected clipboard to include Definition2.swift header"
         );
         assert!(
-            clipboard_content.contains("// TODO: - Fix bug"),
+            clipboard_content.contains("// TODO: - Let's fix TriggerCommentType"),
             "Expected the TODO comment to appear in the prompt"
         );
         assert!(
@@ -848,7 +864,7 @@ mod integration_tests {
         );
         // Verify that the Instruction.swift file's content (including the TODO comment) is present.
         assert!(
-            clipboard_content.contains("// TODO: - Fix bug"),
+            clipboard_content.contains("// TODO: - Let's fix TriggerCommentType"),
             "Expected the TODO comment to appear in the prompt"
         );
     }
@@ -884,6 +900,42 @@ mod integration_tests {
         assert!(
             clipboard_content.contains("class DummyType3 { }"),
             "Expected clipboard to contain the declaration of DummyType3"
+        );
+    }
+    
+    /// New Integration test to verify that when the TODO trigger references "TriggerCommentType",
+    /// the file TriggerCommentReferenced.swift (which defines TriggerCommentType) is included in the final prompt.
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_includes_trigger_referenced_file() {
+        let (project_dir, instruction_file_path) = setup_dummy_project();
+        let project_path = project_dir.path();
+
+        // Set the GET_INSTRUCTION_FILE to point to Instruction.swift.
+        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
+        env::remove_var("DISABLE_PBCOPY");
+
+        let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
+        let original_path = env::var("PATH").unwrap();
+        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+
+        // Run generate_prompt (normal mode).
+        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.assert().success();
+
+        let clipboard_content = fs::read_to_string(&clipboard_file)
+            .expect("Failed to read dummy clipboard file");
+
+        // Verify that TriggerCommentReferenced.swift (defining TriggerCommentType) is included in the final prompt.
+        assert!(
+            clipboard_content.contains("The contents of TriggerCommentReferenced.swift is as follows:"),
+            "Expected TriggerCommentReferenced.swift header in prompt. Got:\n{}",
+            clipboard_content
+        );
+        assert!(
+            clipboard_content.contains("class TriggerCommentType { }"),
+            "Expected TriggerCommentType declaration in prompt. Got:\n{}",
+            clipboard_content
         );
     }
 }
