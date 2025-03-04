@@ -23,22 +23,30 @@ impl TypeExtractor {
 
     /// Cleans a line by replacing non-alphanumeric characters with whitespace,
     /// trimming it, and then splitting it into tokens.
-    /// Returns `None` if the cleaned line is empty or starts with "import " or "//".
+    /// Returns `None` if the cleaned line is empty or starts with "import " or a comment
+    /// (unless it starts with the trigger comment "// TODO: -").
     fn extract_tokens(&self, line: &str) -> Option<Vec<String>> {
         let trimmed = line.trim();
-        // Check the original trimmed line before cleaning.
-        if trimmed.is_empty() || trimmed.starts_with("import ") || trimmed.starts_with("//") {
+        // Skip empty lines, import lines, or lines that are comments (unless they are trigger comments).
+        if trimmed.is_empty()
+            || trimmed.starts_with("import ")
+            || (trimmed.starts_with("//") && !trimmed.starts_with("// TODO: -"))
+        {
             return None;
         }
-        // Now perform the cleaning.
-        let cleaned: String = line
+        // If it's a trigger comment, remove the prefix before processing.
+        let content = if trimmed.starts_with("// TODO: -") {
+            trimmed.trim_start_matches("// TODO: -").trim_start()
+        } else {
+            trimmed
+        };
+        let cleaned: String = content
             .chars()
             .map(|c| if c.is_ascii_alphanumeric() { c } else { ' ' })
             .collect();
         let cleaned = cleaned.trim();
         Some(cleaned.split_whitespace().map(String::from).collect())
     }
-
 
     /// Processes an iterator over lines and returns a sorted set of type names.
     fn extract_types<I>(&self, lines: I) -> BTreeSet<String>
@@ -83,7 +91,8 @@ pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> 
     }
 
     // Persist the temporary file so it won't be deleted when dropped.
-    let temp_path: PathBuf = temp_file.into_temp_path()
+    let temp_path: PathBuf = temp_file
+        .into_temp_path()
         .keep()
         .context("Failed to persist temporary file")?;
     Ok(temp_path.display().to_string())
@@ -179,8 +188,6 @@ enum MyEnum {{}}"
         for token in result.lines() {
             assert_ne!(token, "My_Class", "Found token 'My_Class', which should have been split.");
         }
-        // Optionally, you could check for the presence of the split tokens "My" and "Class".
-        // (Depending on your intended behavior, you might want to adjust the extraction logic.)
         Ok(())
     }
 
@@ -193,6 +200,19 @@ enum MyEnum {{}}"
         let result = fs::read_to_string(&result_path)?;
         // The trailing punctuation should be removed.
         assert_eq!(result.trim(), "MyEnum");
+        Ok(())
+    }
+
+    // New test: Ensure that types in trigger comments (// TODO: -) are extracted.
+    #[test]
+    fn test_extract_types_includes_trigger_comment() -> Result<()> {
+        // Create a temporary Swift file with a trigger comment.
+        let mut swift_file = NamedTempFile::new()?;
+        writeln!(swift_file, "import Foundation\n// TODO: - TriggeredType")?;
+        let result_path = extract_types_from_file(swift_file.path())?;
+        let result = fs::read_to_string(&result_path)?;
+        // Expect that only "TriggeredType" is extracted.
+        assert_eq!(result.trim(), "TriggeredType");
         Ok(())
     }
 }
@@ -215,7 +235,7 @@ mod type_extractor_tests {
         // Empty or whitespace-only lines return None.
         assert!(extractor.extract_tokens("").is_none());
         assert!(extractor.extract_tokens("   ").is_none());
-        // Lines that start with "import " or "//" should be skipped.
+        // Lines that start with "import " or regular comments should be skipped.
         assert!(extractor.extract_tokens("import Foundation").is_none());
         assert!(extractor.extract_tokens("// comment").is_none());
     }
@@ -227,6 +247,15 @@ mod type_extractor_tests {
         let tokens = extractor.extract_tokens("MyClass,struct MyStruct").unwrap();
         // "MyClass,struct MyStruct" becomes "MyClass struct MyStruct", then splits into tokens.
         assert_eq!(tokens, vec!["MyClass", "struct", "MyStruct"]);
+    }
+
+    // New test: Ensure that trigger comments are processed correctly.
+    #[test]
+    fn test_extract_tokens_for_trigger_comment() {
+        let extractor = TypeExtractor::new().unwrap();
+        // For a trigger comment, the prefix should be stripped and only the remainder processed.
+        let tokens = extractor.extract_tokens("// TODO: - MyTriggeredType").unwrap();
+        assert_eq!(tokens, vec!["MyTriggeredType"]);
     }
 
     #[test]
@@ -248,9 +277,7 @@ mod type_extractor_tests {
     #[test]
     fn test_extract_types_with_bracket_notation() {
         let extractor = TypeExtractor::new().unwrap();
-        let lines = vec![
-            "let array: [CustomType] = []".to_string(),
-        ];
+        let lines = vec!["let array: [CustomType] = []".to_string()];
         let types = extractor.extract_types(lines.into_iter());
         let expected: BTreeSet<String> = ["CustomType"].iter().map(|s| s.to_string()).collect();
         assert_eq!(types, expected);
@@ -259,9 +286,7 @@ mod type_extractor_tests {
     #[test]
     fn test_extract_types_mixed_tokens() {
         let extractor = TypeExtractor::new().unwrap();
-        let lines = vec![
-            "class MyClass, struct MyStruct; enum MyEnum.".to_string(),
-        ];
+        let lines = vec!["class MyClass, struct MyStruct; enum MyEnum.".to_string()];
         let types = extractor.extract_types(lines.into_iter());
         let expected: BTreeSet<String> = ["MyClass", "MyEnum", "MyStruct"]
             .iter()
