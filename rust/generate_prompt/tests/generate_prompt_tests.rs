@@ -938,4 +938,36 @@ mod integration_tests {
             clipboard_content
         );
     }
+    
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_excludes_comment_referenced_file() {
+        let (project_dir, instruction_file_path) = setup_dummy_project();
+        let project_path = project_dir.path();
+
+        // Set the GET_INSTRUCTION_FILE to point to Instruction.swift.
+        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
+        env::remove_var("DISABLE_PBCOPY");
+
+        let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
+        let original_path = env::var("PATH").unwrap();
+        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+
+        // Run generate_prompt (normal mode).
+        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.assert().success();
+
+        let clipboard_content = fs::read_to_string(&clipboard_file)
+            .expect("Failed to read dummy clipboard file");
+
+        // Assert that CommentReferenced.swift is NOT included in the final prompt.
+        assert!(
+            !clipboard_content.contains("The contents of CommentReferenced.swift is as follows:"),
+            "Expected CommentReferenced.swift to be excluded from prompt, but it was found."
+        );
+        assert!(
+            !clipboard_content.contains("class CommentReferencedType { }"),
+            "Expected CommentReferencedType declaration to be excluded from prompt, but it was found."
+        );
+    }
 }
