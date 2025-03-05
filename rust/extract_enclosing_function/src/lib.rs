@@ -1,12 +1,84 @@
-use regex::Regex;
-use std::fs;
+use std::mem;
+use tree_sitter::Parser;
+use tree_sitter_swift;
 
-/// Returns the index (zero-based) of the first line that contains "// TODO: - ", or None if not found.
+/// Extracts the enclosing function block from the given content.
+///
+/// This implementation attempts to use Tree‑sitter’s Swift parser to accurately locate
+/// the function declaration that contains the first occurrence of the TODO marker.
+/// If the file uses marker blocks (i.e. both "// v" and "// ^") and the TODO is inside the markers,
+/// then no block is extracted (returns None). Otherwise, if Tree‑sitter fails or no matching
+/// function is found, the function falls back to a heuristic approach.
+pub fn extract_enclosing_block(content: &str) -> Option<String> {
+    // Get the line index of the TODO marker.
+    let todo_idx = todo_index(content)?;
+    // If the file uses markers and the TODO is inside a marker block, return None.
+    if file_uses_markers(content) && is_todo_inside_markers(content, todo_idx) {
+        return None;
+    }
+
+    // Also get the byte offset for Tree‑sitter processing.
+    let todo_offset = content.find("// TODO: - ")?;
+    
+    let mut parser = Parser::new();
+    // Convert the LANGUAGE constant (a function pointer) into a Language value.
+    let language: tree_sitter::Language = unsafe { mem::transmute(tree_sitter_swift::LANGUAGE) };
+    if parser.set_language(&language).is_err() {
+        return extract_enclosing_block_heuristic(content);
+    }
+    
+    // Parse the content into a syntax tree.
+    let tree = parser.parse(content, None)?;
+    let root_node = tree.root_node();
+    
+    // Collect all named descendant nodes.
+    let named_nodes = get_named_descendants(root_node);
+    for node in named_nodes {
+        if node.start_byte() <= todo_offset && node.end_byte() >= todo_offset {
+            // Look for a Swift function declaration.
+            if node.kind() == "function_declaration" {
+                return Some(content[node.start_byte()..node.end_byte()].to_string());
+            }
+        }
+    }
+    
+    // Fallback: use the heuristic approach.
+    extract_enclosing_block_heuristic(content)
+}
+
+/// Recursively collects all named descendant nodes of the given node.
+fn get_named_descendants<'a>(node: tree_sitter::Node<'a>) -> Vec<tree_sitter::Node<'a>> {
+    let mut result = Vec::new();
+    for i in 0..node.named_child_count() {
+        if let Some(child) = node.named_child(i) {
+            result.push(child);
+            result.extend(get_named_descendants(child));
+        }
+    }
+    result
+}
+
+/// Fallback heuristic implementation using line scanning and brace counting.
+fn extract_enclosing_block_heuristic(content: &str) -> Option<String> {
+    let todo_idx = todo_index(content)?;
+    let start_index = find_enclosing_function_start(content, todo_idx)?;
+    Some(extract_block(content, start_index))
+}
+
+/// Returns the index (zero-based) of the first line that contains "// TODO: - ".
 pub fn todo_index(content: &str) -> Option<usize> {
     content.lines().position(|line| line.contains("// TODO: - "))
 }
 
-/// Returns true if the TODO is already inside a marker block.
+/// Returns true if the file contains both markers ("// v" and "// ^").
+pub fn file_uses_markers(content: &str) -> bool {
+    let has_open = content.lines().any(|line| line.trim() == "// v");
+    let has_close = content.lines().any(|line| line.trim() == "// ^");
+    has_open && has_close
+}
+
+/// Returns true if the TODO is inside a marker block by counting marker boundaries
+/// from the start of the file up to the TODO line.
 pub fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
     let lines: Vec<&str> = content.lines().collect();
     let mut marker_depth = 0;
@@ -26,36 +98,27 @@ pub fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
     marker_depth > 0
 }
 
-/// Returns true if the file contains both the opening ("// v") and closing ("// ^") markers.
-pub fn file_uses_markers(content: &str) -> bool {
-    let has_open = content.lines().any(|line| line.trim() == "// v");
-    let has_close = content.lines().any(|line| line.trim() == "// ^");
-    has_open && has_close
-}
-
-/// Finds the starting index of the enclosing function block using a simple heuristic.
+/// Finds the starting line index of the enclosing function block using simple heuristics.
 pub fn find_enclosing_function_start(content: &str, todo_idx: usize) -> Option<usize> {
     let lines: Vec<&str> = content.lines().collect();
     let start_search = if todo_idx >= 20 { todo_idx - 20 } else { 0 };
     lines[start_search..=todo_idx].iter().rposition(|line| {
         let trimmed = line.trim_start();
-        trimmed.contains("= function(")
+        trimmed.starts_with("func ")
+            || trimmed.contains("= function(")
             || trimmed.contains("Parse.Cloud.define(")
             || trimmed.contains("async function")
-            || trimmed.contains("func ")
-            || (
-                (trimmed.starts_with("var ")
-                    || trimmed.starts_with("private var ")
-                    || trimmed.starts_with("public var ")
-                    || trimmed.starts_with("internal var ")
-                    || trimmed.starts_with("fileprivate var "))
+            || ((trimmed.starts_with("var ")
+                || trimmed.starts_with("private var ")
+                || trimmed.starts_with("public var ")
+                || trimmed.starts_with("internal var ")
+                || trimmed.starts_with("fileprivate var "))
                 && line.contains("{")
-                && !line.contains("=")
-            )
+                && !line.contains("="))
     }).map(|idx| start_search + idx)
 }
 
-/// Extracts a block of code starting from `start_index` using a brace-counting heuristic.
+/// Extracts a block of code from the content starting at the given line index using a brace-counting heuristic.
 pub fn extract_block(content: &str, start_index: usize) -> String {
     let lines: Vec<&str> = content.lines().collect();
     let mut found_opening = false;
@@ -80,19 +143,6 @@ pub fn extract_block(content: &str, start_index: usize) -> String {
         }
     }
     extracted_lines.join("\n")
-}
-
-/// Public API: Extracts the enclosing block for the TODO, if applicable.
-pub fn extract_enclosing_block(content: &str) -> Option<String> {
-    if !file_uses_markers(content) {
-        return None;
-    }
-    let todo_idx = todo_index(content)?;
-    if is_todo_inside_markers(content, todo_idx) {
-        return None;
-    }
-    let start_index = find_enclosing_function_start(content, todo_idx)?;
-    Some(extract_block(content, start_index))
 }
 
 #[cfg(test)]
