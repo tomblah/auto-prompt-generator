@@ -55,7 +55,7 @@ pub fn find_files_referencing(
             match contains_type_reference_swift(&content, type_name) {
                 Ok(found) => found,
                 Err(_) => {
-                    // Fallback to regex matching if parsing fails.
+                    // Fall back to regex matching if parsing fails.
                     let pattern = format!(r"\b{}\b", regex::escape(type_name));
                     let re = Regex::new(&pattern)?;
                     re.is_match(&content)
@@ -76,7 +76,8 @@ pub fn find_files_referencing(
 }
 
 /// Uses tree-sitter to parse Swift file content and searches the AST for
-/// an identifier node whose text exactly matches `type_name`.
+/// a node whose text exactly matches `type_name`. In addition to checking
+/// nodes of kind "identifier", it now also checks "type_identifier".
 fn contains_type_reference_swift(content: &str, type_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
     let mut parser = Parser::new();
     parser.set_language(unsafe { std::mem::transmute(tree_sitter_swift::LANGUAGE) })
@@ -88,7 +89,8 @@ fn contains_type_reference_swift(content: &str, type_name: &str) -> Result<bool,
 
     // Iterate over all named descendant nodes.
     for node in get_named_descendants(root_node) {
-        if node.kind() == "identifier" {
+        let kind = node.kind();
+        if kind == "identifier" || kind == "type_identifier" {
             if let Ok(text) = node.utf8_text(content.as_bytes()) {
                 if text == type_name {
                     return Ok(true);
