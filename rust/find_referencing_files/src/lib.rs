@@ -50,18 +50,28 @@ pub fn find_files_referencing(
             Err(_) => continue,
         };
 
-        // For Swift files, try using tree-sitter; otherwise fall back to regex.
+        // For Swift files, try tree-sitter first; if no match, fall back to regex.
         let found = if ext == "swift" {
             match contains_type_reference_swift(&content, type_name) {
-                Ok(found) => found,
+                Ok(found) => {
+                    if found {
+                        true
+                    } else {
+                        // Fallback to regex matching if tree-sitter didn't find a match.
+                        let pattern = format!(r"\b{}\b", regex::escape(type_name));
+                        let re = Regex::new(&pattern)?;
+                        re.is_match(&content)
+                    }
+                }
                 Err(_) => {
-                    // Fall back to regex matching if parsing fails.
+                    // In case of an error, fall back to regex.
                     let pattern = format!(r"\b{}\b", regex::escape(type_name));
                     let re = Regex::new(&pattern)?;
                     re.is_match(&content)
                 }
             }
         } else {
+            // For non-Swift files, use regex matching.
             let pattern = format!(r"\b{}\b", regex::escape(type_name));
             let re = Regex::new(&pattern)?;
             re.is_match(&content)
@@ -76,8 +86,8 @@ pub fn find_files_referencing(
 }
 
 /// Uses tree-sitter to parse Swift file content and searches the AST for
-/// a node whose text exactly matches `type_name`. In addition to checking
-/// nodes of kind "identifier", it now also checks "type_identifier".
+/// a node whose text exactly matches `type_name`. It checks both "identifier"
+/// and "type_identifier" nodes.
 fn contains_type_reference_swift(content: &str, type_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
     let mut parser = Parser::new();
     parser.set_language(unsafe { std::mem::transmute(tree_sitter_swift::LANGUAGE) })
