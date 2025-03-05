@@ -1,5 +1,5 @@
-use regex::Regex;
-use std::fs;
+use tree_sitter::{Parser};
+use tree_sitter_swift; // Ensure your Cargo.toml specifies: tree-sitter-swift = "0.7.0"
 
 /// Returns the index (zero-based) of the first line that contains "// TODO: - ", or None if not found.
 pub fn todo_index(content: &str) -> Option<usize> {
@@ -37,22 +37,25 @@ pub fn file_uses_markers(content: &str) -> bool {
 pub fn find_enclosing_function_start(content: &str, todo_idx: usize) -> Option<usize> {
     let lines: Vec<&str> = content.lines().collect();
     let start_search = if todo_idx >= 20 { todo_idx - 20 } else { 0 };
-    lines[start_search..=todo_idx].iter().rposition(|line| {
-        let trimmed = line.trim_start();
-        trimmed.contains("= function(")
-            || trimmed.contains("Parse.Cloud.define(")
-            || trimmed.contains("async function")
-            || trimmed.contains("func ")
-            || (
-                (trimmed.starts_with("var ")
-                    || trimmed.starts_with("private var ")
-                    || trimmed.starts_with("public var ")
-                    || trimmed.starts_with("internal var ")
-                    || trimmed.starts_with("fileprivate var "))
-                && line.contains("{")
-                && !line.contains("=")
-            )
-    }).map(|idx| start_search + idx)
+    lines[start_search..=todo_idx]
+        .iter()
+        .rposition(|line| {
+            let trimmed = line.trim_start();
+            trimmed.contains("= function(")
+                || trimmed.contains("Parse.Cloud.define(")
+                || trimmed.contains("async function")
+                || trimmed.contains("func ")
+                || (
+                    (trimmed.starts_with("var ")
+                        || trimmed.starts_with("private var ")
+                        || trimmed.starts_with("public var ")
+                        || trimmed.starts_with("internal var ")
+                        || trimmed.starts_with("fileprivate var "))
+                    && line.contains("{")
+                    && !line.contains("=")
+                )
+        })
+        .map(|idx| start_search + idx)
 }
 
 /// Extracts a block of code starting from `start_index` using a brace-counting heuristic.
@@ -82,7 +85,39 @@ pub fn extract_block(content: &str, start_index: usize) -> String {
     extracted_lines.join("\n")
 }
 
+/// Recursively traverses the syntax tree to find a function declaration node
+/// that spans the given byte offset (todo_offset).
+fn traverse_node(node: tree_sitter::Node, content: &str, todo_offset: usize) -> Option<String> {
+    if node.is_named() && node.kind() == "function_declaration" &&
+       node.start_byte() <= todo_offset &&
+       node.end_byte() >= todo_offset {
+        return node.utf8_text(content.as_bytes()).ok().map(|s| s.to_string());
+    }
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            if let Some(result) = traverse_node(child, content, todo_offset) {
+                return Some(result);
+            }
+        }
+    }
+    None
+}
+
+/// Extracts the enclosing function block using tree-sitter.
+/// `content` is the full source code, and `todo_offset` is the byte offset of the TODO marker.
+pub fn extract_enclosing_block_tree_sitter(content: &str, todo_offset: usize) -> Option<String> {
+    let mut parser = Parser::new();
+    // Convert the LANGUAGE constant into a Language value.
+    let swift_lang: tree_sitter::Language =
+        unsafe { std::mem::transmute(tree_sitter_swift::LANGUAGE) };
+    parser.set_language(swift_lang).ok()?;
+    let tree = parser.parse(content, None)?;
+    let root_node = tree.root_node();
+    traverse_node(root_node, content, todo_offset)
+}
+
 /// Public API: Extracts the enclosing block for the TODO, if applicable.
+/// It attempts to use tree-sitter for Swift files, falling back to a heuristic method.
 pub fn extract_enclosing_block(content: &str) -> Option<String> {
     if !file_uses_markers(content) {
         return None;
@@ -91,6 +126,22 @@ pub fn extract_enclosing_block(content: &str) -> Option<String> {
     if is_todo_inside_markers(content, todo_idx) {
         return None;
     }
+
+    // Calculate the byte offset for the TODO marker.
+    let mut offset = 0;
+    for (i, line) in content.lines().enumerate() {
+        if i == todo_idx {
+            break;
+        }
+        offset += line.len() + 1; // +1 for the newline character
+    }
+
+    // Try tree-sitter extraction.
+    if let Some(block) = extract_enclosing_block_tree_sitter(content, offset) {
+        return Some(block);
+    }
+
+    // Fallback to the heuristic method.
     let start_index = find_enclosing_function_start(content, todo_idx)?;
     Some(extract_block(content, start_index))
 }
