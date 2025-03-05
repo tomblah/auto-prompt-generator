@@ -313,8 +313,11 @@ dependencies = [
 name = "find_referencing_files"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "regex",
  "tempfile",
+ "tree-sitter",
+ "tree-sitter-swift",
  "walkdir",
 ]
 
