@@ -238,6 +238,8 @@ version = "0.1.0"
 dependencies = [
  "regex",
  "tempfile",
+ "tree-sitter",
+ "tree-sitter-swift",
 ]
 
 [[package]]

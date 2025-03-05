@@ -1,22 +1,31 @@
-// rust/extract_enclosing_type/src/lib.rs
-
 use regex::Regex;
 use std::fs;
+use std::mem;
 use std::path::Path;
+use tree_sitter::{Node, Parser};
+use tree_sitter_swift;
 
 /// Extracts the enclosing type (class, struct, or enum) from a Swift file.
-/// Scans until a line containing "// TODO: - " is encountered.
-/// Returns the last encountered type name or, if none is found,
-/// falls back to the file’s basename (without the .swift extension).
+/// Scans until a line containing "// TODO: - " is encountered (or the end of the file if none is found).
+/// Returns the last type declaration encountered before the cutoff. If none is found,
+/// falls back to returning the file’s basename (without extension).
 pub fn extract_enclosing_type(file_path: &str) -> Result<String, String> {
+    // Read file content.
     let content = fs::read_to_string(file_path)
         .map_err(|err| format!("Error reading file {}: {}", file_path, err))?;
-
+    
+    // If no TODO marker is found, use the full content.
+    let todo_offset = content.find("// TODO: - ").unwrap_or(content.len());
+    
+    // Attempt extraction using Tree‑sitter.
+    if let Some(ty) = extract_enclosing_type_tree_sitter(&content, todo_offset) {
+        return Ok(ty);
+    }
+    
+    // Fallback: use a regex-based scan over lines until the TODO marker.
     let re = Regex::new(r"(class|struct|enum)\s+(\w+)")
         .map_err(|err| format!("Regex error: {}", err))?;
-
     let mut last_type: Option<String> = None;
-
     for line in content.lines() {
         if line.contains("// TODO: -") {
             break;
@@ -27,10 +36,11 @@ pub fn extract_enclosing_type(file_path: &str) -> Result<String, String> {
             }
         }
     }
-
+    
     if let Some(found_type) = last_type {
         Ok(found_type)
     } else {
+        // Fallback to the file's basename (without extension).
         let path = Path::new(file_path);
         let fallback = path
             .file_stem()
@@ -39,6 +49,49 @@ pub fn extract_enclosing_type(file_path: &str) -> Result<String, String> {
             .to_string();
         Ok(fallback)
     }
+}
+
+/// Attempts to extract the type name using Tree‑sitter.
+/// It parses the Swift file and looks for type declarations (class, struct, or enum)
+/// whose start is before the TODO marker. If found, it extracts the identifier
+/// from the child field "name". Returns None if Tree‑sitter fails or no matching type is found.
+fn extract_enclosing_type_tree_sitter(content: &str, todo_offset: usize) -> Option<String> {
+    let mut parser = Parser::new();
+    // Use the LANGUAGE constant (via transmute) to obtain a tree_sitter::Language.
+    let lang: tree_sitter::Language = unsafe { mem::transmute(tree_sitter_swift::LANGUAGE) };
+    parser.set_language(&lang).ok()?;
+    let tree = parser.parse(content, None)?;
+    let root_node = tree.root_node();
+    
+    let mut candidate: Option<Node> = None;
+    // Iterate over all named descendant nodes.
+    for node in get_named_descendants(root_node) {
+        let kind = node.kind();
+        if kind == "class_declaration" || kind == "struct_declaration" || kind == "enum_declaration" {
+            // Consider this declaration if its start is before the cutoff.
+            if node.start_byte() <= todo_offset {
+                candidate = Some(node);
+            }
+        }
+    }
+    candidate.and_then(|node| {
+        node.child_by_field_name("name")
+            .and_then(|name_node| name_node.utf8_text(content.as_bytes()).ok())
+            .map(|s| s.to_string())
+    })
+}
+
+/// Recursively collects all named descendant nodes of the given node.
+fn get_named_descendants<'a>(node: Node<'a>) -> Vec<Node<'a>> {
+    let mut result = Vec::new();
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.is_named() {
+            result.push(child);
+            result.extend(get_named_descendants(child));
+        }
+    }
+    result
 }
 
 #[cfg(test)]
