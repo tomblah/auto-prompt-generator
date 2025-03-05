@@ -556,8 +556,8 @@ mod integration_tests {
         let git_root_dir = TempDir::new().unwrap();
         let git_root_path = git_root_dir.path();
 
-        // Set GET_GIT_ROOT to the git root.
-        env::set_var("GET_GIT_ROOT", git_root_path.to_str().unwrap());
+        // Remove the legacy environment variable setting.
+        // Instead, tests will pass --git-root explicitly.
 
         // Create the package directory inside the git root.
         let package_dir = git_root_path.join("my_package");
@@ -643,7 +643,7 @@ mod integration_tests {
     #[cfg(unix)]
     fn test_generate_prompt_normal_mode_includes_all_files() {
         let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
+        let git_root = project_dir.path().to_str().unwrap();
 
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
@@ -653,6 +653,7 @@ mod integration_tests {
         env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
 
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.arg("--git-root").arg(git_root);
         cmd.assert().success();
 
         let clipboard_content = fs::read_to_string(&clipboard_file)
@@ -711,7 +712,7 @@ mod integration_tests {
     #[cfg(unix)]
     fn test_generate_prompt_singular_mode_includes_only_todo_file() {
         let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
+        let git_root = project_dir.path().to_str().unwrap();
 
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
@@ -722,6 +723,7 @@ mod integration_tests {
 
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
         cmd.arg("--singular");
+        cmd.arg("--git-root").arg(git_root);
         cmd.assert().success();
 
         let clipboard_content = fs::read_to_string(&clipboard_file)
@@ -772,7 +774,7 @@ mod integration_tests {
     #[cfg(unix)]
     fn test_generate_prompt_include_references_includes_ref_file() {
         let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
+        let git_root = project_dir.path().to_str().unwrap();
 
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
@@ -783,6 +785,7 @@ mod integration_tests {
 
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
         cmd.arg("--include-references");
+        cmd.arg("--git-root").arg(git_root);
         cmd.assert().success();
 
         let clipboard_content = fs::read_to_string(&clipboard_file)
@@ -830,7 +833,7 @@ mod integration_tests {
     #[cfg(unix)]
     fn test_generate_prompt_excludes_definition1() {
         let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
+        let git_root = project_dir.path().to_str().unwrap();
 
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
@@ -842,6 +845,7 @@ mod integration_tests {
         // Run generate_prompt with the exclusion flag for "Definition1.swift"
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
         cmd.arg("--exclude").arg("Definition1.swift");
+        cmd.arg("--git-root").arg(git_root);
         cmd.assert().success();
 
         let clipboard_content = fs::read_to_string(&clipboard_file)
@@ -876,7 +880,7 @@ mod integration_tests {
     #[cfg(unix)]
     fn test_generate_prompt_force_global_includes_outside_file() {
         let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
+        let git_root = project_dir.path().to_str().unwrap();
 
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
@@ -887,6 +891,7 @@ mod integration_tests {
 
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
         cmd.arg("--force-global");
+        cmd.arg("--git-root").arg(git_root);
         cmd.assert().success();
 
         let clipboard_content = fs::read_to_string(&clipboard_file)
@@ -909,9 +914,8 @@ mod integration_tests {
     #[cfg(unix)]
     fn test_generate_prompt_includes_trigger_referenced_file() {
         let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
+        let git_root = project_dir.path().to_str().unwrap();
 
-        // Set the GET_INSTRUCTION_FILE to point to Instruction.swift.
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
         env::remove_var("DISABLE_PBCOPY");
 
@@ -919,8 +923,8 @@ mod integration_tests {
         let original_path = env::var("PATH").unwrap();
         env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
 
-        // Run generate_prompt (normal mode).
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.arg("--git-root").arg(git_root);
         cmd.assert().success();
 
         let clipboard_content = fs::read_to_string(&clipboard_file)
@@ -943,9 +947,8 @@ mod integration_tests {
     #[cfg(unix)]
     fn test_generate_prompt_excludes_comment_referenced_file() {
         let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
+        let git_root = project_dir.path().to_str().unwrap();
 
-        // Set the GET_INSTRUCTION_FILE to point to Instruction.swift.
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
         env::remove_var("DISABLE_PBCOPY");
 
@@ -953,8 +956,8 @@ mod integration_tests {
         let original_path = env::var("PATH").unwrap();
         env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
 
-        // Run generate_prompt (normal mode).
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.arg("--git-root").arg(git_root);
         cmd.assert().success();
 
         let clipboard_content = fs::read_to_string(&clipboard_file)
