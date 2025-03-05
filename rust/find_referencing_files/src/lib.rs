@@ -1,4 +1,5 @@
 use regex::Regex;
+use std::env;
 use std::fs;
 use std::path::{Component, Path};
 use walkdir::WalkDir;
@@ -16,12 +17,23 @@ pub fn find_files_referencing(
     let allowed_extensions = ["swift", "h", "m", "js"];
     let mut results = Vec::new();
 
+    // Retrieve the TODO file basename from the environment,
+    // so we can skip it if found.
+    let todo_basename = env::var("TODO_FILE_BASENAME").unwrap_or_default();
+
     // Recursively traverse the directory.
     for entry in WalkDir::new(search_root).into_iter().filter_map(Result::ok) {
         if !entry.file_type().is_file() {
             continue;
         }
         let path = entry.path();
+
+        // Skip files that match the TODO file basename.
+        if let Some(basename) = path.file_name().and_then(|s| s.to_str()) {
+            if basename == todo_basename {
+                continue;
+            }
+        }
 
         // Determine file extension.
         let ext = match path.extension().and_then(|s| s.to_str()) {
