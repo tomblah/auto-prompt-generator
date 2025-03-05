@@ -68,13 +68,20 @@ fn main() -> Result<()> {
                 .action(clap::ArgAction::SetTrue)
                 .default_value("false"),
         )
+        // New option for explicitly specifying the Git root.
+        .arg(
+            Arg::new("git_root")
+                .long("git-root")
+                .help("Explicitly specify the Git repository root")
+                .num_args(1)
+                .value_name("PATH"),
+        )
         .get_matches();
 
+    // Extract command-line booleans and other parameters.
     let singular = *matches.get_one::<bool>("singular").unwrap();
     let force_global = *matches.get_one::<bool>("force_global").unwrap();
     let include_references = *matches.get_one::<bool>("include_references").unwrap();
-    let _diff_branch_arg = matches.get_one::<String>("diff_with").map(String::as_str);
-    let _verbose = *matches.get_one::<bool>("verbose").unwrap();
     let excludes: Vec<String> = matches
         .get_many::<String>("exclude")
         .unwrap_or_default()
@@ -86,8 +93,9 @@ fn main() -> Result<()> {
     println!("--------------------------------------------------");
     println!("Current directory: {}", current_dir.display());
 
-    let git_root = if let Ok(git_root_override) = env::var("GET_GIT_ROOT") {
-        git_root_override
+    // Use the provided --git-root option if present; otherwise, auto-detect.
+    let git_root = if let Some(root) = matches.get_one::<String>("git_root") {
+        root.to_string()
     } else {
         get_git_root().expect("Failed to determine Git root")
     };
