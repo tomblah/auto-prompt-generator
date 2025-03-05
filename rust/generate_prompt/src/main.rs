@@ -162,7 +162,6 @@ fn main() -> Result<()> {
             String::new()
         }
     };
-    println!("Enclosing function block:\n{}", enclosing_context);
     println!("--------------------------------------------------");
 
     // 6. Determine files to include.
