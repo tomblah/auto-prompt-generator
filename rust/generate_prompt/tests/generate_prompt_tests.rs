@@ -1266,13 +1266,14 @@ mod integration_tests_substring_markers_swift {
         let main_swift_path = temp_dir.path().join("main.swift");
 
         // Write a Swift file that contains:
-        // - A substring markers block (only content between "// v" and "// ^" is normally included)
         // - A function 'unimportantFunction' that should not appear in the final prompt.
-        // - A function 'importantFunction' that is not inside any markers and which contains a TODO marker.
+        // - A substring markers block (only content between "// v" and "// ^" is normally included)
+        //   that wraps the function 'importantFunction'.
+        // - A function 'enclosingFunction' that is not inside any markers and which contains a TODO marker.
         //
         // Because the TODO marker ("// TODO: - Correct the computation here") appears
-        // outside of any marker block, the entire 'importantFunction' is appended as an
-        // enclosing context to the final prompt.
+        // outside of any marker block, the entire 'enclosingFunction' is automatically
+        // appended as an enclosing context to the final prompt.
         let main_swift_content = r#"
 import Foundation
 
@@ -1286,6 +1287,10 @@ func importantFunction() {
     print("This is inside markers.")
 }
 // ^
+
+func anotherUnimportantFunction() {
+    print("This is inside markers.")
+}
 
 func enclosingFunction() {
     print("This is not inside markers normally.")
@@ -1333,7 +1338,7 @@ func enclosingFunction() {
 
         // Assert that the final prompt includes the content from the substring markers.
         assert!(
-            clipboard_content.contains("Included marker content"),
+            clipboard_content.contains("This content is included via substring markers."),
             "Expected marker content to appear in prompt; got:\n{}",
             clipboard_content
         );
@@ -1348,6 +1353,13 @@ func enclosingFunction() {
         assert!(
             clipboard_content.contains("// TODO: - Correct the computation here"),
             "Expected the prompt to include the TODO comment; got:\n{}",
+            clipboard_content
+        );
+
+        // Also assert that the function body of 'enclosingFunction' is included (e.g. the final print statement).
+        assert!(
+            clipboard_content.contains("Computation ends."),
+            "Expected the prompt to include the body of 'enclosingFunction'; got:\n{}",
             clipboard_content
         );
 
