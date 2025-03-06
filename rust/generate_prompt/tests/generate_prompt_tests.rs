@@ -1267,23 +1267,23 @@ mod integration_tests_substring_markers_swift {
 
         // Write a Swift file that contains:
         // - A substring markers block (only content between "// v" and "// ^" is normally included)
+        // - A function 'unimportantFunction' that should not appear in the final prompt.
         // - A function 'importantFunction' that is not inside any markers and which contains a TODO marker.
         //
-        // In normal processing, only the marker block would be included. However, because the TODO
-        // marker ("// TODO: - Correct the computation here") appears outside of any marker block,
-        // the enclosing function block (i.e. the entire 'importantFunction' function) is automatically
-        // appended to the final prompt.
+        // Because the TODO marker ("// TODO: - Correct the computation here") appears
+        // outside of any marker block, the entire 'importantFunction' is appended as an
+        // enclosing context to the final prompt.
         let main_swift_content = r#"
 import Foundation
+
+func unimportantFunction() {
+    print("This is not inside markers.")
+}
 
 // v
 // This content is included via substring markers.
 print("Included marker content")
 // ^
-
-func unimportantFunction() {
-    print("This is not inside markers.")
-}
 
 func importantFunction() {
     print("This is not inside markers normally.")
@@ -1354,6 +1354,13 @@ func importantFunction() {
         assert!(
             clipboard_content.contains("Enclosing function context:"),
             "Expected the prompt to include the enclosing function context; got:\n{}",
+            clipboard_content
+        );
+
+        // Assert that the unimportant function does not appear in the prompt.
+        assert!(
+            !clipboard_content.contains("unimportantFunction"),
+            "Expected the prompt to not include 'unimportantFunction'; got:\n{}",
             clipboard_content
         );
     }
