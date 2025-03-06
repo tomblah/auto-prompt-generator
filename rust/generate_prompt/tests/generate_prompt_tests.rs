@@ -1252,7 +1252,7 @@ async function someFunction(someParameter) {
 }
 
 #[cfg(test)]
-mod integration_tests_swift_substring_markers {
+mod integration_tests_substring_markers_swift {
     use assert_cmd::Command;
     use std::env;
     use std::fs;
@@ -1260,32 +1260,41 @@ mod integration_tests_swift_substring_markers {
 
     #[test]
     #[cfg(unix)]
-    fn test_generate_prompt_swift_includes_enclosing_function() {
+    fn test_generate_prompt_swift_enclosing_function_outside_markers() {
         // Create a temporary directory for our dummy Swift project.
         let temp_dir = TempDir::new().unwrap();
         let main_swift_path = temp_dir.path().join("main.swift");
 
-        // Write main.swift with:
-        // - A substring markers block (which will be filtered out),
-        // - And a Swift function that contains a TODO comment (outside the markers).
+        // Write a Swift file that contains:
+        // - A substring markers block (only content between "// v" and "// ^" is normally included)
+        // - A function 'importantFunction' that is not inside any markers and which contains a TODO marker.
+        //
+        // In normal processing, only the marker block would be included. However, because the TODO
+        // marker ("// TODO: - Correct the computation here") appears outside of any marker block,
+        // the enclosing function block (i.e. the entire 'importantFunction' function) is automatically
+        // appended to the final prompt.
         let main_swift_content = r#"
 import Foundation
 
 // v
-// This block is irrelevant and will be filtered.
- // ^
- 
-func myFunction() {
-    print("Hello, world!")
-    // TODO: - Fix bug in logic
-    print("Goodbye")
+// This content is included via substring markers.
+print("Included marker content")
+// ^
+
+func unimportantFunction() {
+    print("This is not inside markers.")
+}
+
+func importantFunction() {
+    print("This is not inside markers normally.")
+    // TODO: - Correct the computation here
+    print("Computation ends.")
 }
 "#;
         fs::write(&main_swift_path, main_swift_content).unwrap();
 
-        // Set GET_INSTRUCTION_FILE to point to our Swift file.
+        // Set environment variables so generate_prompt uses our Swift file.
         env::set_var("GET_INSTRUCTION_FILE", main_swift_path.to_str().unwrap());
-        // Also set GET_GIT_ROOT to our temporary directory.
         env::set_var("GET_GIT_ROOT", temp_dir.path().to_str().unwrap());
 
         // Set up a dummy pbcopy executable that writes its stdin to a temporary clipboard file.
@@ -1295,7 +1304,8 @@ func myFunction() {
         fs::write(
             &dummy_pbcopy_path,
             format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display())
-        ).unwrap();
+        )
+        .unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -1315,24 +1325,32 @@ func myFunction() {
         cmd.arg("--singular");
         cmd.assert().success();
 
-        // Read the content that would have been copied to the clipboard.
+        // Read the output from the dummy clipboard file.
         let clipboard_content = fs::read_to_string(&clipboard_file)
             .expect("Failed to read dummy clipboard file");
 
-        // Assert that the final prompt includes:
-        // - The function definition ("myFunction"),
-        // - The TODO comment ("// TODO: - Fix bug in logic"),
-        // - And the appended enclosing function context.
+        // Assert that the final prompt includes the content from the substring markers.
         assert!(
-            clipboard_content.contains("myFunction"),
-            "Expected the prompt to include the function definition; got:\n{}",
+            clipboard_content.contains("Included marker content"),
+            "Expected marker content to appear in prompt; got:\n{}",
+            clipboard_content
+        );
+
+        // Assert that the final prompt includes the function definition of 'importantFunction'
+        // and the TODO marker comment.
+        assert!(
+            clipboard_content.contains("importantFunction"),
+            "Expected the prompt to include the function 'importantFunction'; got:\n{}",
             clipboard_content
         );
         assert!(
-            clipboard_content.contains("// TODO: - Fix bug in logic"),
+            clipboard_content.contains("// TODO: - Correct the computation here"),
             "Expected the prompt to include the TODO comment; got:\n{}",
             clipboard_content
         );
+
+        // Assert that the final prompt includes an appended enclosing function context.
+        // (Typically indicated by a string like "Enclosing function context:" in the output.)
         assert!(
             clipboard_content.contains("Enclosing function context:"),
             "Expected the prompt to include the enclosing function context; got:\n{}",
