@@ -1282,10 +1282,12 @@ func unimportantFunction() {
 
 // v
 // This content is included via substring markers.
-print("Included marker content")
+func importantFunction() {
+    print("This is inside markers.")
+}
 // ^
 
-func importantFunction() {
+func enclosingFunction() {
     print("This is not inside markers normally.")
     // TODO: - Correct the computation here
     print("Computation ends.")
@@ -1336,11 +1338,11 @@ func importantFunction() {
             clipboard_content
         );
 
-        // Assert that the final prompt includes the function definition of 'importantFunction'
+        // Assert that the final prompt includes the function definition of 'enclosingFunction'
         // and the TODO marker comment.
         assert!(
-            clipboard_content.contains("importantFunction"),
-            "Expected the prompt to include the function 'importantFunction'; got:\n{}",
+            clipboard_content.contains("enclosingFunction"),
+            "Expected the prompt to include the function 'enclosingFunction'; got:\n{}",
             clipboard_content
         );
         assert!(
