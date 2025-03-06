@@ -1250,3 +1250,93 @@ async function someFunction(someParameter) {
                 "Expected the prompt to not include index.js content");
     }
 }
+
+#[cfg(test)]
+mod integration_tests_swift_substring_markers {
+    use assert_cmd::Command;
+    use std::env;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_swift_includes_enclosing_function() {
+        // Create a temporary directory for our dummy Swift project.
+        let temp_dir = TempDir::new().unwrap();
+        let main_swift_path = temp_dir.path().join("main.swift");
+
+        // Write main.swift with:
+        // - A substring markers block (which will be filtered out),
+        // - And a Swift function that contains a TODO comment (outside the markers).
+        let main_swift_content = r#"
+import Foundation
+
+// v
+// This block is irrelevant and will be filtered.
+ // ^
+ 
+func myFunction() {
+    print("Hello, world!")
+    // TODO: - Fix bug in logic
+    print("Goodbye")
+}
+"#;
+        fs::write(&main_swift_path, main_swift_content).unwrap();
+
+        // Set GET_INSTRUCTION_FILE to point to our Swift file.
+        env::set_var("GET_INSTRUCTION_FILE", main_swift_path.to_str().unwrap());
+        // Also set GET_GIT_ROOT to our temporary directory.
+        env::set_var("GET_GIT_ROOT", temp_dir.path().to_str().unwrap());
+
+        // Set up a dummy pbcopy executable that writes its stdin to a temporary clipboard file.
+        let pbcopy_dir = TempDir::new().unwrap();
+        let clipboard_file = pbcopy_dir.path().join("clipboard.txt");
+        let dummy_pbcopy_path = pbcopy_dir.path().join("pbcopy");
+        fs::write(
+            &dummy_pbcopy_path,
+            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display())
+        ).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&dummy_pbcopy_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&dummy_pbcopy_path, perms).unwrap();
+        }
+        // Prepend the dummy pbcopy directory to the PATH.
+        let original_path = env::var("PATH").unwrap();
+        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+
+        // Ensure that clipboard copying is enabled.
+        env::remove_var("DISABLE_PBCOPY");
+
+        // Run the generate_prompt binary in singular mode.
+        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.arg("--singular");
+        cmd.assert().success();
+
+        // Read the content that would have been copied to the clipboard.
+        let clipboard_content = fs::read_to_string(&clipboard_file)
+            .expect("Failed to read dummy clipboard file");
+
+        // Assert that the final prompt includes:
+        // - The function definition ("myFunction"),
+        // - The TODO comment ("// TODO: - Fix bug in logic"),
+        // - And the appended enclosing function context.
+        assert!(
+            clipboard_content.contains("myFunction"),
+            "Expected the prompt to include the function definition; got:\n{}",
+            clipboard_content
+        );
+        assert!(
+            clipboard_content.contains("// TODO: - Fix bug in logic"),
+            "Expected the prompt to include the TODO comment; got:\n{}",
+            clipboard_content
+        );
+        assert!(
+            clipboard_content.contains("Enclosing function context:"),
+            "Expected the prompt to include the enclosing function context; got:\n{}",
+            clipboard_content
+        );
+    }
+}
