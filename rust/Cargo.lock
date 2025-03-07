@@ -536,7 +536,8 @@ name = "prompt_file_processor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "regex",
+ "extract_enclosing_function",
+ "filter_substring_markers",
  "tempfile",
 ]
 

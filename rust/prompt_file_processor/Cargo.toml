@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-regex = { workspace = true }
+extract_enclosing_function = { path = "../extract_enclosing_function" }
+filter_substring_markers = { path = "../filter_substring_markers" }
 anyhow = { workspace = true }
 
 [dev-dependencies]
