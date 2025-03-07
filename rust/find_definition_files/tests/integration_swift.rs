@@ -1,10 +1,12 @@
-mod integration_swift {
-    use std::collections::BTreeSet;
-    use std::fs;
-    use std::path::PathBuf;
-    use tempfile::{tempdir};
-    use find_definition_files::find_definition_files;
+use std::collections::BTreeSet;
+use std::fs;
+use std::path::PathBuf;
+use tempfile::{tempdir};
+use find_definition_files::find_definition_files;
 
+mod integration_swift {
+    use super::*;
+    
     #[test]
     fn test_find_definition_files_basic() -> Result<(), Box<dyn std::error::Error>> {
         // Create a temporary directory for the test.
