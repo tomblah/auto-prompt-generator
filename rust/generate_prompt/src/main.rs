@@ -151,8 +151,7 @@ fn main() -> Result<()> {
         .context("Failed to extract instruction content")?;
     println!("Instruction content: {}", instruction_content.trim());
 
-    // NEW: Extract enclosing function block.
-    let enclosing_context = match fs::read_to_string(&file_path) {
+    let _enclosing_context = match fs::read_to_string(&file_path) {
         Ok(content) => match extract_enclosing_block(&content) {
             Some(block) => block,
             None => String::from("No enclosing function block found."),
