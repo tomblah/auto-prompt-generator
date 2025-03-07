@@ -1322,7 +1322,7 @@ EOF
   [ "$status" -ne 0 ]
 
   # Check that the error message about multiple markers is printed.
-  echo "$output" | grep -q "Multiple // TODO: - markers found. Exiting."
+  echo "$output" | grep -q "Expected exactly 2 // TODO: - markers, but found"
 
   # Optionally, check that all offending markers (except the very last CTA marker) are printed.
   offending_markers=$(echo "$output" | grep "TODO: -" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')

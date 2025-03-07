@@ -301,17 +301,18 @@ fn main() -> Result<()> {
     )
     .context("Failed to assemble prompt")?;
 
-    // 10. Check for multiple "// TODO: -" markers.
+    // 10. Check that there are exactly two "// TODO: -" markers.
     let marker = "// TODO: -";
     let marker_lines: Vec<&str> = final_prompt
         .lines()
         .filter(|line| line.contains(marker))
         .collect();
-    if marker_lines.len() > 2 {
-        eprintln!("Multiple {} markers found. Exiting.", marker);
-        for line in marker_lines.iter().take(marker_lines.len() - 1) {
-            eprintln!("{}", line.trim());
-        }
+    if marker_lines.len() != 2 {
+        eprintln!(
+            "Expected exactly 2 {} markers, but found {}. Exiting.",
+            marker,
+            marker_lines.len()
+        );
         std::process::exit(1);
     }
 
@@ -418,7 +419,6 @@ mod tests {
             
             env::remove_var("GET_GIT_ROOT");
         }
-
 
         /// If --include-references is used but the TODO file isn’t a Swift file, we should error out.
         #[test]
@@ -644,7 +644,7 @@ mod tests {
             env::remove_var("GET_GIT_ROOT");
         }
         
-        /// Test that generate_prompt exits with an error when multiple markers are present.
+        /// Test that generate_prompt exits with an error when the final prompt has more than two markers.
         #[test]
         #[cfg(unix)]
         fn test_generate_prompt_multiple_markers() {
@@ -660,8 +660,7 @@ mod tests {
                 // TODO: - Marker One\n\
                 Some content here\n\
                 // TODO: - Marker Two\n\
-                More content here\n\
-                // TODO: -\n";
+                More content here\n";
             fs::write(&instruction_path, multi_marker_content).unwrap();
             env::set_var("GET_INSTRUCTION_FILE", &instruction_path);
             create_dummy_executable(&temp_dir, "find_prompt_instruction", &instruction_path);
@@ -679,11 +678,10 @@ mod tests {
             let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
             cmd.assert()
                 .failure()
-                .stderr(predicate::str::contains("Multiple // TODO: - markers found. Exiting."));
+                .stderr(predicate::str::contains("Expected exactly 2 // TODO: - markers, but found 3. Exiting."));
 
             env::remove_var("GET_GIT_ROOT");
         }
-
         
         /// New Test: Final Prompt is copied to clipboard.
         ///
