@@ -349,30 +349,6 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Helper function to run an external command and capture its stdout as a String.
-fn run_command(args: &[&str], envs: Option<&[(&str, &str)]>) -> Result<String, anyhow::Error> {
-    if args.is_empty() {
-        bail!("No command provided");
-    }
-    let cmd = args[0];
-    let cmd_args = &args[1..];
-    let mut command = std::process::Command::new(cmd);
-    command.args(cmd_args);
-    if let Some(env_vars) = envs {
-        for &(key, value) in env_vars {
-            command.env(key, value);
-        }
-    }
-    let output = command
-        .output()
-        .with_context(|| format!("Failed to execute command: {:?}", args))?;
-    if !output.status.success() {
-        bail!("Command {:?} failed with status {}", args, output.status);
-    }
-    let stdout = String::from_utf8(output.stdout).context("Output not valid UTF-8")?;
-    Ok(stdout)
-}
-
 #[cfg(test)]
 mod tests {
     use predicates::prelude::*;
