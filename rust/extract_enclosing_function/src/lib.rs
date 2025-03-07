@@ -11,51 +11,38 @@ fn remove_access_modifiers(content: &str) -> String {
     re.replace_all(content, "").to_string()
 }
 
-/// Extracts the enclosing function block from the given content.
-///
-/// This implementation attempts to use Tree‑sitter’s Swift parser to accurately locate
-/// the function declaration that contains the first occurrence of the TODO marker.
-/// If the file uses marker blocks (i.e. both "// v" and "// ^") and the TODO is inside the markers,
-/// then no block is extracted (returns None). Otherwise, if Tree‑sitter fails or no matching
-/// function is found, the function falls back to a heuristic approach.
-pub fn extract_enclosing_block(content: &str) -> Option<String> {
-    // Preprocess the content to remove access modifiers.
-    let preprocessed_content = remove_access_modifiers(content);
+/// Converts a byte offset in `content` into a zero-based line index.
+fn byte_offset_to_line_index(content: &str, offset: usize) -> usize {
+    content[..offset].lines().count()
+}
 
-    // Get the line index of the TODO marker.
-    let todo_idx = todo_index(&preprocessed_content)?;
-    // If the file uses markers and the TODO is inside a marker block, return None.
-    if file_uses_markers(&preprocessed_content) && is_todo_inside_markers(&preprocessed_content, todo_idx) {
-        return None;
-    }
+/// Extracts a block of code from the original content starting at the given line index
+/// using a brace-counting heuristic. This function works on the original (unmodified)
+/// content, so that the returned block includes the original access modifiers.
+fn extract_block_from_lines(original: &str, start_line: usize) -> String {
+    let lines: Vec<&str> = original.lines().collect();
+    let mut found_opening = false;
+    let mut brace_count = 0;
+    let mut extracted_lines = Vec::new();
 
-    // Also get the byte offset for Tree‑sitter processing.
-    let todo_offset = preprocessed_content.find("// TODO: - ")?;
-    
-    let mut parser = Parser::new();
-    // Convert the LANGUAGE constant (a function pointer) into a Language value.
-    let language: tree_sitter::Language = unsafe { mem::transmute(tree_sitter_swift::LANGUAGE) };
-    if parser.set_language(&language).is_err() {
-        return extract_enclosing_block_heuristic(&preprocessed_content);
-    }
-    
-    // Parse the content into a syntax tree.
-    let tree = parser.parse(&preprocessed_content, None)?;
-    let root_node = tree.root_node();
-    
-    // Collect all named descendant nodes.
-    let named_nodes = get_named_descendants(root_node);
-    for node in named_nodes {
-        if node.start_byte() <= todo_offset && node.end_byte() >= todo_offset {
-            // Look for a Swift function declaration.
-            if node.kind() == "function_declaration" {
-                return Some(preprocessed_content[node.start_byte()..node.end_byte()].to_string());
+    for line in &lines[start_line..] {
+        if !found_opening {
+            if line.contains('{') {
+                found_opening = true;
+                brace_count += line.matches('{').count();
+                brace_count = brace_count.saturating_sub(line.matches('}').count());
+            }
+            extracted_lines.push(*line);
+        } else {
+            extracted_lines.push(*line);
+            brace_count += line.matches('{').count();
+            brace_count = brace_count.saturating_sub(line.matches('}').count());
+            if brace_count == 0 {
+                break;
             }
         }
     }
-    
-    // Fallback: use the heuristic approach.
-    extract_enclosing_block_heuristic(&preprocessed_content)
+    extracted_lines.join("\n")
 }
 
 /// Recursively collects all named descendant nodes of the given node.
@@ -70,12 +57,67 @@ fn get_named_descendants<'a>(node: tree_sitter::Node<'a>) -> Vec<tree_sitter::No
     result
 }
 
+/// Extracts the enclosing function block from the given content.
+///
+/// This implementation attempts to use Tree‑sitter’s Swift parser to accurately locate
+/// the function declaration that contains the first occurrence of the TODO marker.
+/// If the file uses marker blocks (i.e. both "// v" and "// ^") and the TODO is inside the markers,
+/// then no block is extracted (returns None). Otherwise, if Tree‑sitter fails or no matching
+/// function is found, the function falls back to a heuristic approach.
+///
+/// **Important:** Although we strip access modifiers for parsing purposes, the returned block is
+/// extracted from the original content so that any access modifiers are preserved.
+pub fn extract_enclosing_block(content: &str) -> Option<String> {
+    // Preprocess the content to remove access modifiers.
+    let preprocessed_content = remove_access_modifiers(content);
+
+    // Determine the TODO marker line index in the preprocessed content.
+    let todo_idx = todo_index(&preprocessed_content)?;
+    // If the file uses markers and the TODO is inside a marker block, return None.
+    if file_uses_markers(&preprocessed_content) && is_todo_inside_markers(&preprocessed_content, todo_idx) {
+        return None;
+    }
+
+    // Also get the byte offset for Tree‑sitter processing.
+    let todo_offset = preprocessed_content.find("// TODO: - ")?;
+    
+    let mut parser = Parser::new();
+    // Convert the LANGUAGE constant (a function pointer) into a Language value.
+    let language: tree_sitter::Language = unsafe { mem::transmute(tree_sitter_swift::LANGUAGE) };
+    if parser.set_language(&language).is_err() {
+        return extract_enclosing_block_heuristic(content, &preprocessed_content);
+    }
+    
+    // Parse the preprocessed content.
+    let tree = parser.parse(&preprocessed_content, None)?;
+    let root_node = tree.root_node();
+    
+    // Look for a function_declaration node whose byte range covers the TODO marker.
+    for node in get_named_descendants(root_node) {
+        if node.start_byte() <= todo_offset && node.end_byte() >= todo_offset {
+            if node.kind() == "function_declaration" {
+                // Compute starting and ending line numbers in the preprocessed content.
+                let start_line = byte_offset_to_line_index(&preprocessed_content, node.start_byte());
+                let end_line = byte_offset_to_line_index(&preprocessed_content, node.end_byte());
+                // Extract and return the corresponding block from the original content.
+                let original_lines: Vec<&str> = content.lines().collect();
+                let block = original_lines[start_line..end_line].join("\n");
+                return Some(block);
+            }
+        }
+    }
+    
+    // Fallback: use the heuristic approach.
+    extract_enclosing_block_heuristic(content, &preprocessed_content)
+}
+
 /// Fallback heuristic implementation using line scanning and brace counting.
-fn extract_enclosing_block_heuristic(content: &str) -> Option<String> {
-    // Compute the TODO index from the preprocessed content.
-    let _ = todo_index(content)?;
-    let start_index = find_enclosing_function_start(content)?;
-    Some(extract_block(content, start_index))
+/// It uses the preprocessed content to determine the starting line index and then
+/// extracts the corresponding block from the original content.
+fn extract_enclosing_block_heuristic(original_content: &str, preprocessed_content: &str) -> Option<String> {
+    let _ = todo_index(preprocessed_content)?;
+    let start_index = find_enclosing_function_start(preprocessed_content)?;
+    Some(extract_block_from_lines(original_content, start_index))
 }
 
 /// Returns the index (zero-based) of the first line that contains "// TODO: - ".
@@ -112,7 +154,8 @@ pub fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
 }
 
 /// Finds the starting line index of the enclosing function block using simple heuristics.
-/// This function first applies `remove_access_modifiers` so that access modifiers are stripped.
+/// This function applies `remove_access_modifiers` so that access modifiers are stripped.
+/// It returns the zero-based line index (relative to the processed content).
 pub fn find_enclosing_function_start(content: &str) -> Option<usize> {
     let processed = remove_access_modifiers(content);
     let _ = todo_index(&processed)?;
@@ -135,7 +178,9 @@ pub fn find_enclosing_function_start(content: &str) -> Option<usize> {
     }).map(|idx| start_search + idx)
 }
 
-/// Extracts a block of code from the content starting at the given line index using a brace-counting heuristic.
+/// Extracts a block of code from the given content starting at the given line index using a brace-counting heuristic.
+/// (This version operates on a full string and is used only in the fallback branch.)
+#[allow(dead_code)]
 pub fn extract_block(content: &str, start_index: usize) -> String {
     let lines: Vec<&str> = content.lines().collect();
     let mut found_opening = false;
