@@ -46,7 +46,6 @@ pub fn get_search_roots(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
 mod tests {
     use super::*;
     use std::fs::{self, File};
-    use std::io::Write;
     use std::path::Path;
     use tempfile::TempDir;
 

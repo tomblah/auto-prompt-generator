@@ -145,7 +145,6 @@ pub fn get_search_roots(root: &Path) -> Vec<PathBuf> {
 mod tests {
     use super::*;
     use std::fs;
-    use std::io::Write;
     use std::path::PathBuf;
     use tempfile::tempdir;
 
@@ -552,9 +551,7 @@ mod tests {
 mod internal_tests {
     use super::*;
     use std::fs;
-    use std::io::Write;
     use tempfile::tempdir;
-    use std::path::Path;
 
     #[test]
     fn test_definition_finder_new_error_on_empty_types() {

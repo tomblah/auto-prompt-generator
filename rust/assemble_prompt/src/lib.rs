@@ -1,8 +1,8 @@
 use std::env;
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Command};
 use anyhow::{Result, Context};
 use prompt_file_processor;
 use unescape_newlines::unescape_newlines;

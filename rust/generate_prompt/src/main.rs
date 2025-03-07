@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use clap::{Arg, Command};
 use std::env;
 use std::fs;

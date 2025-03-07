@@ -1,5 +1,3 @@
-use std::path::Path;
-
 /// Filters a list of file paths by excluding those whose basenames exactly match any of the provided exclusion patterns.
 /// Also, lines that end with a slash (i.e. directories) are excluded.
 ///

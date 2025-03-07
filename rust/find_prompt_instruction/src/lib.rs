@@ -135,8 +135,7 @@ mod tests {
     use super::*;
     use filetime::{set_file_mtime, FileTime};
     use std::fs;
-    use std::io::Write;
-    use tempfile::{tempdir, NamedTempFile};
+    use tempfile::{tempdir};
 
     #[test]
     fn test_no_files_found() {
@@ -284,12 +283,10 @@ mod tests {
 #[cfg(test)]
 mod internal_tests {
     use super::*;
-    use std::fs::{self, File};
+    use std::fs::{self};
     use std::io::Write;
-    use std::path::Path;
     use tempfile::{tempdir, NamedTempFile};
     use filetime::{set_file_mtime, FileTime};
-    use std::time::SystemTime;
 
     // Test the helper that extracts the first TODO line.
     #[test]
