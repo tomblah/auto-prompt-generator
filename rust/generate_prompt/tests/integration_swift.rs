@@ -129,8 +129,7 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_normal_mode_includes_all_files() {
-        let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
+        let (_project_dir, instruction_file_path) = setup_dummy_project();
 
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
@@ -197,8 +196,7 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_singular_mode_includes_only_todo_file() {
-        let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
+        let (_project_dir, instruction_file_path) = setup_dummy_project();
 
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
@@ -258,8 +256,7 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_include_references_includes_ref_file() {
-        let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
+        let (_project_dir, instruction_file_path) = setup_dummy_project();
 
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
@@ -316,8 +313,7 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_excludes_definition1() {
-        let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
+        let (_project_dir, instruction_file_path) = setup_dummy_project();
 
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
@@ -362,8 +358,7 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_force_global_includes_outside_file() {
-        let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
+        let (_project_dir, instruction_file_path) = setup_dummy_project();
 
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
         env::remove_var("DISABLE_PBCOPY");
@@ -395,8 +390,7 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_includes_trigger_referenced_file() {
-        let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
+        let (_project_dir, instruction_file_path) = setup_dummy_project();
 
         // Set the GET_INSTRUCTION_FILE to point to Instruction.swift.
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
@@ -429,8 +423,7 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_excludes_comment_referenced_file() {
-        let (project_dir, instruction_file_path) = setup_dummy_project();
-        let project_path = project_dir.path();
+        let (_project_dir, instruction_file_path) = setup_dummy_project();
 
         // Set the GET_INSTRUCTION_FILE to point to Instruction.swift.
         env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
