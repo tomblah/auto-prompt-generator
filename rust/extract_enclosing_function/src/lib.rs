@@ -1,6 +1,15 @@
 use std::mem;
+use regex::Regex;
 use tree_sitter::Parser;
 use tree_sitter_swift;
+
+/// Removes common Swift access modifiers from the beginning of lines,
+/// allowing for optional leading whitespace.
+fn remove_access_modifiers(content: &str) -> String {
+    // Updated regex: allow for leading spaces before access modifiers.
+    let re = Regex::new(r"(?m)^\s*(open|public|internal|fileprivate|private)\s+").unwrap();
+    re.replace_all(content, "").to_string()
+}
 
 /// Extracts the enclosing function block from the given content.
 ///
@@ -10,25 +19,28 @@ use tree_sitter_swift;
 /// then no block is extracted (returns None). Otherwise, if Tree‑sitter fails or no matching
 /// function is found, the function falls back to a heuristic approach.
 pub fn extract_enclosing_block(content: &str) -> Option<String> {
+    // Preprocess the content to remove access modifiers.
+    let preprocessed_content = remove_access_modifiers(content);
+
     // Get the line index of the TODO marker.
-    let todo_idx = todo_index(content)?;
+    let todo_idx = todo_index(&preprocessed_content)?;
     // If the file uses markers and the TODO is inside a marker block, return None.
-    if file_uses_markers(content) && is_todo_inside_markers(content, todo_idx) {
+    if file_uses_markers(&preprocessed_content) && is_todo_inside_markers(&preprocessed_content, todo_idx) {
         return None;
     }
 
     // Also get the byte offset for Tree‑sitter processing.
-    let todo_offset = content.find("// TODO: - ")?;
+    let todo_offset = preprocessed_content.find("// TODO: - ")?;
     
     let mut parser = Parser::new();
     // Convert the LANGUAGE constant (a function pointer) into a Language value.
     let language: tree_sitter::Language = unsafe { mem::transmute(tree_sitter_swift::LANGUAGE) };
     if parser.set_language(&language).is_err() {
-        return extract_enclosing_block_heuristic(content);
+        return extract_enclosing_block_heuristic(&preprocessed_content);
     }
     
     // Parse the content into a syntax tree.
-    let tree = parser.parse(content, None)?;
+    let tree = parser.parse(&preprocessed_content, None)?;
     let root_node = tree.root_node();
     
     // Collect all named descendant nodes.
@@ -37,13 +49,13 @@ pub fn extract_enclosing_block(content: &str) -> Option<String> {
         if node.start_byte() <= todo_offset && node.end_byte() >= todo_offset {
             // Look for a Swift function declaration.
             if node.kind() == "function_declaration" {
-                return Some(content[node.start_byte()..node.end_byte()].to_string());
+                return Some(preprocessed_content[node.start_byte()..node.end_byte()].to_string());
             }
         }
     }
     
     // Fallback: use the heuristic approach.
-    extract_enclosing_block_heuristic(content)
+    extract_enclosing_block_heuristic(&preprocessed_content)
 }
 
 /// Recursively collects all named descendant nodes of the given node.
@@ -60,8 +72,9 @@ fn get_named_descendants<'a>(node: tree_sitter::Node<'a>) -> Vec<tree_sitter::No
 
 /// Fallback heuristic implementation using line scanning and brace counting.
 fn extract_enclosing_block_heuristic(content: &str) -> Option<String> {
-    let todo_idx = todo_index(content)?;
-    let start_index = find_enclosing_function_start(content, todo_idx)?;
+    // Compute the TODO index from the preprocessed content.
+    let _ = todo_index(content)?;
+    let start_index = find_enclosing_function_start(content)?;
     Some(extract_block(content, start_index))
 }
 
@@ -99,8 +112,12 @@ pub fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
 }
 
 /// Finds the starting line index of the enclosing function block using simple heuristics.
-pub fn find_enclosing_function_start(content: &str, todo_idx: usize) -> Option<usize> {
-    let lines: Vec<&str> = content.lines().collect();
+/// This function first applies `remove_access_modifiers` so that access modifiers are stripped.
+pub fn find_enclosing_function_start(content: &str) -> Option<usize> {
+    let processed = remove_access_modifiers(content);
+    let _ = todo_index(&processed)?;
+    let lines: Vec<&str> = processed.lines().collect();
+    let todo_idx = todo_index(&processed)?;
     let start_search = if todo_idx >= 20 { todo_idx - 20 } else { 0 };
     lines[start_search..=todo_idx].iter().rposition(|line| {
         let trimmed = line.trim_start();
@@ -199,6 +216,14 @@ private var appDelegate: AppDelegate? {
 }
 "#;
 
+    // New constant: computed property with leading spaces.
+    const SWIFT_COMPUTED_PROPERTY_WITH_SPACES: &str = r#"
+    private var appDelegate: AppDelegate? {
+        // TODO: - computed property todo example with spaces
+        appManager.appDelegate
+    }
+"#;
+
     const NO_MARKERS: &str = r#"
 function someOtherFunction() {
     // Some code
@@ -232,9 +257,9 @@ func myFunction() {
     #[test]
     fn test_find_enclosing_function_start_for_cloud() {
         let content = CLOUD_GLOBAL_SETTINGS;
-        let todo_idx = todo_index(content).unwrap();
-        let start_idx = find_enclosing_function_start(content, todo_idx).unwrap();
-        let lines: Vec<&str> = content.lines().collect();
+        let processed = remove_access_modifiers(content);
+        let start_idx = find_enclosing_function_start(content).unwrap();
+        let lines: Vec<&str> = processed.lines().collect();
         let start_line = lines[start_idx];
         assert!(start_line.contains("Parse.Cloud.define(\"isUsernameAvailable\"")
             || start_line.contains("Parse.Cloud.define (\"isUsernameAvailable\""),
@@ -244,9 +269,9 @@ func myFunction() {
     #[test]
     fn test_find_enclosing_function_start_for_assignment() {
         let content = ASSIGNMENT_FUNCTION;
-        let todo_idx = todo_index(content).unwrap();
-        let start_idx = find_enclosing_function_start(content, todo_idx).unwrap();
-        let lines: Vec<&str> = content.lines().collect();
+        let processed = remove_access_modifiers(content);
+        let start_idx = find_enclosing_function_start(content).unwrap();
+        let lines: Vec<&str> = processed.lines().collect();
         let start_line = lines[start_idx];
         assert!(start_line.contains("= function("));
     }
@@ -254,9 +279,9 @@ func myFunction() {
     #[test]
     fn test_find_enclosing_function_start_for_async() {
         let content = ASYNC_FUNCTION;
-        let todo_idx = todo_index(content).unwrap();
-        let start_idx = find_enclosing_function_start(content, todo_idx).unwrap();
-        let lines: Vec<&str> = content.lines().collect();
+        let processed = remove_access_modifiers(content);
+        let start_idx = find_enclosing_function_start(content).unwrap();
+        let lines: Vec<&str> = processed.lines().collect();
         let start_line = lines[start_idx];
         assert!(start_line.contains("async function"));
     }
@@ -264,9 +289,9 @@ func myFunction() {
     #[test]
     fn test_find_enclosing_function_start_for_swift() {
         let content = SWIFT_FUNCTION;
-        let todo_idx = todo_index(content).unwrap();
-        let start_idx = find_enclosing_function_start(content, todo_idx).unwrap();
-        let lines: Vec<&str> = content.lines().collect();
+        let processed = remove_access_modifiers(content);
+        let start_idx = find_enclosing_function_start(content).unwrap();
+        let lines: Vec<&str> = processed.lines().collect();
         let start_line = lines[start_idx];
         assert!(start_line.contains("func generateRecentInteractionsString"),
                 "Expected a Swift function header, got: {}", start_line);
@@ -275,18 +300,26 @@ func myFunction() {
     #[test]
     fn test_find_enclosing_function_start_for_swift_computed_property() {
         let content = SWIFT_COMPUTED_PROPERTY;
-        let todo_idx = todo_index(content).unwrap();
-        let start_idx = find_enclosing_function_start(content, todo_idx).unwrap();
-        let lines: Vec<&str> = content.lines().collect();
+        let processed = remove_access_modifiers(content);
+        let start_idx = find_enclosing_function_start(content).unwrap();
+        let lines: Vec<&str> = processed.lines().collect();
         let start_line = lines[start_idx];
-        // Even with a modifier ("private var") the computed property header should be detected.
-        assert!(start_line.trim_start().starts_with("private var")
+        assert!(start_line.trim_start().starts_with("var")
                 && start_line.contains("{")
                 && !start_line.contains("="),
-                "Expected a computed property header, got: {}", start_line);
+                "Expected a computed property header (without access modifiers), got: {}", start_line);
     }
 
-    // New tests for marker-specific logic.
+    #[test]
+    fn test_find_enclosing_function_start_for_swift_computed_property_with_spaces() {
+        let content = SWIFT_COMPUTED_PROPERTY_WITH_SPACES;
+        let processed = remove_access_modifiers(content);
+        let start_idx = find_enclosing_function_start(content).unwrap();
+        let lines: Vec<&str> = processed.lines().collect();
+        let start_line = lines[start_idx];
+        assert!(start_line.trim_start().starts_with("var"),
+                "Expected a computed property header (without access modifiers and leading spaces), got: {}", start_line);
+    }
 
     #[test]
     fn test_file_uses_markers_true() {
@@ -300,7 +333,6 @@ func myFunction() {
 
     #[test]
     fn test_extract_enclosing_block_outside() {
-        // In MARKER_TEST_OUTSIDE the TODO is outside the marker block.
         let block = extract_enclosing_block(MARKER_TEST_OUTSIDE);
         assert!(block.is_some(), "Expected an enclosing block, got None");
         let block_str = block.unwrap();
@@ -309,43 +341,33 @@ func myFunction() {
 
     #[test]
     fn test_extract_enclosing_block_inside() {
-        // In MARKER_TEST_INSIDE the TODO is inside the marker block.
         let block = extract_enclosing_block(MARKER_TEST_INSIDE);
         assert!(block.is_none(), "Expected no enclosing block because the TODO is inside markers");
     }
 
-    // ---- Additional test cases for missing coverage ----
-
     #[test]
     fn test_no_todo_marker() {
-        // Content without any "// TODO: - " should return None for todo_index
         let content = "function foo() { console.log('hello'); }";
         assert_eq!(todo_index(content), None);
-        // Since no TODO marker exists, extract_enclosing_block should also return None.
         assert_eq!(extract_enclosing_block(content), None);
     }
 
     #[test]
     fn test_no_valid_function_header() {
-        // Content has a TODO marker but no line qualifies as a function header by our heuristic.
         let content = r#"
 Some random text.
 Another line.
  // TODO: - stray todo with no function header
 More random text.
 "#;
-        // Ensure we do have a TODO marker.
         let idx = todo_index(content);
         assert!(idx.is_some());
-        // Since no candidate function header exists, find_enclosing_function_start should return None.
-        assert_eq!(find_enclosing_function_start(content, idx.unwrap()), None);
-        // Thus, extract_enclosing_block should return None.
+        assert_eq!(find_enclosing_function_start(content), None);
         assert_eq!(extract_enclosing_block(content), None);
     }
 
     #[test]
     fn test_extract_block_with_missing_closing_brace() {
-        // Test a block where the opening brace is present but the closing brace is missing.
         let content = r#"
 func incomplete() {
     let x = 10;
@@ -353,9 +375,7 @@ func incomplete() {
     // No closing brace here.
 Some random text.
 "#;
-        // Call extract_block from the beginning of the block.
         let block = extract_block(content, 1);
-        // Since there is no matching closing brace, the block should include all lines from the start index.
         assert!(block.contains("func incomplete()"));
         assert!(block.contains("let x = 10;"));
         assert!(block.contains("Some random text."));
@@ -363,7 +383,6 @@ Some random text.
 
     #[test]
     fn test_is_todo_inside_markers_direct() {
-        // Directly test is_todo_inside_markers with a TODO inside markers.
         let content_inside = r#"
 func example() {
     // v
@@ -373,8 +392,6 @@ func example() {
 "#;
         let idx_inside = todo_index(content_inside).unwrap();
         assert!(is_todo_inside_markers(content_inside, idx_inside));
-
-        // Now test with a TODO that is outside the marker block.
         let content_outside = r#"
  // v
 Some context here.
@@ -385,5 +402,56 @@ func example() {
 "#;
         let idx_outside = todo_index(content_outside).unwrap();
         assert!(!is_todo_inside_markers(content_outside, idx_outside));
+    }
+
+    #[test]
+    fn test_remove_access_modifiers_with_leading_spaces() {
+        let code = "    public func testFunction() { }";
+        let processed = remove_access_modifiers(code);
+        assert!(processed.starts_with("func testFunction()"),
+            "Expected access modifiers to be stripped even with leading spaces, got: {}", processed);
+    }
+
+    #[test]
+    fn test_extract_enclosing_block_complicated_swift() {
+        const COMPLICATED_SWIFT: &str = r#"
+import Foundation
+
+public func unimportantFunction<T: Collection, U: Numeric>(
+    input: T,
+    transform: (T.Element) throws -> U
+) async rethrows -> [U] where T.Element: CustomStringConvertible {
+    print("This is not inside markers.")
+    return try input.map { try transform($0) }
+}
+
+// v
+// This content is included via substring markers.
+public func importantFunction<T: Collection>(with data: T) async rethrows -> [T.Element] where T.Element: Numeric {
+    print("This is inside markers.")
+}
+// ^
+
+public func anotherUnimportantFunction<T: Decodable, U: Encodable>(
+    input: T,
+    transform: (T) throws -> U
+) rethrows -> U {
+    print("This is outside markers.")
+    return try transform(input)
+}
+
+public func enclosingFunction<V: Equatable, W: Codable>(input: V) -> W? {
+    print("This is not inside markers normally.")
+    // TODO: - Correct the computation here
+    print("Computation ends.")
+    return nil
+}
+"#;
+        let block = extract_enclosing_block(COMPLICATED_SWIFT);
+        assert!(block.is_some(), "Expected an enclosing block to be extracted");
+        let block_str = block.unwrap();
+        assert!(block_str.contains("enclosingFunction"), "Expected block to contain 'enclosingFunction'");
+        assert!(block_str.contains("TODO: - Correct the computation here"), "Expected block to contain the TODO marker");
+        assert!(block_str.contains("Computation ends."), "Expected block to contain the final print statement");
     }
 }
