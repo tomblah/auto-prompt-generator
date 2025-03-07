@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+extract_enclosing_function = { path = "../extract_enclosing_function" }
+unescape_newlines = { path = "../unescape_newlines" }
 regex = { workspace = true }
 anyhow = { workspace = true }
 
