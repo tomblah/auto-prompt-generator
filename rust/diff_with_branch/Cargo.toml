@@ -3,9 +3,6 @@ name = "diff_with_branch"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
-regex = { workspace = true }
-
 [dev-dependencies]
 tempfile = { workspace = true }
 assert_cmd = { workspace = true }
