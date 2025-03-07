@@ -9,3 +9,4 @@ anyhow = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+rand = { workspace = true }
