@@ -60,7 +60,7 @@ mod integration_tests {
         let instruction_file_path = package_dir.join("Instruction.swift");
         fs::write(
             &instruction_file_path,
-            "class SomeClass {
+            "public final class SomeClass<T: Codable, U: Equatable> {
     var foo: DummyType1? = nil
     var bar: DummyType2? = nil
     var dummy: DummyType3? = nil
