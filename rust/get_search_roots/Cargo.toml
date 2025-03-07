@@ -5,4 +5,6 @@ edition = "2021"
 
 [dependencies]
 walkdir = { workspace = true }
+
+[dev-dependencies]
 tempfile = { workspace = true }

@@ -185,7 +185,6 @@ version = "0.1.0"
 dependencies = [
  "assert_cmd",
  "predicates 2.1.5",
- "regex",
  "tempfile",
 ]
 
@@ -227,7 +226,6 @@ dependencies = [
 name = "extract_enclosing_function"
 version = "0.1.0"
 dependencies = [
- "regex",
  "tree-sitter",
  "tree-sitter-swift",
 ]
