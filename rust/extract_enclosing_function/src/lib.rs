@@ -105,6 +105,7 @@ pub fn find_enclosing_function_start(content: &str, todo_idx: usize) -> Option<u
     lines[start_search..=todo_idx].iter().rposition(|line| {
         let trimmed = line.trim_start();
         trimmed.starts_with("func ")
+            || trimmed.starts_with("function ") // <-- Added for JavaScript support
             || trimmed.contains("= function(")
             || trimmed.contains("Parse.Cloud.define(")
             || trimmed.contains("async function")
