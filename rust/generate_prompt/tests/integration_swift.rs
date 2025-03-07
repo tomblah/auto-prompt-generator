@@ -451,3 +451,156 @@ mod integration_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod integration_tests_substring_markers {
+    use assert_cmd::Command;
+    use std::env;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_swift_enclosing_function_outside_markers() {
+        // Create a temporary directory for our dummy Swift project.
+        let temp_dir = TempDir::new().unwrap();
+        let main_swift_path = temp_dir.path().join("main.swift");
+
+        // Write a Swift file that contains:
+        // - A function 'unimportantFunction' that should not appear in the final prompt.
+        // - A substring markers block (only content between "// v" and "// ^" is normally included)
+        //   that wraps the function 'importantFunction'.
+        // - A function 'anotherUnimportantFunction' that should not appear in the final prompt.
+        // - A function 'enclosingFunction' that is not inside any markers and which contains a TODO marker.
+        //
+        // Because the TODO marker ("// TODO: - Correct the computation here") appears
+        // outside of any marker block, the entire 'enclosingFunction' is automatically
+        // appended as an enclosing context to the final prompt.
+        let main_swift_content = r#"
+import Foundation
+
+public func unimportantFunction<T: Collection, U: Numeric>(
+    input: T,
+    transform: (T.Element) throws -> U
+) async rethrows -> [U] where T.Element: CustomStringConvertible {
+    print("This is not inside markers.")
+    return try input.map { try transform($0) }
+}
+
+// v
+// This content is included via substring markers.
+public func importantFunction<T: Collection>(with data: T) async rethrows -> [T.Element] where T.Element: Numeric {
+    print("This is inside markers.")
+}
+// ^
+
+public func anotherUnimportantFunction<T: Decodable, U: Encodable>(
+    input: T,
+    transform: (T) throws -> U
+) rethrows -> U {
+    print("This is outside markers.")
+    return try transform(input)
+}
+
+public func enclosingFunction<V: Equatable, W: Codable>(input: V) -> W? {
+    print("This is not inside markers normally.")
+    // TODO: - Correct the computation here
+    print("Computation ends.")
+    return nil
+}
+"#;
+        fs::write(&main_swift_path, main_swift_content).unwrap();
+
+        // Set environment variables so generate_prompt uses our Swift file.
+        env::set_var("GET_INSTRUCTION_FILE", main_swift_path.to_str().unwrap());
+        env::set_var("GET_GIT_ROOT", temp_dir.path().to_str().unwrap());
+
+        // Set up a dummy pbcopy executable that writes its stdin to a temporary clipboard file.
+        let pbcopy_dir = TempDir::new().unwrap();
+        let clipboard_file = pbcopy_dir.path().join("clipboard.txt");
+        let dummy_pbcopy_path = pbcopy_dir.path().join("pbcopy");
+        fs::write(
+            &dummy_pbcopy_path,
+            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display())
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&dummy_pbcopy_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&dummy_pbcopy_path, perms).unwrap();
+        }
+        // Prepend the dummy pbcopy directory to the PATH.
+        let original_path = env::var("PATH").unwrap();
+        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+
+        // Ensure that clipboard copying is enabled.
+        env::remove_var("DISABLE_PBCOPY");
+
+        // Run the generate_prompt binary in singular mode.
+        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.arg("--singular");
+        cmd.assert().success();
+
+        // Read the output from the dummy clipboard file.
+        let clipboard_content = fs::read_to_string(&clipboard_file)
+            .expect("Failed to read dummy clipboard file");
+
+        // Assert that the final prompt includes the content from the substring markers.
+        assert!(
+            clipboard_content.contains("This content is included via substring markers."),
+            "Expected marker content to appear in prompt; got:\n{}",
+            clipboard_content
+        );
+
+        // Assert that the final prompt includes the function name 'importantFunction'.
+        assert!(
+            clipboard_content.contains("importantFunction"),
+            "Expected the prompt to include 'importantFunction'; got:\n{}",
+            clipboard_content
+        );
+
+        // Assert that the final prompt includes the function definition of 'enclosingFunction'
+        // and the TODO marker comment.
+        assert!(
+            clipboard_content.contains("enclosingFunction"),
+            "Expected the prompt to include the function 'enclosingFunction'; got:\n{}",
+            clipboard_content
+        );
+        assert!(
+            clipboard_content.contains("// TODO: - Correct the computation here"),
+            "Expected the prompt to include the TODO comment; got:\n{}",
+            clipboard_content
+        );
+
+        // Also assert that the function body of 'enclosingFunction' is included (e.g. the final print statement).
+        assert!(
+            clipboard_content.contains("Computation ends."),
+            "Expected the prompt to include the body of 'enclosingFunction'; got:\n{}",
+            clipboard_content
+        );
+
+        // Assert that the final prompt includes an appended enclosing function context.
+        // (Typically indicated by a string like "Enclosing function context:" in the output.)
+        assert!(
+            clipboard_content.contains("Enclosing function context:"),
+            "Expected the prompt to include the enclosing function context; got:\n{}",
+            clipboard_content
+        );
+
+        // Assert that the unimportant function does not appear in the prompt.
+        assert!(
+            !clipboard_content.contains("unimportantFunction"),
+            "Expected the prompt to not include 'unimportantFunction'; got:\n{}",
+            clipboard_content
+        );
+        
+        // Assert that 'anotherUnimportantFunction' does not appear in the final prompt.
+        assert!(
+            !clipboard_content.contains("anotherUnimportantFunction"),
+            "Expected the prompt to not include 'anotherUnimportantFunction'; got:\n{}",
+            clipboard_content
+        );
+    }
+}
