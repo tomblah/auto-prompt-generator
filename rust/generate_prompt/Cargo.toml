@@ -13,7 +13,6 @@ filter_substring_markers = { path = "../filter_substring_markers" }
 get_search_roots = { path = "../get_search_roots" }
 get_git_root = { path = "../get_git_root" }
 find_prompt_instruction = { path = "../find_prompt_instruction" }
-diff_with_branch = { path = "../diff_with_branch" }
 filter_excluded_files = { path = "../filter_excluded_files" }
 extract_types = { path = "../extract_types" }
 filter_files_singular = { path = "../filter_files_singular" }

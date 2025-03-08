@@ -11,7 +11,6 @@ use extract_instruction_content::extract_instruction_content;
 use get_search_roots::get_search_roots;
 use get_git_root::get_git_root;
 use find_prompt_instruction::find_prompt_instruction_in_dir;
-use diff_with_branch::run_diff;
 use filter_excluded_files::filter_excluded_files_lines;
 use extract_types::extract_types_from_file;
 use filter_files_singular;

@@ -609,13 +609,11 @@ public func enclosingFunction<V: Equatable, W: Codable>(input: V) -> W? {
 #[cfg(test)]
 mod integration_diff {
     use assert_cmd::Command;
-    use filetime::{set_file_mtime, FileTime};
     use std::env;
     use std::fs;
-    use std::io::Write;
     use std::path::PathBuf;
     use std::process::Command as StdCommand;
-    use tempfile::{NamedTempFile, TempDir};
+    use tempfile::{TempDir};
 
     /// Sets up a dummy pbcopy executable that writes its stdin to a temporary file.
     /// Returns a tuple (pbcopy_dir, clipboard_file) where pbcopy_dir is the TempDir
