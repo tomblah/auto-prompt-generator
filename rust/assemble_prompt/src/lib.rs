@@ -4,7 +4,7 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Command};
 use anyhow::{Result, Context};
-use prompt_file_processor;
+use substring_marker_snippet_extractor;
 use unescape_newlines::unescape_newlines;
 
 /// Public API: assembles the final prompt from the found files and instruction content.
@@ -39,7 +39,7 @@ pub fn assemble_prompt(found_files_file: &str, _instruction_content: &str) -> Re
             .to_string();
 
         // Always use the library processing since we no longer have an external prompt processor.
-        let processed_content = match prompt_file_processor::process_file(&file_path, Some(&todo_file_basename)) {
+        let processed_content = match substring_marker_snippet_extractor::process_file(&file_path, Some(&todo_file_basename)) {
             Ok(content) => content,
             Err(err) => {
                 eprintln!("Error processing {}: {}. Falling back to raw file contents.", file_path, err);

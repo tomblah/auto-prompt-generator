@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-prompt_file_processor = { path = "../prompt_file_processor" }
+substring_marker_snippet_extractor = { path = "../substring_marker_snippet_extractor" }
 unescape_newlines = { path = "../unescape_newlines" }
 anyhow = { workspace = true }
 

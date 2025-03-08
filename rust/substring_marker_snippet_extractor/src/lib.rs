@@ -1,4 +1,4 @@
-// rust/prompt_file_processor/src/lib.rs
+// rust/substring_marker_snippet_extractor/src/lib.rs
 
 use std::fs;
 use std::path::Path;

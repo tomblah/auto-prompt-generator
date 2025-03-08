@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
-use prompt_file_processor::{process_file, filter_substring_markers};
+use substring_marker_snippet_extractor::{process_file, filter_substring_markers};
 
 /// Helper function to create a temporary file with the given content.
 /// Returns the full path to the temporary file.

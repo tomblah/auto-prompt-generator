@@ -1,5 +1,5 @@
 [package]
-name = "prompt_file_processor"
+name = "substring_marker_snippet_extractor"
 version = "0.1.0"
 edition = "2021"
 
