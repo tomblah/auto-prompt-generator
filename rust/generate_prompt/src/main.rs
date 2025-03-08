@@ -5,6 +5,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use unescape_newlines::unescape_newlines;
+use std::process::{Command as ProcessCommand, Stdio};
 
 // Library dependencies.
 use extract_instruction_content::extract_instruction_content;
@@ -99,6 +100,23 @@ fn main() -> Result<()> {
     };
     println!("Git root: {}", git_root);
     println!("--------------------------------------------------");
+
+    // If diff mode is enabled, verify that the specified branch exists.
+    if let Ok(diff_branch) = env::var("DIFF_WITH_BRANCH") {
+        let verify_status = ProcessCommand::new("git")
+            .args(&["rev-parse", "--verify", &diff_branch])
+            .current_dir(&git_root)
+            .stderr(Stdio::null())
+            .status()
+            .unwrap_or_else(|err| {
+                eprintln!("Error executing git rev-parse: {}", err);
+                std::process::exit(1);
+            });
+        if !verify_status.success() {
+            eprintln!("Error: Branch '{}' does not exist.", diff_branch);
+            std::process::exit(1);
+        }
+    }
 
     env::set_current_dir(&git_root).context("Failed to change directory to Git root")?;
 
@@ -346,8 +364,7 @@ fn main() -> Result<()> {
 
     // Copy final prompt to clipboard if DISABLE_PBCOPY is not set.
     if env::var("DISABLE_PBCOPY").is_err() {
-        use std::process::{Command, Stdio};
-        let mut pbcopy = Command::new("pbcopy")
+        let mut pbcopy = ProcessCommand::new("pbcopy")
             .stdin(Stdio::piped())
             .spawn()
             .unwrap_or_else(|err| {
@@ -727,34 +744,39 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_diff_with_main() {
-        use std::process::Command;
         use std::fs;
-
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        // Create a dummy git executable that simulates a successful ls-files and returns a diff.
+        // Create a temporary directory for dummy executables.
+        let temp_dir = TempDir::new().unwrap();
+        // Create a dummy git executable that simulates:
+        // - A successful branch verification for "main".
+        // - A successful ls-files check.
+        // - Returning a dummy diff output.
         let git_script = r#"#!/bin/sh
-    case "$@" in
-        *ls-files*)
-            exit 0
-            ;;
-        *diff*)
-            echo "dummy diff output"
-            exit 0
-            ;;
-        *)
-            exit 1
-            ;;
-    esac
-    "#;
+case "$@" in
+    *rev-parse*--verify*main*)
+        exit 0
+        ;;
+    *ls-files*)
+        exit 0
+        ;;
+    *diff*)
+        echo "dummy diff output"
+        exit 0
+        ;;
+    *)
+        exit 1
+        ;;
+esac
+"#;
         create_dummy_executable(&temp_dir, "git", git_script);
 
-        // Create a dummy pbcopy that writes stdin to a file (to simulate clipboard copy).
+        // Create a dummy pbcopy that writes to a file (simulate clipboard copy).
         let clipboard_file = temp_dir.path().join("dummy_clipboard.txt");
         let pbcopy_script = format!("cat > \"{}\"", clipboard_file.display());
         create_dummy_executable(&temp_dir, "pbcopy", &pbcopy_script);
 
         // Set up a fake Git root.
-        let fake_git_root = tempfile::TempDir::new().unwrap();
+        let fake_git_root = TempDir::new().unwrap();
         let fake_git_root_path = fake_git_root.path().to_str().unwrap();
         env::set_var("GET_GIT_ROOT", fake_git_root_path);
 
@@ -783,13 +805,14 @@ mod tests {
         // Create dummy filter_excluded_files (which can simply echo its input).
         create_dummy_executable(&temp_dir, "filter_excluded_files", "");
 
-        // Prepend our temp_dir (which contains our dummy git and pbcopy) to PATH.
-        let original_path = env::var("PATH").unwrap();
-        env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
         // Ensure clipboard copy is enabled by unsetting DISABLE_PBCOPY.
         env::remove_var("DISABLE_PBCOPY");
 
-        // Run generate_prompt with --diff-with main.
+        // Prepend our temp_dir (which contains our dummy git and pbcopy) to PATH.
+        let original_path = env::var("PATH").unwrap();
+        env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
+
+        // Run generate_prompt with --diff-with "main".
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
         cmd.args(&["--diff-with", "main"]);
         cmd.assert().success();
@@ -805,6 +828,67 @@ mod tests {
                 "Clipboard content missing branch info: {}", clipboard_content);
         assert!(clipboard_content.contains("dummy diff output"),
                 "Clipboard content missing dummy diff output: {}", clipboard_content);
+
+        env::remove_var("GET_GIT_ROOT");
+    }
+    
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_diff_with_nonexistent_branch() {
+        let temp_dir = TempDir::new().unwrap();
+        // Create a dummy git executable that fails when rev-parse --verify is called with "nonexistent".
+        let git_script = r#"#!/bin/sh
+case "$@" in
+    *rev-parse*--verify*nonexistent*)
+        echo "fatal: ambiguous argument 'nonexistent': unknown revision or path not in the working tree." >&2
+        exit 1
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+"#;
+        create_dummy_executable(&temp_dir, "git", git_script);
+
+        // Create a dummy pbcopy that writes to a file (simulate clipboard copy).
+        let clipboard_file = temp_dir.path().join("dummy_clipboard.txt");
+        let pbcopy_script = format!("cat > \"{}\"", clipboard_file.display());
+        create_dummy_executable(&temp_dir, "pbcopy", &pbcopy_script);
+
+        // Set up a fake Git root.
+        let fake_git_root = TempDir::new().unwrap();
+        let fake_git_root_path = fake_git_root.path().to_str().unwrap();
+        env::set_var("GET_GIT_ROOT", fake_git_root_path);
+
+        // Create a dummy TODO file in the fake Git root.
+        let todo_file = format!("{}/TODO.swift", fake_git_root_path);
+        fs::write(&todo_file, "class TestDiff {}\n   // TODO: - Diff test").unwrap();
+        env::set_var("GET_INSTRUCTION_FILE", &todo_file);
+        create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
+        create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
+        create_dummy_executable(&temp_dir, "get_package_root", "");
+        create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Diff test");
+        let types_file_path = temp_dir.path().join("types.txt");
+        fs::write(&types_file_path, "TestDiff").unwrap();
+        create_dummy_executable(&temp_dir, "extract_types", types_file_path.to_str().unwrap());
+        let def_file = format!("{}/Definition.swift", fake_git_root_path);
+        fs::write(&def_file, "class TestDiff {}").unwrap();
+        let find_def_script = format!("echo \"{}\"", def_file);
+        create_dummy_executable(&temp_dir, "find_definition_files", &find_def_script);
+        create_dummy_executable(&temp_dir, "filter_excluded_files", "");
+        create_dummy_executable(&temp_dir, "assemble_prompt", "dummy");
+
+        let original_path = env::var("PATH").unwrap();
+        env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
+        env::remove_var("DISABLE_PBCOPY");
+
+        // Run generate_prompt with --diff-with "nonexistent".
+        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.args(&["--diff-with", "nonexistent"]);
+
+        cmd.assert()
+           .failure()
+           .stderr(predicate::str::contains("Error: Branch 'nonexistent' does not exist."));
 
         env::remove_var("GET_GIT_ROOT");
     }
