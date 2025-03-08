@@ -70,9 +70,11 @@ pub fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
 // We use regex patterns for Swift functions, JS functions/assignments, or Parse.Cloud.define.
 //
 fn is_candidate_line(line: &str) -> bool {
-    // We inline the regexes so we don’t need to keep lazy_static imports if they’re unused elsewhere.
+    // Updated Swift function regex:
+    // - Allows optional generic parameters: (?:<[^>]+>)?
+    // - Allows an optional return type: (?:->\s*\S+)?
     let swift_function = regex::Regex::new(
-        r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+\s*\([^)]*\)\s*\{"#
+        r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+(?:<[^>]+>)?\s*\([^)]*\)\s*(?:->\s*\S+)?\s*\{"#
     ).unwrap();
     let js_assignment = regex::Regex::new(
         r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#
@@ -180,6 +182,7 @@ mod tests {
     use super::*;
     use tempfile::NamedTempFile;
     use std::io::Write;
+    use std::fs;
 
     // Test for filter_substring_markers.
     const INPUT_WITH_MARKERS: &str = r#"
@@ -251,6 +254,20 @@ func example() {
         assert!(is_todo_inside_markers(CONTENT_TODO_INSIDE, todo_idx));
     }
 
+    // New test: Ensure that candidate lines with generics and optional return types are recognized.
+    #[test]
+    fn test_is_candidate_line_swift_generics() {
+        let candidate_line = "public func enclosingFunction<V: Equatable, W: Codable>(input: V) -> W? {";
+        assert!(is_candidate_line(candidate_line), "Expected candidate_line with generics to match");
+        
+        let candidate_line_no_generics = "func simpleFunction() {";
+        assert!(is_candidate_line(candidate_line_no_generics), "Expected simple function to match");
+
+        // A non-candidate line should return false.
+        let non_candidate = "var notAFunction = 123;";
+        assert!(!is_candidate_line(non_candidate), "Expected non-candidate to not match");
+    }
+
     // For extract_enclosing_block, we simulate file content via temporary files.
     // This content has markers and the TODO is outside the marker block.
     const MARKER_CONTENT_OUTSIDE: &str = r#"
@@ -274,8 +291,8 @@ func myFunction() {
         let block_str = block.unwrap();
         // Expect that the extracted block starts at the function declaration.
         assert!(block_str.contains("func myFunction()"), "Block should contain the function declaration");
-        // And should not include content before the candidate (i.e. not include leading unrelated lines).
-        assert!(!block_str.contains("Some extra context"), "Block should not include unrelated context outside the function block");
+        // And should not include content before the candidate.
+        assert!(!block_str.contains("Some extra context"), "Block should not include unrelated context");
     }
 
     // This content has markers and the TODO is inside the marker block.
@@ -304,10 +321,8 @@ func myFunction() {
         let raw_content = "fn main() {\n    println!(\"Hello, world!\");\n}\n";
         let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
         write!(temp_file, "{}", raw_content).expect("Failed to write to temp file");
-        // Pass None for todo_file_basename (or any value) since there are no markers.
         let result = process_file(temp_file.path(), Some("irrelevant.txt"))
             .expect("process_file should succeed for file without markers");
-        // Without markers, process_file should return the raw content.
         assert_eq!(result, raw_content);
     }
 
@@ -315,7 +330,6 @@ func myFunction() {
     // the function returns the filtered marker content without appending the enclosing block.
     #[test]
     fn test_process_file_markers_basename_mismatch() {
-        // A file that uses markers and contains a TODO.
         let content_with_markers = r#"
 func sampleFunction() {
     println("Start");
@@ -331,21 +345,17 @@ func sampleFunction() {
         let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
         write!(temp_file, "{}", content_with_markers).expect("Failed to write to temp file");
         let file_path = temp_file.path();
-        // Use an expected basename that does NOT match the file's actual basename.
         let wrong_basename = "mismatch.txt";
         let result = process_file(file_path, Some(wrong_basename))
             .expect("process_file should succeed");
-        // Expect that the result equals the filtered content produced by filter_substring_markers,
-        // without the appended enclosing block.
         let expected_filtered = filter_substring_markers(content_with_markers);
-        assert_eq!(result, expected_filtered, "When the expected basename does not match, no context should be appended");
+        assert_eq!(result, expected_filtered, "When expected basename does not match, no context should be appended");
     }
 
     // Test that if markers are present and the provided expected basename matches,
     // the function returns the filtered marker content with the extracted enclosing block appended.
     #[test]
     fn test_process_file_markers_basename_match() {
-        // This content has markers and a TODO outside the marker block.
         let content_with_markers = r#"
 func myFunction() {
     println("Hello");
@@ -359,31 +369,53 @@ func myFunction() {
         let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
         write!(temp_file, "{}", content_with_markers).expect("Failed to write to temp file");
         let file_path = temp_file.path();
-        // Provide the expected basename that exactly matches the file's basename.
         let expected_basename = file_path.file_name().unwrap().to_str().unwrap();
         let result = process_file(file_path, Some(expected_basename))
             .expect("process_file should succeed");
 
-        // The expected result is the filtered content (from markers) plus the enclosing block context appended.
         let filtered = filter_substring_markers(content_with_markers);
         let expected_context = extract_enclosing_block(file_path.to_str().unwrap())
             .expect("Expected to extract an enclosing block");
         let expected = format!("{}\
 \n\n// Enclosing function context:\n{}",
                                 filtered, expected_context);
-        assert_eq!(result, expected, "When the expected basename matches, the enclosing block should be appended");
+        assert_eq!(result, expected, "When expected basename matches, the enclosing block should be appended");
     }
 
     // Test that process_file returns an error when the file does not exist.
     #[test]
     fn test_process_file_file_not_found() {
-        // Create a temporary file path and then delete the file so it no longer exists.
         let temp_file = NamedTempFile::new().expect("Failed to create temp file");
         let file_path = temp_file.into_temp_path().keep().expect("Failed to persist temp file");
-        // Delete the file.
         fs::remove_file(&file_path).expect("Failed to delete temporary file");
 
         let result = process_file(&file_path, Some("dummy.txt"));
         assert!(result.is_err(), "Expected process_file to error when file does not exist");
+    }
+
+    // New test for extract_enclosing_block using a Swift function with generics and optional return type.
+    const MARKER_CONTENT_GENERIC: &str = r#"
+public func genericFunction<T: Equatable>(param: T) -> T? {
+    print("Inside generic function")
+}
+
+// v
+// Extra context for generic function.
+// ^
+ // TODO: - perform generic task
+"#;
+    #[test]
+    fn test_extract_enclosing_block_generic() {
+        let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        write!(temp_file, "{}", MARKER_CONTENT_GENERIC).expect("Failed to write to temp file");
+        let path = temp_file.path().to_str().unwrap();
+        let block = extract_enclosing_block(path);
+        assert!(block.is_some(), "Expected an enclosing block for generic function");
+        let block_str = block.unwrap();
+        // Verify that the candidate line with generics is matched.
+        assert!(block_str.contains("public func genericFunction<T: Equatable>(param: T) -> T? {"),
+                "Block should contain the generic function declaration");
+        assert!(block_str.contains("print(\"Inside generic function\")"),
+                "Block should contain the function body");
     }
 }

@@ -461,7 +461,6 @@ mod integration_tests_substring_markers {
 
     #[test]
     #[cfg(unix)]
-    #[ignore]
     // NB: substring markers and Swift aren't really working too well, will not support it for the time being
     fn test_generate_prompt_swift_enclosing_function_outside_markers() {
         // Create a temporary directory for our dummy Swift project.
