@@ -46,6 +46,9 @@ mod integration_tests {
         // Set GET_GIT_ROOT to the git root.
         env::set_var("GET_GIT_ROOT", git_root_path.to_str().unwrap());
 
+        // Remove any diff branch setting to avoid unwanted branch verification.
+        env::remove_var("DIFF_WITH_BRANCH");
+
         // Create the package directory inside the git root.
         let package_dir = git_root_path.join("my_package");
         fs::create_dir_all(&package_dir).unwrap();
@@ -129,9 +132,10 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_normal_mode_includes_all_files() {
+        env::remove_var("DIFF_WITH_BRANCH");
         let (_project_dir, instruction_file_path) = setup_dummy_project();
 
-        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
+        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
@@ -196,9 +200,10 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_singular_mode_includes_only_todo_file() {
+        env::remove_var("DIFF_WITH_BRANCH");
         let (_project_dir, instruction_file_path) = setup_dummy_project();
 
-        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
+        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
@@ -256,9 +261,10 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_include_references_includes_ref_file() {
+        env::remove_var("DIFF_WITH_BRANCH");
         let (_project_dir, instruction_file_path) = setup_dummy_project();
 
-        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
+        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
@@ -313,9 +319,10 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_excludes_definition1() {
+        env::remove_var("DIFF_WITH_BRANCH");
         let (_project_dir, instruction_file_path) = setup_dummy_project();
 
-        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
+        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
@@ -358,9 +365,10 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_force_global_includes_outside_file() {
+        env::remove_var("DIFF_WITH_BRANCH");
         let (_project_dir, instruction_file_path) = setup_dummy_project();
 
-        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap()); // FIXME: hack workaround
+        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
@@ -390,6 +398,7 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_includes_trigger_referenced_file() {
+        env::remove_var("DIFF_WITH_BRANCH");
         let (_project_dir, instruction_file_path) = setup_dummy_project();
 
         // Set the GET_INSTRUCTION_FILE to point to Instruction.swift.
@@ -423,6 +432,7 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_excludes_comment_referenced_file() {
+        env::remove_var("DIFF_WITH_BRANCH");
         let (_project_dir, instruction_file_path) = setup_dummy_project();
 
         // Set the GET_INSTRUCTION_FILE to point to Instruction.swift.
@@ -463,6 +473,7 @@ mod integration_tests_substring_markers {
     #[cfg(unix)]
     // NB: substring markers and Swift aren't really working too well, will not support it for the time being
     fn test_generate_prompt_swift_enclosing_function_outside_markers() {
+        env::remove_var("DIFF_WITH_BRANCH");
         // Create a temporary directory for our dummy Swift project.
         let temp_dir = TempDir::new().unwrap();
         let main_swift_path = temp_dir.path().join("main.swift");
@@ -614,6 +625,7 @@ mod integration_diff {
     use std::path::PathBuf;
     use std::process::Command as StdCommand;
     use tempfile::{TempDir};
+    use predicates::prelude::*;
 
     /// Sets up a dummy pbcopy executable that writes its stdin to a temporary file.
     /// Returns a tuple (pbcopy_dir, clipboard_file) where pbcopy_dir is the TempDir
@@ -835,6 +847,54 @@ public class Dummy {
             !clipboard_content.contains("Another marker that should be scrubbed"),
             "Another extra marker was not scrubbed from final prompt"
         );
+    }
+    
+    /// New integration test that asserts failure when a branch specified by DIFF_WITH_BRANCH is not found.
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_diff_with_nonexistent_branch_integration() {
+        // Create a temporary directory to act as the Git repository root.
+        let git_root_dir = TempDir::new().expect("Failed to create Git root temp dir");
+        let git_root_path = git_root_dir.path();
+
+        // Initialize a Git repository (without any commits so HEAD does not exist).
+        let init_status = StdCommand::new("git")
+            .arg("init")
+            .current_dir(&git_root_path)
+            .status()
+            .expect("Failed to initialize git repository");
+        assert!(init_status.success(), "Git init failed");
+
+        // Create the Swift package directory.
+        let package_dir = git_root_path.join("my_package");
+        fs::create_dir_all(&package_dir).expect("Failed to create package directory");
+
+        // Create Package.swift to mark this as a Swift package.
+        let package_file_path = package_dir.join("Package.swift");
+        fs::write(&package_file_path, "// swift package").expect("Failed to write Package.swift");
+
+        // Create Instruction.swift with some content.
+        let instruction_file_path = package_dir.join("Instruction.swift");
+        let content = "public final class SomeClass { var x: Int = 0 } \n// TODO: - Fix SomeClass\n";
+        fs::write(&instruction_file_path, content).expect("Failed to write Instruction.swift");
+
+        // Set environment variables.
+        env::set_var("GET_GIT_ROOT", git_root_path.to_str().unwrap());
+        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
+        // Set DIFF_WITH_BRANCH to a branch that doesn't exist.
+        env::set_var("DIFF_WITH_BRANCH", "nonexistent");
+        env::remove_var("DISABLE_PBCOPY");
+
+        // Set up dummy pbcopy so that if any output were produced, it would be captured.
+        let (pbcopy_dir, _clipboard_file) = setup_dummy_pbcopy();
+        let original_path = env::var("PATH").unwrap();
+        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+
+        // Run generate_prompt and assert that it fails with the expected error.
+        let mut cmd = Command::cargo_bin("generate_prompt").expect("Failed to find generate_prompt binary");
+        cmd.assert()
+           .failure()
+           .stderr(predicate::str::contains("Error: Branch 'nonexistent' does not exist."));
     }
 }
 
