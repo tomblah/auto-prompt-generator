@@ -4,31 +4,36 @@ set -euo pipefail
 ##########################################
 # meta-context.sh
 #
-# This script collects the contents of various files in the repository and copies them to the clipboard.
+# This script collects Rust source files (and Cargo.toml files)
+# in the repository and copies them to the clipboard.
 #
 # Options:
-#   --include-scripts : In addition to Rust source files, also include .sh and README* files.
-#   --include-tests   : When including scripts, also include .bats test files.
-#   --tests-only      : Include only .bats test files.
+#   --unit-tests <crate>
+#         Extract only the unit tests from the crate’s src/lib.rs and/or src/main.rs.
+#
+#   --integration-tests <crate>
+#         Include all files (integration tests) from the crate’s tests/ directory.
+#
+# If no option is provided, the default behavior is to include the
+# Rust source files in the rust/ directory (excluding integration test files
+# and inline unit test blocks) and all Cargo.toml files.
 ##########################################
 
-# Define a function to filter out inline Rust test blocks.
+# Updated function to filter out inline Rust test blocks (used in default mode).
 filter_rust_tests() {
     awk '
     BEGIN { in_tests=0; brace_count=0 }
     {
-        # If we see a #[cfg(test)] attribute and we are not already in a test block, start skipping.
-        if (in_tests == 0 && $0 ~ /^[[:space:]]*#\[cfg\(test\)\]/) {
+        # If we encounter a #[cfg(test)] attribute or a module declaration whose name ends with _tests, start skipping.
+        if (in_tests == 0 && ($0 ~ /^[[:space:]]*#\[cfg\(test\)\]/ || $0 ~ /^[[:space:]]*mod[[:space:]]+.*_tests[[:space:]]*\{/)) {
             in_tests = 1;
+            # For a mod declaration, start brace counting.
+            if ($0 ~ /^[[:space:]]*mod[[:space:]]+.*_tests[[:space:]]*\{/)
+                brace_count = 1;
             next;
         }
-        # If we are in a test block and see a module declaration, start counting braces.
-        if (in_tests == 1 && $0 ~ /^[[:space:]]*mod[[:space:]]+tests[[:space:]]*\{/) {
-            brace_count = 1;
-            next;
-        }
-        # If we are inside a test module block, count braces to know when it ends.
-        if (in_tests == 1 && brace_count > 0) {
+        # If already in a test block, update the brace count.
+        if (in_tests == 1) {
             n = gsub(/\{/, "{");
             m = gsub(/\}/, "}");
             brace_count += n - m;
@@ -43,85 +48,118 @@ filter_rust_tests() {
     ' "$1"
 }
 
-# Parse command-line options.
-INCLUDE_SCRIPTS=false
-INCLUDE_TESTS=false
-TESTS_ONLY=false
+# Function to extract only the unit test blocks from a Rust source file.
+extract_unit_tests() {
+    awk '
+    BEGIN { capture=0; brace_count=0 }
+    {
+        # Look for the beginning of a test configuration.
+        if (!capture && $0 ~ /^[[:space:]]*#\[cfg\(test\)\]/) {
+            capture=1;
+            next;
+        }
+        # When inside the test block, look for the tests module.
+        if (capture && $0 ~ /^[[:space:]]*mod[[:space:]]+tests[[:space:]]*\{/) {
+            brace_count = 1;
+            print $0;
+            next;
+        }
+        # If we are inside the tests module, print all lines.
+        if (capture && brace_count > 0) {
+            print $0;
+            n = gsub(/\{/, "{");
+            m = gsub(/\}/, "}");
+            brace_count += n - m;
+            if (brace_count <= 0) {
+                capture = 0;
+                brace_count = 0;
+            }
+            next;
+        }
+    }
+    ' "$1"
+}
 
-while [[ $# -gt 0 ]]; do
+# Determine the mode and optional crate name.
+MODE="default"   # default: include rust/ files and Cargo.toml
+CRATE=""
+
+if [[ $# -gt 0 ]]; then
     case "$1" in
-        --include-scripts)
-            INCLUDE_SCRIPTS=true
-            shift
+        --unit-tests)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --unit-tests requires a crate name." >&2
+                exit 1
+            fi
+            MODE="unit"
+            CRATE="$2"
+            shift 2
             ;;
-        --include-tests)
-            INCLUDE_TESTS=true
-            shift
-            ;;
-        --tests-only)
-            TESTS_ONLY=true
-            shift
+        --integration-tests)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --integration-tests requires a crate name." >&2
+                exit 1
+            fi
+            MODE="integration"
+            CRATE="$2"
+            shift 2
             ;;
         *)
             echo "Unknown option: $1" >&2
             exit 1
             ;;
     esac
-done
-
-# Prevent combining mutually exclusive options.
-if $TESTS_ONLY && $INCLUDE_SCRIPTS; then
-  echo "Error: Cannot use --tests-only with --include-scripts." >&2
-  exit 1
 fi
 
 # Determine the directory where this script resides.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Optionally, determine the repository root (assumes you're in a Git repository).
+# Determine the repository root (assumes you're in a Git repository).
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$SCRIPT_DIR")
 cd "$REPO_ROOT"
 
-# Build the file list based on the options provided.
-if $TESTS_ONLY; then
-    echo "Including only .bats test files in the context."
-    files=$(find . -type f -iname "*.bats" \
-            -not -name "meta-context.sh" \
-            -not -path "./.git/*" \
-            -not -path "*/Legacy/*" \
-            -not -path "*/MockFiles/*")
-elif $INCLUDE_SCRIPTS; then
-    echo "Including bash scripts, README*, and Rust source files in the context."
-    files=$(find . -type f \( -iname "*.sh" -o -iname "README*" \) \
-            -not -name "meta-context.sh" \
-            -not -path "./.git/*" \
-            -not -path "*/Legacy/*" \
-            -not -path "*/MockFiles/*")
-    # Optionally include test files if requested.
-    if $INCLUDE_TESTS; then
-         test_files=$(find . -type f -iname "*.bats" \
-            -not -name "meta-context.sh" \
-            -not -path "./.git/*" \
-            -not -path "*/Legacy/*" \
-            -not -path "*/MockFiles/*")
-         files="$files $test_files"
-    fi
-    if [ -d "rust" ]; then
-         echo "Including Rust source files from rust in the context."
-         rust_files=$(find rust -type f -iname "*.rs")
-         files="$files $rust_files"
-    fi
-else
-    # Default: rust only.
-    echo "Including only Rust source files from rust in the context."
-    files=$(find rust -type f -iname "*.rs")
-fi
+files=""
 
-# Always include Cargo.toml files across the repository.
-cargo_files=$(find . -type f -name "Cargo.toml" -not -path "./.git/*")
-if [ -n "$cargo_files" ]; then
-    echo "Including all Cargo.toml files in the context."
-    files="$files $cargo_files"
+if [[ "$MODE" == "default" ]]; then
+    echo "Including only Rust source files from the rust/ directory (excluding integration tests and inline unit tests)."
+    # Exclude files in any "tests" directory.
+    files=$(find rust -type f -iname "*.rs" -not -path "*/tests/*")
+    # Always include Cargo.toml files across the repository.
+    cargo_files=$(find . -type f -name "Cargo.toml" -not -path "./.git/*")
+    if [ -n "$cargo_files" ]; then
+        echo "Including all Cargo.toml files in the context."
+        files="$files $cargo_files"
+    fi
+
+elif [[ "$MODE" == "unit" ]]; then
+    echo "Extracting unit tests for crate: $CRATE"
+    if [ ! -d "$CRATE" ]; then
+        echo "Error: Crate directory '$CRATE' does not exist." >&2
+        exit 1
+    fi
+    # In unit test mode, include only the test blocks from src/lib.rs and/or src/main.rs.
+    if [ -f "$CRATE/src/lib.rs" ]; then
+        files="$files $CRATE/src/lib.rs"
+    fi
+    if [ -f "$CRATE/src/main.rs" ]; then
+        files="$files $CRATE/src/main.rs"
+    fi
+    if [[ -z "$files" ]]; then
+        echo "Error: No src/lib.rs or src/main.rs found in crate '$CRATE'." >&2
+        exit 1
+    fi
+
+elif [[ "$MODE" == "integration" ]]; then
+    echo "Including integration tests for crate: $CRATE"
+    if [ ! -d "$CRATE/tests" ]; then
+        echo "Error: Integration tests directory '$CRATE/tests' does not exist." >&2
+        exit 1
+    fi
+    files=$(find "$CRATE/tests" -type f)
+    if [[ -z "$files" ]]; then
+        echo "Error: No test files found in '$CRATE/tests'." >&2
+        exit 1
+    fi
 fi
 
 # Display the collected files.
@@ -139,12 +177,20 @@ temp_context=$(mktemp)
 for file in $files; do
     {
       echo "--------------------------------------------------"
-      echo "The contents of $file is as follows:"
+      if [[ "$MODE" == "unit" ]]; then
+          echo "Unit tests extracted from $file:"
+      elif [[ "$MODE" == "integration" ]]; then
+          echo "Integration test file $file contents:"
+      else
+          echo "The contents of $file is as follows:"
+      fi
       echo "--------------------------------------------------"
-      # For Rust files: if --include-tests is not set, filter out inline tests.
-      if [[ "$file" == *.rs ]] && ! $INCLUDE_TESTS; then
+      if [[ "$MODE" == "default" && "$file" == *.rs ]]; then
           filter_rust_tests "$file"
           echo -e "\n// Note: rust file unit tests not shown here for brevity."
+      elif [[ "$MODE" == "unit" && "$file" == *.rs ]]; then
+          extract_unit_tests "$file"
+          echo -e "\n// Note: Only unit test blocks have been extracted from this file."
       else
           cat "$file"
       fi
