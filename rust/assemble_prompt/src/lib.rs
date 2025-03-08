@@ -2,10 +2,11 @@ use std::env;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::process::{Command};
 use anyhow::{Result, Context};
 use substring_marker_snippet_extractor;
 use unescape_newlines::unescape_newlines;
+// Use the diff_with_branch crate function.
+use diff_with_branch::run_diff;
 
 /// Public API: assembles the final prompt from the found files and instruction content.
 /// Instead of printing to stdout or copying to clipboard, it returns the prompt as a String.
@@ -52,16 +53,17 @@ pub fn assemble_prompt(found_files_file: &str, _instruction_content: &str) -> Re
             basename, processed_content
         ));
 
-        // If DIFF_WITH_BRANCH is set, append a diff report.
+        // If DIFF_WITH_BRANCH is set, append a diff report using the diff-with crate.
         if let Ok(diff_branch) = env::var("DIFF_WITH_BRANCH") {
-            let diff_output = match run_command("diff_with_branch", &[&file_path]) {
-                Ok(diff) => diff,
+            let diff_output = match run_diff(&file_path) {
+                Ok(Some(diff)) => diff,
+                Ok(None) => String::new(),
                 Err(err) => {
                     eprintln!("Error running diff on {}: {}", file_path, err);
                     String::new()
                 }
             };
-            if !diff_output.trim().is_empty() && diff_output.trim() != basename {
+            if !diff_output.trim().is_empty() {
                 final_prompt.push_str(&format!(
                     "\n--------------------------------------------------\nThe diff for {} (against branch {}) is as follows:\n\n{}\n\n",
                     basename, diff_branch, diff_output
@@ -80,19 +82,6 @@ pub fn assemble_prompt(found_files_file: &str, _instruction_content: &str) -> Re
     let final_prompt = unescape_newlines(&final_prompt);
 
     Ok(final_prompt)
-}
-
-/// Helper function to run an external command and capture its stdout as a String.
-fn run_command(cmd: &str, args: &[&str]) -> Result<String, anyhow::Error> {
-    let output = Command::new(cmd)
-        .args(args)
-        .output()
-        .with_context(|| format!("Failed to execute command: {} {:?}", cmd, args))?;
-    if !output.status.success() {
-        anyhow::bail!("Command {} {:?} failed with status {}", cmd, args, output.status);
-    }
-    let stdout = String::from_utf8(output.stdout).context("Output not valid UTF-8")?;
-    Ok(stdout)
 }
 
 #[cfg(test)]
@@ -124,42 +113,6 @@ mod tests {
         // Verify that the output contains the file header and the fixed instruction.
         assert!(output.contains("The contents of"));
         assert!(output.contains("Can you do the TODO:- in the above code? But ignoring all FIXMEs"));
-    }
-
-    #[test]
-    fn test_diff_inclusion() {
-        // Create temporary file for found_files and a file to process.
-        let mut found_files = NamedTempFile::new().unwrap();
-        let mut file_diff = NamedTempFile::new().unwrap();
-        writeln!(file_diff, "class DummyDiff {{}}").unwrap();
-        let file_diff_path = file_diff.path().to_str().unwrap();
-        writeln!(found_files, "{}", file_diff_path).unwrap();
-
-        // Activate diff logic.
-        env::set_var("DIFF_WITH_BRANCH", "dummy-branch");
-
-        // Create a dummy diff_with_branch script that returns a fixed diff message.
-        let temp_dir = tempdir().unwrap();
-        let dummy_diff = temp_dir.path().join("diff_with_branch");
-        fs::write(&dummy_diff, "#!/bin/sh\necho \"Dummy diff output for $(basename \\\"$1\\\")\"")
-            .unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&dummy_diff).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&dummy_diff, perms).unwrap();
-        }
-        // Prepend the temporary directory to PATH.
-        let current_path = env::var("PATH").unwrap();
-        let new_path = format!("{}:{}", temp_dir.path().to_str().unwrap(), current_path);
-        env::set_var("PATH", new_path);
-
-        let output = assemble_prompt(found_files.path().to_str().unwrap(), "ignored")
-            .expect("assemble_prompt failed");
-
-        assert!(output.contains("Dummy diff output for"));
-        assert!(output.contains("against branch dummy-branch"));
     }
 
     #[test]
@@ -237,53 +190,6 @@ mod tests {
         assert!(output.contains("func secretFunction() {"));
         assert!(output.contains("print(\"This is inside the markers.\")"));
         assert!(!output.contains("func publicFunction() {"));
-    }
-
-    #[test]
-    fn test_includes_diff_output_when_diff_with_branch_set() {
-        // Create a temporary Swift file.
-        let mut file_diff = NamedTempFile::new().expect("Failed to create FileDiff.swift");
-        let diff_content = "class Dummy {}";
-        file_diff.write_all(diff_content.as_bytes()).expect("Failed to write diff file");
-        let file_diff_path = file_diff.path().to_owned();
-
-        // Create a temporary found_files list.
-        let mut found_files = NamedTempFile::new().expect("Failed to create found_files file");
-        writeln!(found_files, "{}", file_diff_path.display()).unwrap();
-        let found_files_path = found_files.into_temp_path().keep().unwrap();
-
-        // Set DIFF_WITH_BRANCH to activate diff logic.
-        env::set_var("DIFF_WITH_BRANCH", "dummy-branch");
-
-        // Create a dummy diff command.
-        let dummy_dir = tempdir().expect("Failed to create dummy dir");
-        let dummy_path = dummy_dir.path().join("diff_with_branch");
-        #[cfg(unix)]
-        {
-            let script_content = format!(
-                "#!/bin/sh\necho \"Dummy diff output for {}\"\n",
-                file_diff_path.file_name().unwrap().to_string_lossy()
-            );
-            fs::write(&dummy_path, script_content).expect("Failed to write dummy diff script");
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&dummy_path).expect("Failed to get metadata").permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&dummy_path, perms).expect("Failed to set permissions");
-        }
-        // Prepend dummy_dir to PATH.
-        let original_path = env::var("PATH").unwrap_or_default();
-        let new_path = format!("{}:{}", dummy_dir.path().to_str().unwrap(), original_path);
-        env::set_var("PATH", new_path);
-
-        let output = assemble_prompt(found_files_path.to_str().unwrap(), "ignored")
-            .expect("assemble_prompt failed");
-
-        let expected_diff = format!("Dummy diff output for {}", file_diff_path.file_name().unwrap().to_string_lossy());
-        assert!(output.contains(&expected_diff));
-        assert!(output.contains("against branch dummy-branch"));
-
-        env::remove_var("DIFF_WITH_BRANCH");
-        env::set_var("PATH", original_path);
     }
 
     #[test]
@@ -379,10 +285,9 @@ mod tests {
 
         let dummy_dir = tempdir().unwrap();
         let dummy_path = dummy_dir.path().join("diff_with_branch");
+        fs::write(&dummy_path, "#!/bin/sh\necho \"\"\n").expect("Failed to write dummy diff script");
         #[cfg(unix)]
         {
-            let script_content = "#!/bin/sh\necho \"\"\n";
-            fs::write(&dummy_path, script_content).expect("Failed to write dummy diff script");
             use std::os::unix::fs::PermissionsExt;
             let mut perms = fs::metadata(&dummy_path).expect("Failed to get metadata").permissions();
             perms.set_mode(0o755);
@@ -427,4 +332,185 @@ mod tests {
 
         assert!(output.contains("print(\"This is inside an unclosed marker.\")"));
     }
+    
+    #[test]
+    fn test_diff_inclusion() {
+        // Create temporary file for found_files and a file to process.
+        let mut found_files = NamedTempFile::new().unwrap();
+        let mut file_diff = NamedTempFile::new().unwrap();
+        writeln!(file_diff, "class DummyDiff {{}}").unwrap();
+        let file_diff_path = file_diff.path().to_str().unwrap();
+        writeln!(found_files, "{}", file_diff_path).unwrap();
+
+        // Activate diff logic.
+        env::set_var("DIFF_WITH_BRANCH", "dummy-branch");
+
+        // Create a dummy "git" executable that simulates a successful ls-files and returns a diff.
+        let temp_dir = tempdir().unwrap();
+        let dummy_git = temp_dir.path().join("git");
+        fs::write(
+            &dummy_git,
+            "#!/bin/sh
+    case \"$@\" in
+        *ls-files*)
+            exit 0
+            ;;
+        *diff*)
+            echo -n \"Dummy diff output for file\"
+            exit 0
+            ;;
+        *)
+            exit 1
+            ;;
+    esac
+    ",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&dummy_git).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&dummy_git, perms).unwrap();
+        }
+        // Prepend the temporary directory (containing dummy git) to PATH.
+        let current_path = env::var("PATH").unwrap();
+        let new_path = format!("{}:{}", temp_dir.path().to_str().unwrap(), current_path);
+        env::set_var("PATH", new_path);
+
+        let output = assemble_prompt(found_files.path().to_str().unwrap(), "ignored")
+            .expect("assemble_prompt failed");
+
+        assert!(output.contains("Dummy diff output for file"), "Output did not include diff output: {}", output);
+        assert!(output.contains("against branch dummy-branch"));
+
+        env::remove_var("DIFF_WITH_BRANCH");
+    }
+
+    #[test]
+    fn test_includes_diff_output_when_diff_with_branch_set() {
+        // Create a temporary Swift file.
+        let mut file_diff = NamedTempFile::new().expect("Failed to create FileDiff.swift");
+        let diff_content = "class NoDiff {}";
+        file_diff.write_all(diff_content.as_bytes()).unwrap();
+        let file_diff_path = file_diff.path().to_owned();
+
+        // Create a temporary found_files list.
+        let mut found_files = NamedTempFile::new().expect("Failed to create found_files file");
+        writeln!(found_files, "{}", file_diff_path.display()).unwrap();
+        let found_files_path = found_files.into_temp_path().keep().unwrap();
+
+        // Set DIFF_WITH_BRANCH to activate diff logic.
+        env::set_var("DIFF_WITH_BRANCH", "dummy-branch");
+
+        // Create a dummy "git" executable that simulates diff output.
+        let dummy_dir = tempdir().unwrap();
+        let dummy_git = dummy_dir.path().join("git");
+        fs::write(
+            &dummy_git,
+            "#!/bin/sh
+    case \"$@\" in
+        *ls-files*)
+            exit 0
+            ;;
+        *diff*)
+            echo -n \"Dummy diff output for file\"
+            exit 0
+            ;;
+        *)
+            exit 1
+            ;;
+    esac
+    ",
+        )
+        .expect("Failed to write dummy git script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&dummy_git).expect("Failed to get metadata").permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&dummy_git, perms).expect("Failed to set permissions");
+        }
+        // Prepend dummy_dir to PATH.
+        let original_path = env::var("PATH").unwrap_or_default();
+        let new_path = format!("{}:{}", dummy_dir.path().to_str().unwrap(), original_path);
+        env::set_var("PATH", new_path);
+
+        let output = assemble_prompt(found_files_path.to_str().unwrap(), "ignored")
+            .expect("assemble_prompt failed");
+
+        let expected_diff = "Dummy diff output for file";
+        assert!(output.contains(expected_diff), "Expected diff output missing: {}", output);
+        assert!(output.contains("against branch dummy-branch"));
+
+        env::remove_var("DIFF_WITH_BRANCH");
+        env::set_var("PATH", original_path);
+    }
+
+    #[test]
+    fn test_assemble_prompt_marker_count_with_diff() {
+        // Create a temporary found_files list with one file that contains two TODO markers.
+        let mut found_files = NamedTempFile::new().unwrap();
+        let mut file = NamedTempFile::new().unwrap();
+        let file_content = "\
+                // TODO: - Marker One\n\
+                Some code here\n\
+                // TODO: - Marker Two\n";
+        writeln!(file, "{}", file_content).unwrap();
+        let file_path = file.path().to_str().unwrap();
+        writeln!(found_files, "{}", file_path).unwrap();
+
+        // Activate diff logic.
+        env::set_var("DIFF_WITH_BRANCH", "dummy-branch");
+
+        // Create a dummy "git" executable that returns a diff.
+        let dummy_dir = tempdir().expect("Failed to create dummy dir");
+        let dummy_git = dummy_dir.path().join("git");
+        fs::write(
+            &dummy_git,
+            "#!/bin/sh
+    case \"$@\" in
+        *ls-files*)
+            exit 0
+            ;;
+        *diff*)
+            echo -n \"Diff output\"
+            exit 0
+            ;;
+        *)
+            exit 1
+            ;;
+    esac
+    ",
+        )
+        .expect("Failed to write dummy git script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&dummy_git).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&dummy_git, perms).unwrap();
+        }
+        // Prepend dummy_dir to PATH.
+        let original_path = env::var("PATH").unwrap();
+        let new_path = format!("{}:{}", dummy_dir.path().to_str().unwrap(), original_path);
+        env::set_var("PATH", new_path);
+
+        let output = assemble_prompt(found_files.path().to_str().unwrap(), "ignored")
+            .expect("assemble_prompt failed");
+
+        // Check that the diff output is included.
+        assert!(output.contains("Diff output"), "Output did not include diff output: {}", output);
+        assert!(output.contains("against branch dummy-branch"), "Missing branch info in output");
+
+        // Count the lines that contain the TODO marker.
+        let marker_count = output.lines().filter(|l| l.contains("// TODO: -")).count();
+        // Acceptable marker counts are 2 (normal case) or 3 (if diff section adds an extra marker).
+        assert!(marker_count == 2 || marker_count == 3, "Unexpected marker count: {}", marker_count);
+
+        env::remove_var("DIFF_WITH_BRANCH");
+        env::set_var("PATH", original_path);
+    }
 }
+
+// Note: Only unit test blocks have been extracted from this file.

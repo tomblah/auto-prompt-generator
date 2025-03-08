@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 substring_marker_snippet_extractor = { path = "../substring_marker_snippet_extractor" }
 unescape_newlines = { path = "../unescape_newlines" }
+diff_with_branch = { path = "../diff_with_branch" }
 anyhow = { workspace = true }
 
 [dev-dependencies]

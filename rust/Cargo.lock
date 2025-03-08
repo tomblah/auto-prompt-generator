@@ -73,6 +73,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "diff_with_branch",
  "predicates 2.1.5",
  "substring_marker_snippet_extractor",
  "tempfile",
@@ -331,7 +332,6 @@ dependencies = [
  "assemble_prompt",
  "assert_cmd",
  "clap",
- "diff_with_branch",
  "extract_enclosing_type",
  "extract_instruction_content",
  "extract_types",
