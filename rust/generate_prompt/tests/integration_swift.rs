@@ -733,4 +733,108 @@ mod integration_diff {
             clipboard_content
         );
     }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_scrubs_extra_todo_markers() {
+        // Ensure diff mode is disabled so that no extra diff markers are appended.
+        env::remove_var("DIFF_WITH_BRANCH");
+        // Create a temporary directory to simulate a Git repository.
+        let git_root = TempDir::new().expect("Failed to create temp git root");
+        let git_root_path = git_root.path();
+        env::set_var("GET_GIT_ROOT", git_root_path.to_str().unwrap());
+
+        // Create a package directory with a Package.swift to mark it as a Swift package.
+        let package_dir = git_root_path.join("test_package");
+        fs::create_dir_all(&package_dir).expect("Failed to create package directory");
+        fs::write(package_dir.join("Package.swift"), "// swift package")
+            .expect("Failed to write Package.swift");
+
+        // Create Instruction.swift with multiple "// TODO: -" markers.
+        // The first marker exactly matches the primary (CTA) marker.
+        // Any extra markers in between should be scrubbed.
+        // The final marker is not taken from the file but replaced by the fixed instruction
+        // appended by the prompt assembler.
+        let instruction_file = package_dir.join("Instruction.swift");
+        let instruction_content = r#"
+public class Dummy {
+    func doSomething() {
+        // some code here
+    }
 }
+// TODO: - Primary TODO marker
+// TODO: - Extra marker that should be scrubbed
+// TODO: - Another marker that should be scrubbed
+"#;
+        fs::write(&instruction_file, instruction_content)
+            .expect("Failed to write Instruction.swift");
+
+        // Set the environment variable so generate_prompt uses this instruction file.
+        env::set_var("GET_INSTRUCTION_FILE", instruction_file.to_str().unwrap());
+        env::remove_var("DISABLE_PBCOPY");
+
+        // Set up a dummy pbcopy executable to capture clipboard output.
+        let pbcopy_dir = TempDir::new().expect("Failed to create dummy pbcopy dir");
+        let clipboard_file = pbcopy_dir.path().join("clipboard.txt");
+        let dummy_pbcopy_path = pbcopy_dir.path().join("pbcopy");
+        fs::write(
+            &dummy_pbcopy_path,
+            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display()),
+        )
+        .expect("Failed to write dummy pbcopy script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&dummy_pbcopy_path)
+                .expect("Failed to get metadata")
+                .permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&dummy_pbcopy_path, perms)
+                .expect("Failed to set permissions on dummy pbcopy");
+        }
+        // Prepend the dummy pbcopy directory to the PATH.
+        let original_path = env::var("PATH").expect("PATH not found");
+        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+
+        // Run generate_prompt in singular mode so that only the instruction file is processed.
+        let mut cmd = Command::cargo_bin("generate_prompt")
+            .expect("Failed to find generate_prompt binary");
+        cmd.arg("--singular");
+        cmd.assert().success();
+
+        // Read the final prompt from the clipboard output.
+        let clipboard_content = fs::read_to_string(&clipboard_file)
+            .expect("Failed to read clipboard file");
+
+        // Count the occurrences of marker lines.
+        let marker_count = clipboard_content.matches("// TODO: -").count();
+        // We expect exactly 2 markers: the primary marker from the instruction file
+        // and the fixed instruction (acting as the final marker) appended by the prompt assembler.
+        assert_eq!(
+            marker_count, 2,
+            "Expected exactly 2 TODO markers in final prompt, found {}",
+            marker_count
+        );
+
+        // Verify that the primary marker appears.
+        assert!(
+            clipboard_content.contains("// TODO: - Primary TODO marker"),
+            "Primary marker not found in final prompt"
+        );
+        // Verify that the fixed instruction (serving as the final marker) appears.
+        assert!(
+            clipboard_content.contains("Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen"),
+            "Fixed instruction final marker not found in final prompt"
+        );
+        // Ensure that extra markers have been scrubbed.
+        assert!(
+            !clipboard_content.contains("Extra marker that should be scrubbed"),
+            "Extra marker was not scrubbed from final prompt"
+        );
+        assert!(
+            !clipboard_content.contains("Another marker that should be scrubbed"),
+            "Another extra marker was not scrubbed from final prompt"
+        );
+    }
+}
+
