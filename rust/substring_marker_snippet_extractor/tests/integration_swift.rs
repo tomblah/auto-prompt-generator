@@ -1,3 +1,5 @@
+// rust/substring_marker_snippet_extractor/tests/integration_swift.rs
+
 use std::fs;
 use std::path::PathBuf;
 use substring_marker_snippet_extractor::{process_file, filter_substring_markers};
@@ -120,6 +122,46 @@ line c
     // the output should be solely the filtered content.
     let expected = filter_substring_markers(content);
     assert_eq!(result, expected);
+    
+    fs::remove_file(&path).expect("Failed to remove temporary file");
+}
+
+/// New integration test covering the new candidate regex functionality for Swift.
+/// This test verifies that a Swift function declared with generic parameters and an optional return type
+/// is correctly recognized as a candidate, so that when the TODO marker is outside the marker block,
+/// the enclosing block is appended.
+#[test]
+fn test_markers_todo_outside_with_generics() {
+    let content = r#"
+public func genericFunction<T: Equatable>(param: T) -> T? {
+    print("Inside generic function")
+}
+
+// v
+// Extra context that is not part of the function block.
+// ^
+
+ // TODO: - perform generic task
+"#;
+    let path = create_temp_file_with_content(content);
+    let file_name = path.file_name().unwrap().to_str().unwrap();
+    let result = process_file(&path, Some(file_name))
+        .expect("process_file should succeed for Swift file with generics and TODO outside marker block");
+    
+    let filtered = filter_substring_markers(content);
+    
+    // Verify that the result starts with the filtered content,
+    // includes the enclosing function context header, and
+    // contains the candidate line with generics.
+    assert!(result.starts_with(&filtered), "Result should start with the filtered content");
+    assert!(
+        result.contains("// Enclosing function context:"),
+        "Result should contain the enclosing context header"
+    );
+    assert!(
+        result.contains("public func genericFunction<T: Equatable>(param: T) -> T? {"),
+        "Result should contain the generic function declaration"
+    );
     
     fs::remove_file(&path).expect("Failed to remove temporary file");
 }
