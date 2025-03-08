@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::path::Path;
-use anyhow::{Result, anyhow};
+use anyhow::{Result};
 use extract_enclosing_function::extract_enclosing_block as extract_enclosing_function_block;
 use unescape_newlines::unescape_newlines;
 
