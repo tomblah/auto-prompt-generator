@@ -15,7 +15,7 @@ set -euo pipefail
 #         Include all files (integration tests) from the crate’s tests/ directory.
 #
 # If no option is provided, the default behavior is to include the
-# Rust source files in the rust/ directory (with inline tests filtered out)
+# Rust source files in the rust/ directory (excluding integration test files)
 # and all Cargo.toml files.
 ##########################################
 
@@ -120,8 +120,9 @@ cd "$REPO_ROOT"
 files=""
 
 if [[ "$MODE" == "default" ]]; then
-    echo "Including only Rust source files from the rust/ directory."
-    files=$(find rust -type f -iname "*.rs")
+    echo "Including only Rust source files from the rust/ directory (excluding integration tests)."
+    # Exclude files in any "tests" directory.
+    files=$(find rust -type f -iname "*.rs" -not -path "*/tests/*")
     # Always include Cargo.toml files across the repository.
     cargo_files=$(find . -type f -name "Cargo.toml" -not -path "./.git/*")
     if [ -n "$cargo_files" ]; then
