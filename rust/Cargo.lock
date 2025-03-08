@@ -355,7 +355,6 @@ dependencies = [
  "get_package_root",
  "get_search_roots",
  "predicates 2.1.5",
- "prompt_file_processor",
  "tempfile",
  "unescape_newlines",
 ]
