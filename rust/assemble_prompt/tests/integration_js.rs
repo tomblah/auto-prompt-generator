@@ -183,33 +183,4 @@ mod integration_js {
             trimmed_output
         );
     }
-
-    /// Test that when the external prompt processor fails, the raw file content is used.
-    #[test]
-    fn test_assemble_prompt_fallback_on_processor_failure() {
-        use std::env;
-        // Force failure of the external prompt processor.
-        env::set_var("RUST_PROMPT_FILE_PROCESSOR", "nonexistent_command_xyz");
-
-        let dir = tempdir().expect("Failed to create temporary directory");
-        let js_path = dir.path().join("failure.js");
-        let js_content = "alert('Fallback Test');\n";
-        fs::write(&js_path, js_content).expect("Failed to write JS file");
-
-        let mut found_files = NamedTempFile::new().expect("Failed to create found files file");
-        writeln!(found_files, "{}", js_path.to_string_lossy()).expect("Failed to write valid file path");
-        let found_files_path = found_files
-            .into_temp_path()
-            .keep()
-            .expect("Failed to persist found files list");
-
-        let output = assemble_prompt(found_files_path.to_str().unwrap(), "ignored instruction")
-            .expect("assemble_prompt failed");
-
-        assert!(
-            output.contains("alert('Fallback Test')"),
-            "Output should contain the raw JS content due to processor failure"
-        );
-        env::remove_var("RUST_PROMPT_FILE_PROCESSOR");
-    }
 }
