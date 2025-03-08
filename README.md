@@ -1,6 +1,6 @@
 # Auto Prompt Generator
 
-Bash script that turns your **TODO**'s into AI-friendly **prompts** by smartly including surrounding **context**.
+Turns your **TODO**'s into AI-friendly **prompts** by smartly including surrounding **context**.
 
 ## Installation
 
@@ -29,6 +29,5 @@ TBD
 
 - Very much a work in progress
 - Currently supports **Swift** only.
-- This script is a work in progress.
-- You must write your question in the form // TODO: - (including the hyphen). This prevents the script from accidentally picking up all your TODOs.
-- The script uses a simple method to identify “types” (classes, protocols, enums, etc.) by scanning for capitalized words, then searching for their definitions.
+- You must write your question in the form // TODO: - (including the hyphen). This prevents accidentally picking up all your TODOs.
+- Uses a simple method to identify “types” (classes, protocols, enums, etc.) by scanning for capitalized words, then searching for their definitions.
