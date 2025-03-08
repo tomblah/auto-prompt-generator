@@ -1,7 +1,7 @@
 SHELL = /bin/bash
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: all build run clean test
+.PHONY: build test clean context all
 
 # Build all Rust binaries in release mode from the workspace root.
 build:
