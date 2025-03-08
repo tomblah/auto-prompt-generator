@@ -17,7 +17,6 @@ use extract_types::extract_types_from_file;
 use filter_files_singular;
 use extract_enclosing_type::extract_enclosing_type;
 use find_referencing_files;
-use extract_enclosing_function::extract_enclosing_block;
 
 // Import the assemble_prompt library.
 use assemble_prompt;
@@ -150,17 +149,6 @@ fn main() -> Result<()> {
     let instruction_content = extract_instruction_content(&file_path)
         .context("Failed to extract instruction content")?;
     println!("Instruction content: {}", instruction_content.trim());
-
-    let _enclosing_context = match fs::read_to_string(&file_path) {
-        Ok(content) => match extract_enclosing_block(&content) {
-            Some(block) => block,
-            None => String::from("No enclosing function block found."),
-        },
-        Err(err) => {
-            eprintln!("Error reading TODO file for enclosing block extraction: {}", err);
-            String::new()
-        }
-    };
     println!("--------------------------------------------------");
 
     // 6. Determine files to include.
