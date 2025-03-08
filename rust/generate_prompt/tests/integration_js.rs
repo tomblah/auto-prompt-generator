@@ -275,4 +275,214 @@ async function someFunction(someParameter) {
         assert!(!clipboard_content.contains("const example = \"example\";"),
                 "Expected the prompt to not include index.js content");
     }
+    
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_js_singular_mode_large_complex_function() {
+        // Create a temporary directory for our dummy JS project.
+        let temp_dir = TempDir::new().unwrap();
+        let complex_js_path = temp_dir.path().join("complex.js");
+        let other_js_path = temp_dir.path().join("other.js");
+
+        // Write complex.js with a deep, nested function that includes a TODO marker.
+        let complex_js_content = r#"
+            // Preliminary unrelated content.
+            const preliminary = "ignore this line";
+            
+            // Define a complex function with nested blocks.
+            function complexFunction(param) {
+                console.log("Start of complexFunction");
+                if (param) {
+                    for (let i = 0; i < 10; i++) {
+                        console.log("Loop iteration", i);
+                        if (i % 2 === 0) {
+                            console.log("Even iteration");
+                        } else {
+                            (function nestedFunction() {
+                                console.log("Inside nestedFunction");
+                                if (i === 5) {
+                                    function innerMost() {
+                                        console.log("Entering innerMost");
+                                        // TODO: - perform complex calculation here
+                                        console.log("Exiting innerMost");
+                                    }
+                                    innerMost();
+                                } else {
+                                    console.log("No special condition");
+                                }
+                            })();
+                        }
+                    }
+                }
+                console.log("End of complexFunction");
+            }
+            
+            // Another function that should be ignored.
+            function otherFunction() {
+                console.log("This is other function");
+            }
+            
+            // End of file.
+        "#;
+        fs::write(&complex_js_path, complex_js_content).unwrap();
+
+        // Write other.js (should be excluded in singular mode).
+        let other_js_content = r#"console.log("This is other file");"#;
+        fs::write(&other_js_path, other_js_content).unwrap();
+
+        // Set environment variables so that complex.js is the instruction file.
+        env::set_var("GET_INSTRUCTION_FILE", complex_js_path.to_str().unwrap());
+        env::set_var("GET_GIT_ROOT", temp_dir.path().to_str().unwrap());
+
+        // Set up a dummy pbcopy executable that writes its stdin to a temporary clipboard file.
+        let pbcopy_dir = TempDir::new().unwrap();
+        let clipboard_file = pbcopy_dir.path().join("clipboard.txt");
+        let dummy_pbcopy_path = pbcopy_dir.path().join("pbcopy");
+        fs::write(
+            &dummy_pbcopy_path,
+            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display())
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&dummy_pbcopy_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&dummy_pbcopy_path, perms).unwrap();
+        }
+        // Prepend the dummy pbcopy directory to the PATH.
+        let original_path = env::var("PATH").unwrap();
+        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::remove_var("DISABLE_PBCOPY");
+
+        // Run the generate_prompt binary in singular mode.
+        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.arg("--singular");
+        cmd.assert().success();
+
+        // Read the content from the dummy clipboard file.
+        let clipboard_content = fs::read_to_string(&clipboard_file)
+            .expect("Failed to read dummy clipboard file");
+
+        // Assert that the prompt includes the complete function definition from complex.js,
+        // including the TODO marker deep inside the nested function.
+        assert!(clipboard_content.contains("complexFunction"),
+                "Expected the prompt to include the function name 'complexFunction'");
+        assert!(clipboard_content.contains("Entering innerMost"),
+                "Expected the prompt to include 'Entering innerMost'");
+        assert!(clipboard_content.contains("Exiting innerMost"),
+                "Expected the prompt to include 'Exiting innerMost'");
+        assert!(clipboard_content.contains("// TODO: - perform complex calculation here"),
+                "Expected the prompt to include the TODO marker and its comment");
+        assert!(clipboard_content.contains("End of complexFunction"),
+                "Expected the prompt to include the end of the complexFunction block");
+        // Ensure that the content from other.js is not included.
+        assert!(!clipboard_content.contains("This is other file"),
+                "Expected the prompt to not include content from other.js");
+    }
+    
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_js_singular_mode_kitchen_sink() {
+        // Create a temporary directory for the dummy JS project.
+        let temp_dir = TempDir::new().unwrap();
+        let js_file_path = temp_dir.path().join("kitchen_sink.js");
+        let other_js_path = temp_dir.path().join("other.js");
+
+        // Build a large JS file by generating many simple functions
+        // and one complex function with a deeply nested TODO marker.
+        let mut generated_content = String::new();
+
+        // Generate 50 simple functions (they don't contain a TODO marker).
+        for i in 0..50 {
+            generated_content.push_str(&format!(
+                "function simpleFunc_{}() {{\n  console.log('Simple function {}');\n}}\n\n",
+                i, i
+            ));
+        }
+
+        // Generate a complex function that is our target.
+        generated_content.push_str("function complexFunction() {\n");
+        generated_content.push_str("  console.log('Start complexFunction');\n");
+        generated_content.push_str("  if (true) {\n");
+        generated_content.push_str("    for (let i = 0; i < 5; i++) {\n");
+        generated_content.push_str("      console.log('Iteration', i);\n");
+        generated_content.push_str("      (function nested() {\n");
+        generated_content.push_str("        if (i === 3) {\n");
+        generated_content.push_str("          function deepNested() {\n");
+        generated_content.push_str("            console.log('Deep nested start');\n");
+        generated_content.push_str("            // TODO: - process this complex scenario\n");
+        generated_content.push_str("            console.log('Deep nested end');\n");
+        generated_content.push_str("          }\n");
+        generated_content.push_str("          deepNested();\n");
+        generated_content.push_str("        } else {\n");
+        generated_content.push_str("          console.log('No special case');\n");
+        generated_content.push_str("        }\n");
+        generated_content.push_str("      })();\n");
+        generated_content.push_str("    }\n");
+        generated_content.push_str("  }\n");
+        generated_content.push_str("  console.log('End complexFunction');\n");
+        generated_content.push_str("}\n\n");
+
+        // Generate 50 more simple functions.
+        for i in 50..100 {
+            generated_content.push_str(&format!(
+                "function simpleFunc_{}() {{\n  console.log('Simple function {}');\n}}\n\n",
+                i, i
+            ));
+        }
+
+        // Write the generated content to the main JS file.
+        fs::write(&js_file_path, &generated_content).unwrap();
+
+        // Create another JS file that should be ignored.
+        let other_content = r#"console.log("This file should not be processed in singular mode.");"#;
+        fs::write(&other_js_path, other_content).unwrap();
+
+        // Set environment variables so that kitchen_sink.js is used as the instruction file.
+        env::set_var("GET_INSTRUCTION_FILE", js_file_path.to_str().unwrap());
+        env::set_var("GET_GIT_ROOT", temp_dir.path().to_str().unwrap());
+
+        // Set up a dummy pbcopy executable that writes its stdin to a temporary clipboard file.
+        let pbcopy_dir = TempDir::new().unwrap();
+        let clipboard_file = pbcopy_dir.path().join("clipboard.txt");
+        let dummy_pbcopy_path = pbcopy_dir.path().join("pbcopy");
+        fs::write(
+            &dummy_pbcopy_path,
+            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display())
+        ).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&dummy_pbcopy_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&dummy_pbcopy_path, perms).unwrap();
+        }
+        // Prepend the dummy pbcopy directory to the PATH.
+        let original_path = env::var("PATH").unwrap();
+        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::remove_var("DISABLE_PBCOPY");
+
+        // Run the generate_prompt binary in singular mode.
+        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.arg("--singular");
+        cmd.assert().success();
+
+        // Read the output from the dummy clipboard file.
+        let output = fs::read_to_string(&clipboard_file)
+            .expect("Failed to read dummy clipboard file");
+
+        // Assertions:
+        // Verify that the complex function's block (with its nested structure and TODO marker)
+        // is fully included in the final prompt.
+        assert!(output.contains("complexFunction"), "Expected 'complexFunction' to be in output");
+        assert!(output.contains("Start complexFunction"), "Expected start of complexFunction block");
+        assert!(output.contains("Iteration"), "Expected loop iteration logs to be present");
+        assert!(output.contains("Deep nested start"), "Expected nested function log to be present");
+        assert!(output.contains("// TODO: - process this complex scenario"), "Expected TODO marker in output");
+        assert!(output.contains("Deep nested end"), "Expected nested function log to be present");
+        assert!(output.contains("End complexFunction"), "Expected end of complexFunction block");
+        // Ensure that content from the other JS file is not included.
+        assert!(!output.contains("This file should not be processed"), "Did not expect other.js content");
+    }
 }
