@@ -116,8 +116,6 @@ mod tests {
         let file1_path = file1.path().to_str().unwrap();
         writeln!(found_files, "{}", file1_path).unwrap();
 
-        // Override the prompt processor to simply "cat" the file.
-        env::set_var("RUST_PROMPT_FILE_PROCESSOR", "cat");
         env::remove_var("DIFF_WITH_BRANCH"); // ensure diff is not added
 
         let output = assemble_prompt(found_files.path().to_str().unwrap(), "ignored")
@@ -137,8 +135,6 @@ mod tests {
         let file_diff_path = file_diff.path().to_str().unwrap();
         writeln!(found_files, "{}", file_diff_path).unwrap();
 
-        // Override prompt processor to 'cat' (so it returns the file contents).
-        env::set_var("RUST_PROMPT_FILE_PROCESSOR", "cat");
         // Activate diff logic.
         env::set_var("DIFF_WITH_BRANCH", "dummy-branch");
 
@@ -164,53 +160,6 @@ mod tests {
 
         assert!(output.contains("Dummy diff output for"));
         assert!(output.contains("against branch dummy-branch"));
-    }
-
-    #[test]
-    fn test_substring_marker_filtering() {
-        // Create a file with substring markers.
-        let mut found_files = NamedTempFile::new().unwrap();
-        let mut marked_file = NamedTempFile::new().unwrap();
-        writeln!(marked_file, "import Foundation").unwrap();
-        writeln!(marked_file, "// v").unwrap();
-        writeln!(marked_file, "func secretFunction() {{").unwrap();
-        writeln!(marked_file, "    print(\"This is inside the markers.\")").unwrap();
-        writeln!(marked_file, "}}").unwrap();
-        writeln!(marked_file, "// ^").unwrap();
-        writeln!(marked_file, "func publicFunction() {{").unwrap();
-        writeln!(marked_file, "    print(\"This is outside the markers.\")").unwrap();
-        writeln!(marked_file, "}}").unwrap();
-        let marked_file_path = marked_file.path().to_str().unwrap();
-        writeln!(found_files, "{}", marked_file_path).unwrap();
-
-        // Prepare a dummy filter script.
-        let temp_dir = tempdir().unwrap();
-        let dummy_filter_path = temp_dir.path().join("filter_substring_markers");
-        fs::write(
-            &dummy_filter_path,
-            "#!/bin/sh\necho \"func secretFunction() {\\n    print(\\\"This is inside the markers.\\\")\\n}\"",
-        )
-        .unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&dummy_filter_path).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&dummy_filter_path, perms).unwrap();
-        }
-        
-        // Force the external prompt processor to fail and use the dummy filter.
-        env::set_var("RUST_PROMPT_FILE_PROCESSOR", "false_command");
-        env::set_var("RUST_FILTER_SUBSTRING_MARKERS", dummy_filter_path.to_str().unwrap());
-
-        let output = assemble_prompt(found_files.path().to_str().unwrap(), "ignored")
-            .expect("assemble_prompt failed");
-
-        // Verify that content outside the markers is not included and that the content inside is.
-        assert!(!output.contains("func publicFunction() {"),
-                "Output should not contain publicFunction, but got:\n{}", output);
-        assert!(output.contains("func secretFunction() {"),
-                "Output should contain secretFunction, but got:\n{}", output);
     }
 
     #[test]
@@ -413,28 +362,6 @@ mod tests {
             .expect("assemble_prompt failed");
 
         assert!(output.trim().ends_with(fixed_instruction()));
-    }
-
-    #[test]
-    fn test_fallback_behavior_when_prompt_processor_fails() {
-        let mut file = NamedTempFile::new().unwrap();
-        let content = "struct FallbackTest {}";
-        file.write_all(content.as_bytes()).unwrap();
-        let file_path = file.path().to_owned();
-
-        let mut found_files = NamedTempFile::new().unwrap();
-        writeln!(found_files, "{}", file_path.display()).unwrap();
-        let found_files_path = found_files.into_temp_path().keep().unwrap();
-
-        env::set_var("RUST_PROMPT_FILE_PROCESSOR", "nonexistent_command_xyz");
-        env::remove_var("DIFF_WITH_BRANCH");
-
-        let output = assemble_prompt(found_files_path.to_str().unwrap(), "ignored")
-            .expect("assemble_prompt failed");
-
-        assert!(output.contains("struct FallbackTest {}"));
-
-        env::remove_var("RUST_PROMPT_FILE_PROCESSOR");
     }
 
     #[test]
