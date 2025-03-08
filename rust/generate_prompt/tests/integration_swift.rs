@@ -605,3 +605,134 @@ public func enclosingFunction<V: Equatable, W: Codable>(input: V) -> W? {
         );
     }
 }
+
+#[cfg(test)]
+mod integration_diff {
+    use assert_cmd::Command;
+    use filetime::{set_file_mtime, FileTime};
+    use std::env;
+    use std::fs;
+    use std::io::Write;
+    use std::path::PathBuf;
+    use std::process::Command as StdCommand;
+    use tempfile::{NamedTempFile, TempDir};
+
+    /// Sets up a dummy pbcopy executable that writes its stdin to a temporary file.
+    /// Returns a tuple (pbcopy_dir, clipboard_file) where pbcopy_dir is the TempDir
+    /// containing the dummy pbcopy and clipboard_file is the PathBuf to the file where output is captured.
+    fn setup_dummy_pbcopy() -> (TempDir, PathBuf) {
+        let pbcopy_dir = TempDir::new().expect("Failed to create dummy pbcopy directory");
+        let clipboard_file = pbcopy_dir.path().join("clipboard.txt");
+        let dummy_pbcopy_path = pbcopy_dir.path().join("pbcopy");
+        fs::write(
+            &dummy_pbcopy_path,
+            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display()),
+        )
+        .expect("Failed to write dummy pbcopy script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&dummy_pbcopy_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&dummy_pbcopy_path, perms).unwrap();
+        }
+        (pbcopy_dir, clipboard_file)
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_with_diff_option() {
+        // Create a temporary directory to act as the Git repository root.
+        let git_root_dir = TempDir::new().expect("Failed to create Git root temp dir");
+        let git_root_path = git_root_dir.path();
+
+        // Initialize a Git repository.
+        let init_status = StdCommand::new("git")
+            .arg("init")
+            .current_dir(&git_root_path)
+            .status()
+            .expect("Failed to initialize git repository");
+        assert!(init_status.success(), "Git init failed");
+
+        // Create the Swift package directory.
+        let package_dir = git_root_path.join("my_package");
+        fs::create_dir_all(&package_dir).expect("Failed to create package directory");
+
+        // Create Package.swift to mark this as a Swift package.
+        let package_file_path = package_dir.join("Package.swift");
+        fs::write(&package_file_path, "// swift package").expect("Failed to write Package.swift");
+
+        // Create Instruction.swift with initial content.
+        let instruction_file_path = package_dir.join("Instruction.swift");
+        let initial_content = "public final class SomeClass {\n    var x: Int = 0\n}\n// TODO: - Fix SomeClass\n";
+        fs::write(&instruction_file_path, initial_content).expect("Failed to write Instruction.swift");
+
+        // Add and commit Instruction.swift.
+        let add_status = StdCommand::new("git")
+            .args(&["add", "Instruction.swift"])
+            .current_dir(&package_dir)
+            .status()
+            .expect("Failed to git add Instruction.swift");
+        assert!(add_status.success(), "Git add failed");
+
+        let commit_status = StdCommand::new("git")
+            .args(&["commit", "-m", "Initial commit"])
+            .current_dir(&package_dir)
+            .status()
+            .expect("Failed to git commit");
+        assert!(commit_status.success(), "Git commit failed");
+
+        // Modify Instruction.swift to create a diff.
+        let modified_content = "public final class SomeClass {\n    var x: Int = 0\n    func diffFunc() {}\n}\n// TODO: - Fix SomeClass\n";
+        fs::write(&instruction_file_path, modified_content).expect("Failed to modify Instruction.swift");
+
+        // Set environment variables so generate_prompt picks up our dummy project.
+        env::set_var("GET_GIT_ROOT", git_root_path.to_str().unwrap());
+        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
+        env::remove_var("DISABLE_PBCOPY");
+
+        // Set up dummy pbcopy so that clipboard output is captured.
+        let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
+        let original_path = env::var("PATH").unwrap();
+        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+
+        // Enable diff reporting by setting DIFF_WITH_BRANCH (using "HEAD" here).
+        env::set_var("DIFF_WITH_BRANCH", "HEAD");
+
+        // Set TODO_FILE_BASENAME so that the diff output is appended.
+        let file_basename = instruction_file_path
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        env::set_var("TODO_FILE_BASENAME", &file_basename);
+
+        // Run the generate_prompt binary.
+        let mut cmd = Command::cargo_bin("generate_prompt").expect("Failed to find generate_prompt binary");
+        cmd.assert().success();
+
+        // Read the content from our dummy clipboard file.
+        let clipboard_content = fs::read_to_string(&clipboard_file)
+            .expect("Failed to read clipboard content");
+
+        // Assert that the prompt includes a diff section.
+        assert!(
+            clipboard_content.contains("The diff for"),
+            "Expected diff section header in prompt; got:\n{}",
+            clipboard_content
+        );
+        // Check that the diff output contains the newly added function.
+        assert!(
+            clipboard_content.contains("func diffFunc()"),
+            "Expected diff output to mention the added function; got:\n{}",
+            clipboard_content
+        );
+        // Also, a diff marker such as 'diff --git' should be present.
+        assert!(
+            clipboard_content.contains("diff --git"),
+            "Expected diff markers in output; got:\n{}",
+            clipboard_content
+        );
+    }
+}
