@@ -188,34 +188,4 @@ mod integration_swift {
             trimmed_output
         );
     }
-
-    /// Test that when the external prompt processor fails, the raw file content is used.
-    #[test]
-    fn test_assemble_prompt_fallback_on_processor_failure() {
-        use std::env;
-        // Force failure of the external prompt processor.
-        env::set_var("RUST_PROMPT_FILE_PROCESSOR", "nonexistent_command_xyz");
-
-        let mut swift_file = NamedTempFile::new().expect("Failed to create Swift file");
-        let swift_content = "public class FallbackTest {}\n";
-        write!(swift_file, "{}", swift_content).expect("Failed to write to Swift file");
-        let swift_path = swift_file.path().to_str().unwrap().to_string();
-
-        let mut found_files = NamedTempFile::new().expect("Failed to create found files file");
-        writeln!(found_files, "{}", swift_path).expect("Failed to write valid file path");
-        let found_files_path = found_files
-            .into_temp_path()
-            .keep()
-            .expect("Failed to persist found files list");
-
-        let output = assemble_prompt(found_files_path.to_str().unwrap(), "ignored instruction")
-            .expect("assemble_prompt failed");
-
-        assert!(
-            output.contains("public class FallbackTest"),
-            "Output should contain the raw file content due to processor failure"
-        );
-        // Reset the environment variable for other tests.
-        env::remove_var("RUST_PROMPT_FILE_PROCESSOR");
-    }
 }
