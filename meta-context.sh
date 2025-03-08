@@ -14,6 +14,14 @@ set -euo pipefail
 #   --integration-tests <crate>
 #         Include all files (integration tests) from the crate’s tests/ directory.
 #
+#   --integration-tests-swift <crate>
+#         Include only integration test files whose names contain "swift" (case insensitive)
+#         from the crate’s tests/ directory.
+#
+#   --integration-tests-js <crate>
+#         Include only integration test files whose names contain "js" or "javascript" (case insensitive)
+#         from the crate’s tests/ directory.
+#
 # If no option is provided, the default behavior is to include the
 # Rust source files in the rust/ directory (excluding integration test files
 # and inline unit test blocks) and all Cargo.toml files.
@@ -104,6 +112,24 @@ if [[ $# -gt 0 ]]; then
             CRATE="$2"
             shift 2
             ;;
+        --integration-tests-swift)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --integration-tests-swift requires a crate name." >&2
+                exit 1
+            fi
+            MODE="integration-swift"
+            CRATE="$2"
+            shift 2
+            ;;
+        --integration-tests-js)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --integration-tests-js requires a crate name." >&2
+                exit 1
+            fi
+            MODE="integration-js"
+            CRATE="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1" >&2
             exit 1
@@ -160,6 +186,32 @@ elif [[ "$MODE" == "integration" ]]; then
         echo "Error: No test files found in '$CRATE/tests'." >&2
         exit 1
     fi
+
+elif [[ "$MODE" == "integration-swift" ]]; then
+    echo "Including Swift integration tests for crate: $CRATE"
+    if [ ! -d "$CRATE/tests" ]; then
+        echo "Error: Integration tests directory '$CRATE/tests' does not exist." >&2
+        exit 1
+    fi
+    # Find files in the tests directory with "swift" in their name (case insensitive).
+    files=$(find "$CRATE/tests" -type f -iname '*swift*')
+    if [[ -z "$files" ]]; then
+        echo "Error: No Swift test files found in '$CRATE/tests'." >&2
+        exit 1
+    fi
+
+elif [[ "$MODE" == "integration-js" ]]; then
+    echo "Including JavaScript integration tests for crate: $CRATE"
+    if [ ! -d "$CRATE/tests" ]; then
+        echo "Error: Integration tests directory '$CRATE/tests' does not exist." >&2
+        exit 1
+    fi
+    # Find files in the tests directory with "js" or "javascript" in their name (case insensitive).
+    files=$(find "$CRATE/tests" -type f \( -iname '*js*' -o -iname '*javascript*' \))
+    if [[ -z "$files" ]]; then
+        echo "Error: No JavaScript test files found in '$CRATE/tests'." >&2
+        exit 1
+    fi
 fi
 
 # Display the collected files.
@@ -179,7 +231,7 @@ for file in $files; do
       echo "--------------------------------------------------"
       if [[ "$MODE" == "unit" ]]; then
           echo "Unit tests extracted from $file:"
-      elif [[ "$MODE" == "integration" ]]; then
+      elif [[ "$MODE" == "integration" || "$MODE" == "integration-swift" || "$MODE" == "integration-js" ]]; then
           echo "Integration test file $file contents:"
       else
           echo "The contents of $file is as follows:"
