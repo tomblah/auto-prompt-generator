@@ -7,7 +7,8 @@ set -euo pipefail
 # This script collects Rust source files (and Cargo.toml files)
 # in the repository and copies them to the clipboard.
 #
-# Options:
+# Supported options:
+#
 #   --unit-tests <crate>
 #         Extract only the unit tests from the crate’s src/lib.rs and/or src/main.rs.
 #
@@ -22,74 +23,11 @@ set -euo pipefail
 #         Include only integration test files whose names contain "js" or "javascript" (case insensitive)
 #         from the crate’s tests/ directory.
 #
-# If no option is provided, the default behavior is to include the
-# Rust source files in the rust/ directory (excluding integration test files
-# and inline unit test blocks) and all Cargo.toml files.
+# Default (no option): include Rust source files in all crates’ src directories (excluding tests)
+# and all Cargo.toml files.
 ##########################################
 
-# Updated function to filter out inline Rust test blocks (used in default mode).
-filter_rust_tests() {
-    awk '
-    BEGIN { in_tests=0; brace_count=0 }
-    {
-        # If we encounter a #[cfg(test)] attribute or a module declaration whose name ends with _tests, start skipping.
-        if (in_tests == 0 && ($0 ~ /^[[:space:]]*#\[cfg\(test\)\]/ || $0 ~ /^[[:space:]]*mod[[:space:]]+.*_tests[[:space:]]*\{/)) {
-            in_tests = 1;
-            # For a mod declaration, start brace counting.
-            if ($0 ~ /^[[:space:]]*mod[[:space:]]+.*_tests[[:space:]]*\{/)
-                brace_count = 1;
-            next;
-        }
-        # If already in a test block, update the brace count.
-        if (in_tests == 1) {
-            n = gsub(/\{/, "{");
-            m = gsub(/\}/, "}");
-            brace_count += n - m;
-            if (brace_count <= 0) {
-                in_tests = 0;
-                brace_count = 0;
-            }
-            next;
-        }
-        print;
-    }
-    ' "$1"
-}
-
-# Function to extract only the unit test blocks from a Rust source file.
-extract_unit_tests() {
-    awk '
-    BEGIN { capture=0; brace_count=0 }
-    {
-        # Look for the beginning of a test configuration.
-        if (!capture && $0 ~ /^[[:space:]]*#\[cfg\(test\)\]/) {
-            capture=1;
-            next;
-        }
-        # When inside the test block, look for the tests module.
-        if (capture && $0 ~ /^[[:space:]]*mod[[:space:]]+tests[[:space:]]*\{/) {
-            brace_count = 1;
-            print $0;
-            next;
-        }
-        # If we are inside the tests module, print all lines.
-        if (capture && brace_count > 0) {
-            print $0;
-            n = gsub(/\{/, "{");
-            m = gsub(/\}/, "}");
-            brace_count += n - m;
-            if (brace_count <= 0) {
-                capture = 0;
-                brace_count = 0;
-            }
-            next;
-        }
-    }
-    ' "$1"
-}
-
-# Determine the mode and optional crate name.
-MODE="default"   # default: include rust/ files and Cargo.toml
+MODE="default"
 CRATE=""
 
 if [[ $# -gt 0 ]]; then
@@ -137,20 +75,18 @@ if [[ $# -gt 0 ]]; then
     esac
 fi
 
-# Determine the directory where this script resides.
+# Determine the directory where this script resides and the repository root.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Determine the repository root (assumes you're in a Git repository).
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$SCRIPT_DIR")
 cd "$REPO_ROOT"
 
 files=""
 
 if [[ "$MODE" == "default" ]]; then
-    echo "Including only Rust source files from the rust/ directory (excluding integration tests and inline unit tests)."
-    # Exclude files in any "tests" directory.
-    files=$(find rust -type f -iname "*.rs" -not -path "*/tests/*")
-    # Always include Cargo.toml files across the repository.
+    echo "Including Rust source files from all crates' src directories (excluding tests) and all Cargo.toml files."
+    # Look for .rs files in any crates/*/src folder.
+    files=$(find crates -type f -path "*/src/*.rs")
+    # Find all Cargo.toml files (both in the root and in each crate)
     cargo_files=$(find . -type f -name "Cargo.toml" -not -path "./.git/*")
     if [ -n "$cargo_files" ]; then
         echo "Including all Cargo.toml files in the context."
@@ -159,9 +95,14 @@ if [[ "$MODE" == "default" ]]; then
 
 elif [[ "$MODE" == "unit" ]]; then
     echo "Extracting unit tests for crate: $CRATE"
+    # If the provided CRATE does not exist as given, try prepending 'crates/'
     if [ ! -d "$CRATE" ]; then
-        echo "Error: Crate directory '$CRATE' does not exist." >&2
-        exit 1
+        if [ -d "crates/$CRATE" ]; then
+            CRATE="crates/$CRATE"
+        else
+            echo "Error: Crate directory '$CRATE' does not exist." >&2
+            exit 1
+        fi
     fi
     # In unit test mode, include only the test blocks from src/lib.rs and/or src/main.rs.
     if [ -f "$CRATE/src/lib.rs" ]; then
@@ -177,6 +118,14 @@ elif [[ "$MODE" == "unit" ]]; then
 
 elif [[ "$MODE" == "integration" ]]; then
     echo "Including integration tests for crate: $CRATE"
+    if [ ! -d "$CRATE" ]; then
+        if [ -d "crates/$CRATE" ]; then
+            CRATE="crates/$CRATE"
+        else
+            echo "Error: Crate directory '$CRATE' does not exist." >&2
+            exit 1
+        fi
+    fi
     if [ ! -d "$CRATE/tests" ]; then
         echo "Error: Integration tests directory '$CRATE/tests' does not exist." >&2
         exit 1
@@ -189,11 +138,18 @@ elif [[ "$MODE" == "integration" ]]; then
 
 elif [[ "$MODE" == "integration-swift" ]]; then
     echo "Including Swift integration tests for crate: $CRATE"
+    if [ ! -d "$CRATE" ]; then
+        if [ -d "crates/$CRATE" ]; then
+            CRATE="crates/$CRATE"
+        else
+            echo "Error: Crate directory '$CRATE' does not exist." >&2
+            exit 1
+        fi
+    fi
     if [ ! -d "$CRATE/tests" ]; then
         echo "Error: Integration tests directory '$CRATE/tests' does not exist." >&2
         exit 1
     fi
-    # Find files in the tests directory with "swift" in their name (case insensitive).
     files=$(find "$CRATE/tests" -type f -iname '*swift*')
     if [[ -z "$files" ]]; then
         echo "Error: No Swift test files found in '$CRATE/tests'." >&2
@@ -202,11 +158,18 @@ elif [[ "$MODE" == "integration-swift" ]]; then
 
 elif [[ "$MODE" == "integration-js" ]]; then
     echo "Including JavaScript integration tests for crate: $CRATE"
+    if [ ! -d "$CRATE" ]; then
+        if [ -d "crates/$CRATE" ]; then
+            CRATE="crates/$CRATE"
+        else
+            echo "Error: Crate directory '$CRATE' does not exist." >&2
+            exit 1
+        fi
+    fi
     if [ ! -d "$CRATE/tests" ]; then
         echo "Error: Integration tests directory '$CRATE/tests' does not exist." >&2
         exit 1
     fi
-    # Find files in the tests directory with "js" or "javascript" in their name (case insensitive).
     files=$(find "$CRATE/tests" -type f \( -iname '*js*' -o -iname '*javascript*' \))
     if [[ -z "$files" ]]; then
         echo "Error: No JavaScript test files found in '$CRATE/tests'." >&2
@@ -229,19 +192,47 @@ temp_context=$(mktemp)
 for file in $files; do
     {
       echo "--------------------------------------------------"
-      if [[ "$MODE" == "unit" ]]; then
+      if [[ "$MODE" == "unit" && "$file" == *.rs ]]; then
           echo "Unit tests extracted from $file:"
       elif [[ "$MODE" == "integration" || "$MODE" == "integration-swift" || "$MODE" == "integration-js" ]]; then
           echo "Integration test file $file contents:"
       else
-          echo "The contents of $file is as follows:"
+          echo "The contents of $file:"
       fi
       echo "--------------------------------------------------"
       if [[ "$MODE" == "default" && "$file" == *.rs ]]; then
-          filter_rust_tests "$file"
-          echo -e "\n// Note: rust file unit tests not shown here for brevity."
+          # For example, you might filter out inline unit test blocks here.
+          cat "$file"
+          echo -e "\n// Note: Inline unit tests not shown here for brevity."
       elif [[ "$MODE" == "unit" && "$file" == *.rs ]]; then
-          extract_unit_tests "$file"
+          # Extract only the unit test blocks.
+          awk '
+          BEGIN { capture=0; brace_count=0 }
+          {
+              if (!capture && $0 ~ /^[[:space:]]*#\[cfg\(test\)\]/) {
+                  capture=1;
+                  next;
+              }
+              if (capture && $0 ~ /^[[:space:]]*mod[[:space:]]+tests[[:space:]]*\{/) {
+                  brace_count=1;
+                  print;
+                  next;
+              }
+              if (capture && brace_count > 0) {
+                  print;
+                  n = gsub(/\{/, "{");
+                  m = gsub(/\}/, "}");
+                  brace_count += n - m;
+                  if (brace_count <= 0) {
+                      capture=0;
+                      brace_count=0;
+                  }
+                  next;
+              }
+              if (!capture)
+                  print;
+          }
+          ' "$file"
           echo -e "\n// Note: Only unit test blocks have been extracted from this file."
       else
           cat "$file"
@@ -250,7 +241,7 @@ for file in $files; do
     } >> "$temp_context"
 done
 
-# Append a horizontal dashed line and a new line.
+# Append a horizontal dashed line.
 {
   echo "--------------------------------------------------"
   echo ""

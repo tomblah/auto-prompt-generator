@@ -1,0 +1,34 @@
+[workspace]
+members = [
+    "crates/filter_files_singular",
+    "crates/filter_substring_markers",
+    "crates/filter_excluded_files",
+    "crates/extract_enclosing_type",
+    "crates/diff_with_branch",
+    "crates/unescape_newlines",
+    "crates/find_prompt_instruction",
+    "crates/extract_types",
+    "crates/extract_instruction_content",
+    "crates/get_package_root",
+    "crates/find_referencing_files",
+    "crates/get_git_root",
+    "crates/get_search_roots",
+    "crates/find_definition_files",
+    "crates/substring_marker_snippet_extractor",
+    "crates/assemble_prompt",
+    "crates/post_processing",
+    "crates/generate_prompt"
+    ]
+resolver = "2"
+
+[workspace.dependencies]
+regex = "1.7"
+tempfile = "3.3"
+walkdir = "2.3"
+assert_cmd = "2.0"
+predicates = "2.1"
+anyhow = "1.0"
+tree-sitter = "=0.25.2"
+tree-sitter-swift = "=0.7.0"
+filetime = "0.2"
+rand = "0.8"
