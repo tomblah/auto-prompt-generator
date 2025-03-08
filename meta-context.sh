@@ -15,24 +15,25 @@ set -euo pipefail
 #         Include all files (integration tests) from the crate’s tests/ directory.
 #
 # If no option is provided, the default behavior is to include the
-# Rust source files in the rust/ directory (excluding integration test files)
-# and all Cargo.toml files.
+# Rust source files in the rust/ directory (excluding integration test files
+# and inline unit test blocks) and all Cargo.toml files.
 ##########################################
 
-# Function to filter out inline Rust test blocks (used in default mode).
+# Updated function to filter out inline Rust test blocks (used in default mode).
 filter_rust_tests() {
     awk '
     BEGIN { in_tests=0; brace_count=0 }
     {
-        if (in_tests == 0 && $0 ~ /^[[:space:]]*#\[cfg\(test\)\]/) {
+        # If we encounter a #[cfg(test)] attribute or a module declaration whose name ends with _tests, start skipping.
+        if (in_tests == 0 && ($0 ~ /^[[:space:]]*#\[cfg\(test\)\]/ || $0 ~ /^[[:space:]]*mod[[:space:]]+.*_tests[[:space:]]*\{/)) {
             in_tests = 1;
+            # For a mod declaration, start brace counting.
+            if ($0 ~ /^[[:space:]]*mod[[:space:]]+.*_tests[[:space:]]*\{/)
+                brace_count = 1;
             next;
         }
-        if (in_tests == 1 && $0 ~ /^[[:space:]]*mod[[:space:]]+tests[[:space:]]*\{/) {
-            brace_count = 1;
-            next;
-        }
-        if (in_tests == 1 && brace_count > 0) {
+        # If already in a test block, update the brace count.
+        if (in_tests == 1) {
             n = gsub(/\{/, "{");
             m = gsub(/\}/, "}");
             brace_count += n - m;
@@ -120,7 +121,7 @@ cd "$REPO_ROOT"
 files=""
 
 if [[ "$MODE" == "default" ]]; then
-    echo "Including only Rust source files from the rust/ directory (excluding integration tests)."
+    echo "Including only Rust source files from the rust/ directory (excluding integration tests and inline unit tests)."
     # Exclude files in any "tests" directory.
     files=$(find rust -type f -iname "*.rs" -not -path "*/tests/*")
     # Always include Cargo.toml files across the repository.
