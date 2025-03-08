@@ -229,14 +229,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "extract_enclosing_function"
-version = "0.1.0"
-dependencies = [
- "tree-sitter",
- "tree-sitter-swift",
-]
-
-[[package]]
 name = "extract_enclosing_type"
 version = "0.1.0"
 dependencies = [
@@ -340,7 +332,6 @@ dependencies = [
  "assert_cmd",
  "clap",
  "diff_with_branch",
- "extract_enclosing_function",
  "extract_enclosing_type",
  "extract_instruction_content",
  "extract_types",
