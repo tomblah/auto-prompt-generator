@@ -6,7 +6,9 @@ mod integration_swift {
     use std::env;
     use std::io::Write;
     use std::path::PathBuf;
-    use tempfile::NamedTempFile;
+    use tempfile::{NamedTempFile, TempDir};
+    use std::process::Command;
+    use std::fs;
 
     /// Test assembling a prompt from a single Swift file.
     #[test]
@@ -256,5 +258,84 @@ public func genericFunction<T: Equatable>(param: T) -> T? {
             output.contains("Can you do the TODO:- in the above code?"),
             "Output should contain the fixed instruction"
         );
+    }
+
+    #[test]
+    fn test_assemble_prompt_with_diff_option() {
+        // Create a temporary directory to initialize a new git repository.
+        let temp_dir = TempDir::new().expect("Failed to create temporary directory");
+        let repo_path = temp_dir.path();
+
+        // Initialize a new git repository.
+        let init_status = Command::new("git")
+            .arg("init")
+            .current_dir(&repo_path)
+            .status()
+            .expect("Failed to initialize git repository");
+        assert!(init_status.success(), "Git init failed");
+
+        // Create a Swift file in the repository.
+        let swift_file_path = repo_path.join("DiffTest.swift");
+        let initial_content = "public class DiffTest {\n}\n";
+        fs::write(&swift_file_path, initial_content)
+            .expect("Failed to write initial Swift file");
+
+        // Add and commit the file.
+        let add_status = Command::new("git")
+            .args(&["add", "DiffTest.swift"])
+            .current_dir(&repo_path)
+            .status()
+            .expect("Failed to git add file");
+        assert!(add_status.success(), "Git add failed");
+
+        let commit_status = Command::new("git")
+            .args(&["commit", "-m", "Initial commit"])
+            .current_dir(&repo_path)
+            .status()
+            .expect("Failed to git commit");
+        assert!(commit_status.success(), "Git commit failed");
+
+        // Modify the Swift file to create a diff.
+        let modified_content = "public class DiffTest {\n    func newDiff() {}\n}\n";
+        fs::write(&swift_file_path, modified_content)
+            .expect("Failed to modify Swift file");
+
+        // Create a temporary found_files list that contains the Swift file path.
+        let mut found_files = NamedTempFile::new().expect("Failed to create found_files file");
+        writeln!(found_files, "{}", swift_file_path.to_str().unwrap())
+            .expect("Failed to write to found_files");
+        let found_files_path = found_files
+            .into_temp_path()
+            .keep()
+            .expect("Failed to persist found_files list");
+
+        // Set the DIFF_WITH_BRANCH environment variable to "HEAD" (or any branch that makes sense)
+        env::set_var("DIFF_WITH_BRANCH", "HEAD");
+
+        // Set TODO_FILE_BASENAME to the Swift file's basename so that the diff is appended.
+        let file_basename = swift_file_path
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        env::set_var("TODO_FILE_BASENAME", &file_basename);
+
+        // Call assemble_prompt with an arbitrary instruction (which is ignored).
+        let output = assemble_prompt(found_files_path.to_str().unwrap(), "ignored instruction")
+            .expect("assemble_prompt failed");
+
+        // Verify that the output contains the diff section.
+        assert!(
+            output.contains("The diff for"),
+            "Output should contain a diff section"
+        );
+        assert!(
+            output.contains("func newDiff()"),
+            "Diff should mention the modified content from the Swift file"
+        );
+
+        // Cleanup: remove the DIFF_WITH_BRANCH variable.
+        env::remove_var("DIFF_WITH_BRANCH");
     }
 }
