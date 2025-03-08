@@ -16,6 +16,7 @@ members = [
     "find_definition_files",
     "substring_marker_snippet_extractor",
     "assemble_prompt",
+    "post_processing",
     "generate_prompt"
     ]
 resolver = "2"

@@ -22,6 +22,9 @@ use assemble_prompt;
 // NEW: Import the new find_definition_files library function.
 use find_definition_files::find_definition_files;
 
+// NEW: Import the post_processing crate.
+use post_processing;
+
 fn main() -> Result<()> {
     let matches = Command::new("generate_prompt")
         .version("0.1.0")
@@ -293,13 +296,25 @@ fn main() -> Result<()> {
     )
     .context("Failed to assemble prompt")?;
 
+    // Determine if diff mode is enabled.
+    let diff_enabled = env::var("DIFF_WITH_BRANCH").is_ok();
+
+    // 9a. Post-process the prompt to scrub extra TODO markers.
+    // Here we supply the trimmed instruction content as the primary marker.
+    // The post_processing function will preserve the first occurrence of this primary marker
+    // and will never scrub the very last marker line.
+    let final_prompt = post_processing::scrub_extra_todo_markers(&final_prompt, diff_enabled, instruction_content.trim())
+        .unwrap_or_else(|err| {
+            eprintln!("Error during post-processing: {}", err);
+            std::process::exit(1);
+        });
+
     // 10. Check that there are exactly two markers unless diff reporting is enabled.
     let marker = "// TODO: -";
     let marker_lines: Vec<&str> = final_prompt
         .lines()
         .filter(|line| line.contains(marker))
         .collect();
-    let diff_enabled = env::var("DIFF_WITH_BRANCH").is_ok();
     if diff_enabled {
         if marker_lines.len() != 2 && marker_lines.len() != 3 {
             eprintln!(
@@ -642,41 +657,72 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_multiple_markers() {
+        use std::env;
+        use std::fs;
+        use tempfile::TempDir;
+        use assert_cmd::prelude::*;
+        use std::process::Command;
+
+        // Create a temporary directory for dummy executables.
         let temp_dir = TempDir::new().unwrap();
+        // Set up a dummy pbcopy that writes to a clipboard file.
+        let clipboard_file = temp_dir.path().join("dummy_clipboard.txt");
+        let pbcopy_script = format!("cat > \"{}\"", clipboard_file.display());
+        create_dummy_executable(&temp_dir, "pbcopy", &pbcopy_script);
+
+        // Create a fake Git root.
         let fake_git_root = TempDir::new().unwrap();
         let fake_git_root_path = fake_git_root.path().to_str().unwrap();
 
+        // Set up dummy get_git_root.
         create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
-        env::set_var("GET_GIT_ROOT", fake_git_root_path);
 
+        // Create an instruction file with three marker lines.
+        // Ensure the CTA marker is on its own line and that there's a trailing newline.
         let instruction_path = format!("{}/Instruction.swift", fake_git_root_path);
         let multi_marker_content = "\
-                // TODO: - Marker One\n\
-                Some content here\n\
-                // TODO: - Marker Two\n\
-                More content here\n";
+    // TODO: - Marker One\n\
+    Some content here\n\
+    // TODO: - Marker Two\n\
+    More content here\n\
+    // TODO: - CTA Marker\n";
         fs::write(&instruction_path, multi_marker_content).unwrap();
         env::set_var("GET_INSTRUCTION_FILE", &instruction_path);
-        create_dummy_executable(&temp_dir, "find_prompt_instruction", &instruction_path);
-        create_dummy_executable(&temp_dir, "get_package_root", "");
-        let types_file = temp_dir.path().join("types.txt");
-        fs::write(&types_file, "TypeA").unwrap();
-        create_dummy_executable(&temp_dir, "extract_types", types_file.to_str().unwrap());
-        create_dummy_executable(&temp_dir, "find_definition_files", "dummy_definitions");
-        create_dummy_executable(&temp_dir, "filter_files_singular", &instruction_path);
 
+        // Dummy find_prompt_instruction returns the instruction file.
+        create_dummy_executable(&temp_dir, "find_prompt_instruction", &instruction_path);
+        // Dummy extract_instruction_content returns the primary marker (trimmed).
+        create_dummy_executable(&temp_dir, "extract_instruction_content", "// TODO: - Marker One");
+        // Dummy get_package_root.
+        create_dummy_executable(&temp_dir, "get_package_root", "");
+        // Dummy assemble_prompt returns the multi-marker content.
+        create_dummy_executable(&temp_dir, "assemble_prompt", multi_marker_content);
+
+        // Prepend our dummy executables directory to PATH.
         let original_path = env::var("PATH").unwrap();
         env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
-        env::set_var("DISABLE_PBCOPY", "1");
+        // Unset DISABLE_PBCOPY so that clipboard copy occurs.
+        env::remove_var("DISABLE_PBCOPY");
 
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-        cmd.assert()
-            .failure()
-            .stderr(predicate::str::contains("Expected exactly 2 // TODO: - markers, but found 3. Exiting."));
+        cmd.assert().success();
+
+        // Read the final prompt from our dummy clipboard file.
+        let clipboard_content = fs::read_to_string(&clipboard_file)
+            .expect("Failed to read dummy clipboard file");
+
+        // Expect that the final prompt contains the primary marker and the CTA marker,
+        // and that it does not contain the extra marker.
+        assert!(clipboard_content.contains("// TODO: - Marker One"),
+                "Clipboard missing primary marker: {}", clipboard_content);
+        assert!(clipboard_content.contains("Can you do the TODO:- in the above code?"),
+                "Clipboard missing CTA marker: {}", clipboard_content);
+        assert!(!clipboard_content.contains("// TODO: - Marker Two"),
+                "Clipboard should not contain extra marker: {}", clipboard_content);
 
         env::remove_var("GET_GIT_ROOT");
     }
-        
+
     /// New Test: Test that when --diff-with main is passed the diff section is included.
     #[test]
     #[cfg(unix)]
@@ -920,6 +966,72 @@ mod tests {
         // Assert that the fixed instruction is appended.
         assert!(clipboard_content.contains("Can you do the TODO:- in the above code?"),
                 "Missing fixed instruction: {}", clipboard_content);
+
+        env::remove_var("GET_GIT_ROOT");
+    }
+    
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_scrubs_extra_todo_markers() {
+        use std::env;
+        use std::fs;
+        use tempfile::TempDir;
+        use assert_cmd::prelude::*;
+        use std::process::Command;
+
+        // Create a temporary directory for dummy executables.
+        let temp_dir = TempDir::new().unwrap();
+        // Set up a dummy pbcopy that writes to a clipboard file.
+        let clipboard_file = temp_dir.path().join("dummy_clipboard.txt");
+        let pbcopy_script = format!("cat > \"{}\"", clipboard_file.display());
+        create_dummy_executable(&temp_dir, "pbcopy", &pbcopy_script);
+
+        // Create a fake Git root.
+        let fake_git_root = TempDir::new().unwrap();
+        let fake_git_root_path = fake_git_root.path().to_str().unwrap();
+
+        // Set up dummy get_git_root.
+        create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
+
+        // Create a TODO file that will serve as the instruction file.
+        // The simulated prompt includes three marker lines:
+        // a primary marker, an extra marker, and a CTA marker.
+        let todo_file = format!("{}/TODO.swift", fake_git_root_path);
+        let simulated_prompt = "\
+    The contents of Definition.swift is as follows:\n\nclass DummyType {}\n\n--------------------------------------------------\n// TODO: - Primary Marker\nSome extra content here\n// TODO: - Extra Marker\nMore extra content here\n// TODO: - CTA Marker\n";
+        fs::write(&todo_file, simulated_prompt).unwrap();
+        env::set_var("GET_INSTRUCTION_FILE", &todo_file);
+
+        // Dummy find_prompt_instruction returns the TODO file.
+        create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
+        // Dummy extract_instruction_content returns the primary marker.
+        create_dummy_executable(&temp_dir, "extract_instruction_content", "// TODO: - Primary Marker");
+        // Dummy get_package_root.
+        create_dummy_executable(&temp_dir, "get_package_root", "");
+        // Dummy assemble_prompt returns the simulated prompt.
+        create_dummy_executable(&temp_dir, "assemble_prompt", simulated_prompt);
+
+        // Prepend our dummy executables directory to PATH.
+        let original_path = env::var("PATH").unwrap();
+        env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
+        // Unset DISABLE_PBCOPY so that clipboard copy occurs.
+        env::remove_var("DISABLE_PBCOPY");
+
+        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.assert().success();
+
+        // Read the final prompt from the dummy clipboard file.
+        let clipboard_content = fs::read_to_string(&clipboard_file)
+            .expect("Failed to read dummy clipboard file");
+
+        // Assert that the final prompt contains the primary marker and the CTA marker,
+        // and that it does not include the extra marker.
+        assert!(clipboard_content.contains("// TODO: - Primary Marker"),
+                "Clipboard missing primary marker: {}", clipboard_content);
+        assert!(clipboard_content.contains("Can you do the TODO:- in the above code?"),
+                "Clipboard missing CTA marker: {}", clipboard_content);
+        assert!(!clipboard_content.contains("// TODO: - Extra Marker"),
+                "Clipboard should not contain extra marker: {}", clipboard_content);
 
         env::remove_var("GET_GIT_ROOT");
     }
