@@ -201,36 +201,34 @@ for file in $files; do
       fi
       echo "--------------------------------------------------"
       if [[ "$MODE" == "default" && "$file" == *.rs ]]; then
-          # For example, you might filter out inline unit test blocks here.
-          cat "$file"
-          echo -e "\n// Note: Inline unit tests not shown here for brevity."
+          # Filter out inline unit test blocks from Rust source files.
+          awk '
+          BEGIN {in_test=0; brace_count=0}
+          /^\s*#\[cfg\(test\)\]/ { in_test=1; next }
+          in_test && /^\s*mod[[:space:]]+tests[[:space:]]*\{/ { brace_count=1; next }
+          in_test {
+              n = gsub(/\{/, "{")
+              m = gsub(/\}/, "}")
+              brace_count += n - m
+              if(brace_count <= 0) { in_test=0 }
+              next
+          }
+          { print }
+          ' "$file"
+          echo -e "\n// Note: Inline unit tests have been removed for brevity."
       elif [[ "$MODE" == "unit" && "$file" == *.rs ]]; then
-          # Extract only the unit test blocks.
+          # Extract only the unit test blocks without including non-test code.
           awk '
           BEGIN { capture=0; brace_count=0 }
-          {
-              if (!capture && $0 ~ /^[[:space:]]*#\[cfg\(test\)\]/) {
-                  capture=1;
-                  next;
-              }
-              if (capture && $0 ~ /^[[:space:]]*mod[[:space:]]+tests[[:space:]]*\{/) {
-                  brace_count=1;
-                  print;
-                  next;
-              }
-              if (capture && brace_count > 0) {
-                  print;
-                  n = gsub(/\{/, "{");
-                  m = gsub(/\}/, "}");
-                  brace_count += n - m;
-                  if (brace_count <= 0) {
-                      capture=0;
-                      brace_count=0;
-                  }
-                  next;
-              }
-              if (!capture)
-                  print;
+          /^\s*#\[cfg\(test\)\]/ { capture=1; next }
+          capture && /^\s*mod[[:space:]]+tests[[:space:]]*\{/ { brace_count=1; print; next }
+          capture {
+              print;
+              n = gsub(/\{/, "{");
+              m = gsub(/\}/, "}");
+              brace_count += n - m;
+              if(brace_count <= 0) { capture=0 }
+              next
           }
           ' "$file"
           echo -e "\n// Note: Only unit test blocks have been extracted from this file."
