@@ -166,4 +166,32 @@ mod tests {
         let filtered = filter_excluded_files_lines(lines, &exclusions);
         assert_eq!(filtered, vec!["/path/to/FileB.swift".to_string()]);
     }
+    
+    #[test]
+    fn test_only_slash_after_trim() {
+        // This will cover the branch where the trimmed line ends with '/'
+        // and returns None immediately.
+        let lines = vec![
+            "   /path/to/directory/  ".to_string(),  // after trim(), still ends with '/'
+        ];
+        let exclusions: Vec<String> = vec![];
+        let filtered = filter_excluded_files_lines(lines, &exclusions);
+        // We expect an empty result because it ends with '/'
+        assert_eq!(filtered, Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_no_file_name_at_all() {
+        // This will cover the branch where path.file_name() is None.
+        // On Unix-like paths, a trailing slash is one way to cause file_name() to return None,
+        // but using just "/" also triggers it.
+        let lines = vec![
+            "/".to_string(),         // root directory => file_name() = None
+            "/path/to/".to_string(), // trailing slash => file_name() = None
+        ];
+        let exclusions: Vec<String> = vec![];
+        let filtered = filter_excluded_files_lines(lines, &exclusions);
+        // Both should be excluded because they have no basename
+        assert_eq!(filtered, Vec::<String>::new());
+    }
 }
