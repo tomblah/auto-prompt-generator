@@ -3,9 +3,8 @@ use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use anyhow::{Result, Context};
-use substring_marker_snippet_extractor;
+use substring_marker_snippet_extractor::processor::{DefaultFileProcessor, process_file_with_processor};
 use unescape_newlines::unescape_newlines;
-// Use the diff_with_branch crate function.
 use diff_with_branch::run_diff;
 
 /// Public API: assembles the final prompt from the found files and instruction content.
@@ -39,8 +38,12 @@ pub fn assemble_prompt(found_files_file: &str, _instruction_content: &str) -> Re
             .unwrap_or(&file_path)
             .to_string();
 
-        // Always use the library processing since we no longer have an external prompt processor.
-        let processed_content = match substring_marker_snippet_extractor::process_file(&file_path, Some(&todo_file_basename)) {
+        // Use the new API to process the file.
+        let processed_content = match process_file_with_processor(
+            &DefaultFileProcessor,
+            &file_path,
+            Some(&todo_file_basename)
+        ) {
             Ok(content) => content,
             Err(err) => {
                 eprintln!("Error processing {}: {}. Falling back to raw file contents.", file_path, err);
@@ -53,7 +56,7 @@ pub fn assemble_prompt(found_files_file: &str, _instruction_content: &str) -> Re
             basename, processed_content
         ));
 
-        // If DIFF_WITH_BRANCH is set, append a diff report using the diff-with crate.
+        // If DIFF_WITH_BRANCH is set, append a diff report using the diff_with_branch crate.
         if let Ok(diff_branch) = env::var("DIFF_WITH_BRANCH") {
             let diff_output = match run_diff(&file_path) {
                 Ok(Some(diff)) => diff,
