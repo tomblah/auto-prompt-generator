@@ -1119,4 +1119,33 @@ esac
 
         env::remove_var("GET_GIT_ROOT");
     }
+    
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_zero_markers() {
+        use assert_cmd::prelude::*;
+        use std::fs;
+        use tempfile::TempDir;
+        use std::env;
+        use std::process::Command;
+        use predicates::str::contains;
+
+        // Create a temporary Git root and keep it alive.
+        let fake_git_root = TempDir::new().unwrap();
+        let fake_git_root_path = fake_git_root.path().to_str().unwrap().to_string();
+        env::set_var("GET_GIT_ROOT", &fake_git_root_path);
+
+        // Create an instruction file with no TODO markers.
+        let instruction_file = fake_git_root.path().join("InstructionNoMarkers.swift");
+        fs::write(&instruction_file, "class NoMarkersHere {}").unwrap();
+        env::set_var("GET_INSTRUCTION_FILE", instruction_file.to_str().unwrap());
+
+        env::set_var("DISABLE_PBCOPY", "1");
+
+        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.assert()
+            .failure()
+            .stderr(contains("Expected exactly 2 // TODO: - markers, but found 0. Exiting."));
+        // fake_git_root is kept alive until here.
+    }
 }
