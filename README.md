@@ -8,9 +8,10 @@ Transforms your TODO comments into AI-friendly prompts with relevant contextual 
 
 1. `make`
 
-2. Add a TODO to your Swift project, e.g.: `// TODO: - something` (you must include the hyphen!)
-
-3. `generate_prompt`
+2. Add a TODO comment in your code:  
+   `// TODO: - your task here` *(include the hyphen)*
+   
+3. Run `generate_prompt` in your project
 
 4. Paste the generated prompt into your favorite AI.
 
@@ -69,5 +70,5 @@ This step-by-step process ensures that your prompt is both concise and rich with
 
 - This tool is still under active development.
 - It currently supports **Swift** projects, with only partial support for JavaScript.
-- TODO comments must be written in the exact format `// TODO: - ...` (including the hyphen) to prevent inadvertently capturing unrelated notes.
+- TODO comments must be written in the exact format `// TODO: - ...` (including the hyphen) to prevent inadvertently capturing all your other TODO's.
 - The method used to identify code “types” (such as classes, protocols, enums, etc.) is based on a simple heuristic—scanning for capitalized words and then locating their definitions—which may not capture every scenario accurately.
