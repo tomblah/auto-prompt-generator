@@ -86,4 +86,29 @@ mod tests {
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Error opening file"));
     }
+    
+    #[test]
+    fn test_extract_instruction_read_error() {
+        use std::io::Write;
+
+        // Create a temporary file and write invalid UTF-8 bytes
+        let mut temp_file = tempfile::NamedTempFile::new()
+            .expect("Failed to create temp file");
+        let invalid_utf8 = [0xFF, 0xFE, 0xFD];
+        temp_file
+            .write_all(&invalid_utf8)
+            .expect("Failed to write invalid UTF-8");
+
+        // Now attempt to extract the TODO instruction
+        let result = extract_instruction_content(temp_file.path());
+
+        // This should fail due to a read error
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("Error reading file"),
+            "Expected error message to contain 'Error reading file', got: {}",
+            err_msg
+        );
+    }
 }
