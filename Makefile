@@ -1,7 +1,7 @@
 SHELL = /bin/bash
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: build test tests clean mc mmc mmmc mmmmc mc-ut-% mc-uts-% mc-it-% mc-its-% mc-it-s-% mc-it-js-% mc-its-js-% all
+.PHONY: build test tests clean mc mmc mmmc mmmmc mc-ut-% mc-uts-% mc-its-% mc-it-s-% mc-it-js-% mc-its-js-% all
 
 # Check if Cargo is installed
 ifeq ($(shell command -v cargo 2> /dev/null),)
@@ -39,12 +39,6 @@ mc meta-context context:
 # Usage: make mc-ut-<crate> or make mc-uts-<crate>
 mc-ut-% mc-uts-%:
 	./scripts/meta-context.sh --unit-tests crates/$*
-
-# Integration Test Target:
-# Run meta-context for a specific crate's integration tests.
-# Usage: make mc-it-<crate>
-mc-it-%:
-	./scripts/meta-context.sh --integration-tests crates/$*
 
 # Swift Integration Test Targets:
 # Run meta-context for a specific crate's Swift integration tests.
