@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
-use substring_marker_snippet_extractor::{process_file, filter_substring_markers};
+use substring_marker_snippet_extractor::{filter_substring_markers};
+use substring_marker_snippet_extractor::processor::{DefaultFileProcessor, process_file_with_processor};
 
 /// Helper function to create a temporary file with the given content.
 /// Returns the full path to the temporary file.
@@ -20,7 +21,7 @@ fn test_no_markers() {
     let raw_content = "function main() {\n    console.log(\"Hello, world!\");\n}\n";
     let path = create_temp_file_with_content(raw_content);
     let file_name = path.file_name().unwrap().to_str().unwrap();
-    let result = process_file(&path, Some(file_name))
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
         .expect("process_file should succeed for file with no markers");
     assert_eq!(result, raw_content);
     fs::remove_file(&path).expect("Failed to remove temporary file");
@@ -39,7 +40,7 @@ function myFunction() {
 "#;
     let path = create_temp_file_with_content(content);
     let file_name = path.file_name().unwrap().to_str().unwrap();
-    let result = process_file(&path, Some(file_name))
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
         .expect("process_file should succeed for file with markers and TODO inside marker block");
     // The expected output should be just the filtered marker content.
     let expected = filter_substring_markers(content);
@@ -63,7 +64,7 @@ function myFunction() {
 "#;
     let path = create_temp_file_with_content(content);
     let file_name = path.file_name().unwrap().to_str().unwrap();
-    let result = process_file(&path, Some(file_name))
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
         .expect("process_file should succeed for file with markers and TODO outside marker block");
 
     // Compute the filtered content portion.
@@ -90,7 +91,7 @@ function myFunction() {
 fn test_file_not_found() {
     // process_file should return an error when the file does not exist.
     let path = PathBuf::from("non_existent_file.js");
-    let result = process_file(&path, Some("non_existent_file.js"));
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some("non_existent_file.js"));
     assert!(result.is_err(), "process_file should error for a non-existent file");
 }
 
@@ -113,7 +114,7 @@ line c
 "#;
     let path = create_temp_file_with_content(content);
     let file_name = path.file_name().unwrap().to_str().unwrap();
-    let result = process_file(&path, Some(file_name))
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
         .expect("process_file should succeed for file with multiple marker blocks");
     
     // In this scenario, since there is no TODO marker at all,
