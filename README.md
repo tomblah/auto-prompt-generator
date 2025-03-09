@@ -1,6 +1,8 @@
 # Auto Prompt Generator
 
-Turns your **TODO**'s into AI-friendly **prompts** by smartly including surrounding **context**.
+Transforms your TODO comments into AI-friendly prompts with relevant contextual code snippets.
+
+*(NB: Swift projects only at the moment)*
 
 ## Getting Started
 
