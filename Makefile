@@ -1,7 +1,7 @@
 SHELL = /bin/bash
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: build test tests clean mc meta-context context mmc mmmc ut-% uts-% its-% itss-% itjs-% itsjs-% all
+.PHONY: build test tests clean mc meta-context context mmc mmmc mmmmc ut-% uts-% its-% itss-% itjs-% itsjs-% all
 
 
 # Check if Cargo is installed
@@ -68,6 +68,17 @@ mmmc:
 	  cat Makefile | pbcopy && echo "Makefile copied successfully using pbcopy."; \
 	elif command -v xclip >/dev/null; then \
 	  cat Makefile | xclip -selection clipboard && echo "Makefile copied successfully using xclip."; \
+	else \
+	  echo "Error: No clipboard tool found (requires pbcopy or xclip)"; exit 1; \
+	fi
+
+# Copy a helpful AI prompt
+mmmmc:
+	@echo "Copying AI prompt 'how do I use make?' to clipboard..."
+	@if command -v pbcopy >/dev/null; then \
+	  echo "how do I use make?" | pbcopy && echo "AI prompt copied successfully using pbcopy."; \
+	elif command -v xclip >/dev/null; then \
+	  echo "how do I use make?" | xclip -selection clipboard && echo "AI prompt copied successfully using xclip."; \
 	else \
 	  echo "Error: No clipboard tool found (requires pbcopy or xclip)"; exit 1; \
 	fi
