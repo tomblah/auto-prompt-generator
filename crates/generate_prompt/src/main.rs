@@ -1119,4 +1119,43 @@ esac
 
         env::remove_var("GET_GIT_ROOT");
     }
+    
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_js_in_non_singular_mode() {
+        use assert_cmd::prelude::*;
+        use std::fs;
+        use tempfile::TempDir;
+        use std::env;
+        use std::process::Command;
+
+        // Create a temp directory for our dummy executables.
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create a fake Git root.
+        let fake_git_root = TempDir::new().unwrap();
+        let fake_git_root_path = fake_git_root.path().to_str().unwrap();
+
+        // Force GET_GIT_ROOT to the fake git root.
+        env::set_var("GET_GIT_ROOT", fake_git_root_path);
+
+        // Create a `.js` file that includes a TODO marker.
+        let todo_js_file = fake_git_root.path().join("TODO.js");
+        fs::write(&todo_js_file, "// TODO: - Fix JavaScript bug\n").unwrap();
+
+        // Force the instruction file override so we pick up our .js file.
+        env::set_var("GET_INSTRUCTION_FILE", &todo_js_file);
+
+        // Prepend your existing dummy “tools” folder or create your own dummy binaries as needed.
+        // (If you already have the typical create_dummy_executable helper, use it here.)
+
+        // For demonstration, we disable clipboard copy:
+        env::set_var("DISABLE_PBCOPY", "1");
+
+        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        // Intentionally NOT passing --singular to trigger the .js + non-singular logic.
+        cmd.assert()
+            .success()
+            .stderr(predicates::str::contains("WARNING: JavaScript support is beta – enforcing singular mode"));
+    }
 }
