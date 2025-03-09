@@ -201,9 +201,24 @@ for file in $files; do
       fi
       echo "--------------------------------------------------"
       if [[ "$MODE" == "default" && "$file" == *.rs ]]; then
-          # For example, you might filter out inline unit test blocks here.
-          cat "$file"
-          echo -e "\n// Note: Inline unit tests not shown here for brevity."
+          # Filter out inline unit test blocks from Rust source files.
+          awk '
+          BEGIN {in_test=0; brace_count=0}
+          # When encountering a cfg(test) attribute, begin skipping.
+          /^\s*#\[cfg\(test\)\]/ { in_test=1; next }
+          # When entering the test module, start counting braces.
+          in_test && /^\s*mod tests\s*\{/ { brace_count=1; next }
+          # If inside a test block, update brace count and skip lines.
+          in_test {
+              n = gsub(/{/,"{")
+              m = gsub(/}/,"}")
+              brace_count += n - m
+              if (brace_count <= 0) { in_test=0 }
+              next
+          }
+          { print }
+          ' "$file"
+          echo -e "\n// Note: Inline unit tests have been removed for brevity."
       elif [[ "$MODE" == "unit" && "$file" == *.rs ]]; then
           # Extract only the unit test blocks.
           awk '
