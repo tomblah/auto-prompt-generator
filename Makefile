@@ -1,7 +1,7 @@
 SHELL = /bin/bash
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: build test tests clean mc mmc mmmc mmmmc mc-ut-% mc-uts-% mc-its-% mc-it-s-% mc-it-js-% mc-its-js-% all
+.PHONY: build test tests coverage clean mc mmc mmmc mmmmc mc-ut-% mc-uts-% mc-its-% mc-it-s-% mc-it-js-% mc-its-js-% all
 
 # Check if Cargo is installed
 ifeq ($(shell command -v cargo 2> /dev/null),)
@@ -22,6 +22,10 @@ test tests:
 	    echo "Running tests in package: $$package_dir"; \
 	    cargo test --manifest-path "$$manifest" -- --test-threads=1; \
 	done < <(find crates -name Cargo.toml -print0)
+
+coverage:
+	@echo "Generating code coverage reports with cargo tarpaulin..."
+	cargo tarpaulin --workspace --out Html
 
 # Clean up the Rust build artifacts.
 clean:
@@ -87,4 +91,4 @@ mmmmc:
 	fi
 
 # Default target: cleans artifacts, builds all Rust components, and runs tests.
-all: clean build test
+all: clean build test coverage

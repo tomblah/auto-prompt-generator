@@ -1,9 +1,110 @@
 use regex::Regex;
 use std::fs;
-use std::mem;
 use std::path::Path;
+use std::mem;
 use tree_sitter::{Node, Parser};
 use tree_sitter_swift;
+
+/// ---
+/// # Production Code: Using a Parser Abstraction
+/// ---
+
+/// The trait that abstracts Swift parsing functionality.
+pub trait SwiftParser {
+    /// Parses the given content and returns a SwiftParseTree on success.
+    fn parse_content(&mut self, content: &str) -> Option<SwiftParseTree>;
+}
+
+/// A simplified parse tree.
+#[derive(Clone)]
+pub struct SwiftParseTree {
+    pub root: SwiftNode,
+}
+
+/// A simplified node extracted from the parse tree.
+#[derive(Clone)]
+pub struct SwiftNode {
+    pub kind: String,
+    pub start_byte: usize,
+    pub children: Vec<SwiftNode>,
+    /// The text of the node’s “name” child (if any). In production this is filled by
+    /// examining the tree‑sitter node’s child by field “name”.
+    pub name: Option<String>,
+}
+
+impl SwiftNode {
+    /// Convert a tree_sitter::Node into our simplified SwiftNode.
+    fn from_tree_sitter_node(node: Node, content: &str) -> Self {
+        let kind = node.kind().to_string();
+        let start_byte = node.start_byte();
+        let name = node.child_by_field_name("name")
+            .and_then(|n| n.utf8_text(content.as_bytes()).ok())
+            .map(|s| s.to_string());
+        let mut children = Vec::new();
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.is_named() {
+                children.push(SwiftNode::from_tree_sitter_node(child, content));
+            }
+        }
+        SwiftNode { kind, start_byte, children, name }
+    }
+}
+
+/// A real implementation of SwiftParser that uses tree-sitter.
+pub struct RealSwiftParser {
+    parser: Parser,
+}
+
+impl RealSwiftParser {
+    pub fn new() -> Option<Self> {
+        let mut parser = Parser::new();
+        // SAFETY: transmute tree_sitter_swift::LANGUAGE into tree_sitter::Language.
+        let lang: tree_sitter::Language = unsafe { mem::transmute(tree_sitter_swift::LANGUAGE) };
+        parser.set_language(&lang).ok()?;
+        Some(Self { parser })
+    }
+}
+
+impl SwiftParser for RealSwiftParser {
+    fn parse_content(&mut self, content: &str) -> Option<SwiftParseTree> {
+        let tree = self.parser.parse(content, None)?;
+        let root = SwiftNode::from_tree_sitter_node(tree.root_node(), content);
+        Some(SwiftParseTree { root })
+    }
+}
+
+/// Given a parse tree (via our SwiftParser abstraction), traverse the tree to find
+/// the last type declaration ("class_declaration", "struct_declaration", or "enum_declaration")
+/// whose start_byte is at or before the TODO marker. Returns the name if available.
+fn find_last_type_declaration(node: &SwiftNode, todo_offset: usize) -> Option<String> {
+    let mut candidate = None;
+    if (node.kind == "class_declaration" || node.kind == "struct_declaration" || node.kind == "enum_declaration")
+        && node.start_byte <= todo_offset
+    {
+        candidate = node.name.clone();
+    }
+    for child in &node.children {
+        if let Some(child_candidate) = find_last_type_declaration(child, todo_offset) {
+            candidate = Some(child_candidate);
+        }
+    }
+    candidate
+}
+
+/// A helper function that uses any SwiftParser to extract the enclosing type name.
+pub fn extract_enclosing_type_with_parser(
+    content: &str,
+    todo_offset: usize,
+    parser: &mut impl SwiftParser,
+) -> Option<String> {
+    let parse_tree = parser.parse_content(content)?;
+    find_last_type_declaration(&parse_tree.root, todo_offset)
+}
+
+/// ---
+/// # Public API
+/// ---
 
 /// Extracts the enclosing type (class, struct, or enum) from a Swift file.
 /// Scans until a line containing "// TODO: - " is encountered (or the end of the file if none is found).
@@ -14,12 +115,14 @@ pub fn extract_enclosing_type(file_path: &str) -> Result<String, String> {
     let content = fs::read_to_string(file_path)
         .map_err(|err| format!("Error reading file {}: {}", file_path, err))?;
     
-    // If no TODO marker is found, use the full content.
+    // Determine the cutoff (TODO marker position).
     let todo_offset = content.find("// TODO: - ").unwrap_or(content.len());
-    
-    // Attempt extraction using Tree‑sitter.
-    if let Some(ty) = extract_enclosing_type_tree_sitter(&content, todo_offset) {
-        return Ok(ty);
+
+    // First, try to extract using our SwiftParser abstraction.
+    if let Some(mut parser) = RealSwiftParser::new() {
+        if let Some(ty) = extract_enclosing_type_with_parser(&content, todo_offset, &mut parser) {
+            return Ok(ty);
+        }
     }
     
     // Fallback: use a regex-based scan over lines until the TODO marker.
@@ -51,48 +154,19 @@ pub fn extract_enclosing_type(file_path: &str) -> Result<String, String> {
     }
 }
 
-/// Attempts to extract the type name using Tree‑sitter.
-/// It parses the Swift file and looks for type declarations (class, struct, or enum)
-/// whose start is before the TODO marker. If found, it extracts the identifier
-/// from the child field "name". Returns None if Tree‑sitter fails or no matching type is found.
-fn extract_enclosing_type_tree_sitter(content: &str, todo_offset: usize) -> Option<String> {
-    let mut parser = Parser::new();
-    // Use the LANGUAGE constant (via transmute) to obtain a tree_sitter::Language.
-    let lang: tree_sitter::Language = unsafe { mem::transmute(tree_sitter_swift::LANGUAGE) };
-    parser.set_language(&lang).ok()?;
-    let tree = parser.parse(content, None)?;
-    let root_node = tree.root_node();
-    
-    let mut candidate: Option<Node> = None;
-    // Iterate over all named descendant nodes.
-    for node in get_named_descendants(root_node) {
-        let kind = node.kind();
-        if kind == "class_declaration" || kind == "struct_declaration" || kind == "enum_declaration" {
-            // Consider this declaration if its start is before the cutoff.
-            if node.start_byte() <= todo_offset {
-                candidate = Some(node);
-            }
-        }
-    }
-    candidate.and_then(|node| {
-        node.child_by_field_name("name")
-            .and_then(|name_node| name_node.utf8_text(content.as_bytes()).ok())
-            .map(|s| s.to_string())
-    })
-}
+/// ---
+/// # Legacy Functions (No Longer Used)
+/// ---
 
-/// Recursively collects all named descendant nodes of the given node.
-fn get_named_descendants<'a>(node: Node<'a>) -> Vec<Node<'a>> {
-    let mut result = Vec::new();
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.is_named() {
-            result.push(child);
-            result.extend(get_named_descendants(child));
-        }
-    }
-    result
-}
+/*
+fn extract_enclosing_type_tree_sitter(content: &str, todo_offset: usize) -> Option<String> { ... }
+
+fn get_named_descendants<'a>(node: Node<'a>) -> Vec<Node<'a>> { ... }
+*/
+
+/// ---
+/// # Tests
+/// ---
 
 #[cfg(test)]
 mod tests {
@@ -110,7 +184,6 @@ class MyAwesomeClass {
 struct HelperStruct {
     // TODO: - Implement something
 }";
-        // Write the content to a temporary file.
         let tmp_dir = tempfile::tempdir().unwrap();
         let file_path = tmp_dir.path().join("Test.swift");
         fs::write(&file_path, content).unwrap();
@@ -168,11 +241,8 @@ struct LateStruct {
         assert_eq!(extracted, "Empty");
     }
 
-    // --- Additional Tests ---
-
     #[test]
     fn test_no_todo_marker_returns_last_type() {
-        // Test a file with several type declarations but without any TODO marker.
         let content = "\
 class FirstClass {
     // Some code here
@@ -183,19 +253,17 @@ struct SecondStruct {
 enum ThirdEnum {
     // Some code here
 }";
-        // Expect the last type ("ThirdEnum") to be returned.
         let tmp_dir = tempfile::tempdir().unwrap();
         let file_path = tmp_dir.path().join("NoTodo.swift");
         fs::write(&file_path, content).unwrap();
 
+        // Expect the last type ("ThirdEnum") to be returned.
         let extracted = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
         assert_eq!(extracted, "ThirdEnum");
     }
 
     #[test]
     fn test_type_on_same_line_as_todo_marker() {
-        // Test a file where the type declaration appears on the same line as the TODO marker.
-        // In this case the line is skipped before updating the last_type, and the function should fall back to the file's basename.
         let content = "class MyClass { // TODO: - Do something important }";
         let tmp_dir = tempfile::tempdir().unwrap();
         let file_path = tmp_dir.path().join("SameLine.swift");
@@ -208,12 +276,285 @@ enum ThirdEnum {
 
     #[test]
     fn test_nonexistent_file_error() {
-        // Attempt to call extract_enclosing_type on a file that doesn't exist.
         let file_path = "/path/to/nonexistent/file.swift";
         let result = extract_enclosing_type(file_path);
         assert!(result.is_err());
-        // Optionally, check that the error message contains expected text.
         let err_msg = result.err().unwrap();
         assert!(err_msg.contains("Error reading file"));
+    }
+    
+    #[test]
+    fn test_regex_fallback_with_invalid_swift() {
+        let content = "\
+    This is not valid Swift code.
+    struct ShouldNotBeFound {
+        // TODO: - A marker that comes too early
+    }";
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let file_path = tmp_dir.path().join("InvalidSwift.swift");
+        fs::write(&file_path, content).unwrap();
+
+        let extracted = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
+        assert_eq!(extracted, "ShouldNotBeFound");
+    }
+    
+    #[test]
+    fn test_no_type_declaration() {
+        let content = r#"
+            // Just some Swift comments and code.
+            // TODO: - marker
+        "#;
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let file_path = tmp_dir.path().join("NoType.swift");
+        fs::write(&file_path, content).unwrap();
+        
+        let result = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
+        // Since no type is found, we expect it to fall back to the file stem ("NoType").
+        assert_eq!(result, "NoType");
+    }
+    
+    #[test]
+    fn test_regex_fallback_with_invalid_swift_variant() {
+        let content = "\
+    This is not valid Swift code.
+    struct ShouldNotBeFound {
+        // TODO: - A marker that comes too early
+    }";
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let file_path = tmp_dir.path().join("InvalidSwift.swift");
+        fs::write(&file_path, content).unwrap();
+
+        let result = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
+        assert_eq!(result, "ShouldNotBeFound");
+    }
+    
+    #[test]
+    fn test_treesitter_finds_class_struct() {
+        let content = r#"
+        class OuterClass {
+            // Some code
+        }
+
+        struct NestedStruct {
+            // Some code
+        }
+
+        // TODO: - marker
+        "#;
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let file_path = tmp_dir.path().join("TreeSitterValid.swift");
+        fs::write(&file_path, content).unwrap();
+
+        // Expect the last type before the marker to be "NestedStruct"
+        let extracted = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
+        assert_eq!(extracted, "NestedStruct");
+    }
+
+    #[derive(Default)]
+    struct MockSwiftParserFailure;
+
+    impl SwiftParser for MockSwiftParserFailure {
+        fn parse_content(&mut self, _content: &str) -> Option<SwiftParseTree> {
+            None
+        }
+    }
+
+    #[test]
+    fn test_extract_enclosing_type_with_parser_returns_none() {
+        let content = "irrelevant";
+        let mut parser = MockSwiftParserFailure::default();
+        let todo_offset = content.len();
+        let result = extract_enclosing_type_with_parser(content, todo_offset, &mut parser);
+        // This should simulate the failure branch, without invoking unsafe code.
+        assert!(result.is_none());
+    }
+
+    #[derive(Clone)]
+    struct MockParserNoName;
+
+    impl SwiftParser for MockParserNoName {
+        fn parse_content(&mut self, _content: &str) -> Option<SwiftParseTree> {
+            Some(SwiftParseTree {
+                root: SwiftNode {
+                    kind: "class_declaration".to_string(),
+                    start_byte: 0,
+                    name: None, // Force missing name
+                    children: vec![],
+                },
+            })
+        }
+    }
+
+    #[test]
+    fn test_class_declaration_with_no_name() {
+        let content = "class { } // missing name, or mock scenario";
+        let todo_offset = content.len();
+        let mut parser = MockParserNoName;
+        let result = extract_enclosing_type_with_parser(content, todo_offset, &mut parser);
+        // The parser sees a class_declaration but no name => find_last_type_declaration returns None.
+        assert_eq!(result, None);
+    }
+
+    // 1) A mock parser that always returns None.
+    #[derive(Default)]
+    struct MockSwiftParserNone;
+    impl SwiftParser for MockSwiftParserNone {
+        fn parse_content(&mut self, _content: &str) -> Option<SwiftParseTree> {
+            None
+        }
+    }
+
+    #[test]
+    fn test_parse_content_returns_none() {
+        let content = "irrelevant";
+        let mut parser = MockSwiftParserNone::default();
+        let todo_offset = content.len();
+        let result = extract_enclosing_type_with_parser(content, todo_offset, &mut parser);
+        // We expect None, which covers the path in `extract_enclosing_type_with_parser`
+        // where parse_tree = None.
+        assert_eq!(result, None);
+    }
+
+    // 2) A mock parser with a single node whose start_byte is AFTER the TODO offset.
+    struct MockParserStartByteAfterTodo;
+    impl SwiftParser for MockParserStartByteAfterTodo {
+        fn parse_content(&mut self, _content: &str) -> Option<SwiftParseTree> {
+            Some(SwiftParseTree {
+                root: SwiftNode {
+                    kind: "struct_declaration".to_string(),
+                    start_byte: 200,
+                    name: Some("LateStruct".to_string()),
+                    children: vec![],
+                },
+            })
+        }
+    }
+
+    #[test]
+    fn test_type_starts_after_todo_offset() {
+        let content = "class EarlyClass {} // no TODO yet...";
+        // We'll pretend the TODO offset is 100, so the struct at start_byte=200 is skipped.
+        let todo_offset = 100;
+        let mut parser = MockParserStartByteAfterTodo;
+        let result = extract_enclosing_type_with_parser(content, todo_offset, &mut parser);
+        // Because the only node is after the offset, find_last_type_declaration should return None.
+        assert_eq!(result, None);
+    }
+
+    // 3) A mock parser that simulates multiple children, including an unnamed node.
+    struct MockParserMultipleChildren;
+    impl SwiftParser for MockParserMultipleChildren {
+        fn parse_content(&mut self, _content: &str) -> Option<SwiftParseTree> {
+            Some(SwiftParseTree {
+                root: SwiftNode {
+                    kind: "class_declaration".to_string(),
+                    start_byte: 0,
+                    name: Some("Outer".to_string()),
+                    children: vec![
+                        // A child that's not recognized as a type
+                        SwiftNode {
+                            kind: "function_declaration".to_string(),
+                            start_byte: 10,
+                            name: Some("doSomething".to_string()),
+                            children: vec![],
+                        },
+                        // A nested struct_declaration
+                        SwiftNode {
+                            kind: "struct_declaration".to_string(),
+                            start_byte: 20,
+                            name: Some("Inner".to_string()),
+                            children: vec![],
+                        },
+                    ],
+                },
+            })
+        }
+    }
+
+    #[test]
+    fn test_multiple_children_recursion() {
+        let content = "class Outer { func doSomething() {} struct Inner {} }";
+        let todo_offset = content.len();
+        let mut parser = MockParserMultipleChildren;
+        let result = extract_enclosing_type_with_parser(content, todo_offset, &mut parser);
+        // The last type encountered is "Inner".
+        assert_eq!(result, Some("Inner".to_string()));
+    }
+
+    // 4) A mock parser that simulates an invalid UTF-8 scenario
+    //    or simply a "class_declaration" but name is None.
+    struct MockParserNoNameInvalidUtf8;
+    impl SwiftParser for MockParserNoNameInvalidUtf8 {
+        fn parse_content(&mut self, _content: &str) -> Option<SwiftParseTree> {
+            Some(SwiftParseTree {
+                root: SwiftNode {
+                    kind: "class_declaration".to_string(),
+                    start_byte: 0,
+                    // Pretend we tried utf8_text and it failed => name is None
+                    name: None,
+                    children: vec![],
+                },
+            })
+        }
+    }
+
+    #[test]
+    fn test_class_declaration_missing_name() {
+        let content = "class {} // invalid syntax but let's mock it anyway";
+        let todo_offset = content.len();
+        let mut parser = MockParserNoNameInvalidUtf8;
+        let result = extract_enclosing_type_with_parser(content, todo_offset, &mut parser);
+        // We found a class_declaration but there's no name => returns None.
+        assert_eq!(result, None);
+    }
+
+    struct MockParserSkipType;
+
+    impl SwiftParser for MockParserSkipType {
+        fn parse_content(&mut self, _content: &str) -> Option<SwiftParseTree> {
+            Some(SwiftParseTree {
+                root: SwiftNode {
+                    kind: "struct_declaration".to_string(),
+                    start_byte: 300,
+                    name: Some("LateStruct".to_string()),
+                    children: vec![],
+                },
+            })
+        }
+    }
+
+    #[test]
+    fn test_skip_type_after_todo_offset() {
+        let content = "class EarlyClass {} // ...no TODO in content, but let's pretend it's earlier";
+        let todo_offset = 100;
+        let mut parser = MockParserSkipType;
+        let result = extract_enclosing_type_with_parser(content, todo_offset, &mut parser);
+        // The single struct_declaration starts at 300, which is after 100 => should be skipped => None
+        assert_eq!(result, None);
+    }
+
+    struct MockParserInvalidUtf8;
+
+    impl SwiftParser for MockParserInvalidUtf8 {
+        fn parse_content(&mut self, _content: &str) -> Option<SwiftParseTree> {
+            Some(SwiftParseTree {
+                root: SwiftNode {
+                    kind: "class_declaration".to_string(),
+                    start_byte: 0,
+                    name: None, // pretend we tried to parse it and it failed
+                    children: vec![],
+                },
+            })
+        }
+    }
+
+    #[test]
+    fn test_class_declaration_invalid_utf8_name() {
+        let mut parser = MockParserInvalidUtf8;
+        let content = "class ???";
+        let todo_offset = content.len();
+        let result = extract_enclosing_type_with_parser(content, todo_offset, &mut parser);
+        // No name => None
+        assert_eq!(result, None);
     }
 }
