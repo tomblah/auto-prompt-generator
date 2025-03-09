@@ -1,7 +1,7 @@
 SHELL = /bin/bash
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: build test tests clean mc meta-context context mmc ut-% uts-% its-% itss-% itjs-% itsjs-% all
+.PHONY: build test tests clean mc meta-context context mmc mmmc ut-% uts-% its-% itss-% itjs-% itsjs-% all
 
 
 # Check if Cargo is installed
@@ -57,6 +57,17 @@ mmc:
 	  cat scripts/meta-context.sh | pbcopy && echo "Copied to clipboard successfully using pbcopy."; \
 	elif command -v xclip >/dev/null; then \
 	  cat scripts/meta-context.sh | xclip -selection clipboard && echo "Copied to clipboard successfully using xclip."; \
+	else \
+	  echo "Error: No clipboard tool found (requires pbcopy or xclip)"; exit 1; \
+	fi
+	
+# Copy the Makefile to the clipboard and report success.
+mmmc:
+	@echo "Copying Makefile to clipboard..."
+	@if command -v pbcopy >/dev/null; then \
+	  cat Makefile | pbcopy && echo "Makefile copied successfully using pbcopy."; \
+	elif command -v xclip >/dev/null; then \
+	  cat Makefile | xclip -selection clipboard && echo "Makefile copied successfully using xclip."; \
 	else \
 	  echo "Error: No clipboard tool found (requires pbcopy or xclip)"; exit 1; \
 	fi
