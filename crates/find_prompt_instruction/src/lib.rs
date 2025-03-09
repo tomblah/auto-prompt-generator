@@ -55,10 +55,7 @@ impl<'a> PromptInstructionFinder<'a> {
                 // Open the file and check if any line contains the TODO marker.
                 if let Ok(file) = fs::File::open(path) {
                     let reader = io::BufReader::new(file);
-                    reader
-                        .lines()
-                        .filter_map(Result::ok)
-                        .any(|line| line.contains(self.todo_marker))
+                    reader.lines().filter_map(Result::ok).any(|line| line.contains(self.todo_marker))
                 } else {
                     false
                 }
@@ -86,6 +83,26 @@ impl<'a> PromptInstructionFinder<'a> {
             })
             .expect("At least one file exists")
             .clone();
+
+        // Check the chosen file: if it has more than one marker, exit with an error.
+        let content = fs::read_to_string(&chosen_file)?;
+        let marker_lines: Vec<String> = content
+            .lines()
+            .filter(|line| line.contains(self.todo_marker))
+            .map(|line| line.trim().to_string())
+            .collect();
+        let marker_count = marker_lines.len();
+        if marker_count > 1 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "Ambiguous TODO marker: file {} contains {} markers:\n{}",
+                    chosen_file.display(),
+                    marker_count,
+                    marker_lines.join("\n")
+                ),
+            ));
+        }
 
         if self.verbose {
             eprintln!("[VERBOSE] {} matching file(s) found.", matching_files.len());
@@ -384,5 +401,75 @@ mod internal_tests {
         let mut perms = fs::metadata(&unreadable).unwrap().permissions();
         perms.set_mode(0o644);
         fs::set_permissions(&unreadable, perms).unwrap();
+    }
+    
+    #[test]
+    fn test_multiple_markers_in_most_recent_file() {
+        let dir = tempdir().unwrap();
+        let ambiguous_file = dir.path().join("ambiguous.swift");
+        let unambiguous_file = dir.path().join("clean.swift");
+
+        // ambiguous_file (most recent) has two markers.
+        fs::write(
+            &ambiguous_file,
+            "Content\n// TODO: - First marker\nSome intermediate text\n// TODO: - Second marker\nExtra",
+        )
+        .unwrap();
+
+        // unambiguous_file (older) has one marker.
+        fs::write(
+            &unambiguous_file,
+            "Content\n// TODO: - Only marker\nExtra",
+        )
+        .unwrap();
+
+        // Set modification times: ambiguous_file is more recent.
+        let older_time = FileTime::from_unix_time(1000, 0);
+        let newer_time = FileTime::from_unix_time(2000, 0);
+        set_file_mtime(&unambiguous_file, older_time).unwrap();
+        set_file_mtime(&ambiguous_file, newer_time).unwrap();
+
+        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false);
+        assert!(result.is_err(), "Expected error due to multiple markers in most recent file");
+
+        if let Err(e) = result {
+            let err_msg = e.to_string();
+            // Check that the error message indicates ambiguity.
+            assert!(err_msg.to_lowercase().contains("ambiguous"), "Error message should indicate ambiguity");
+            // Check that both marker lines (trimmed) appear in the error message.
+            assert!(err_msg.contains("// TODO: - First marker"), "Expected first marker line in error");
+            assert!(err_msg.contains("// TODO: - Second marker"), "Expected second marker line in error");
+        }
+    }
+
+    #[test]
+    fn test_most_recent_unambiguous_over_ambiguous_older() {
+        let dir = tempdir().unwrap();
+        let ambiguous_file = dir.path().join("ambiguous.swift");
+        let unambiguous_file = dir.path().join("clean.swift");
+
+        // ambiguous_file (older) has two markers.
+        fs::write(
+            &ambiguous_file,
+            "Content\n// TODO: - First marker\nSome text\n// TODO: - Second marker\nExtra",
+        )
+        .unwrap();
+
+        // unambiguous_file (most recent) has one marker.
+        fs::write(
+            &unambiguous_file,
+            "Other content\n// TODO: - Only marker\nExtra",
+        )
+        .unwrap();
+
+        // Set modification times: ambiguous_file older, unambiguous_file more recent.
+        let older_time = FileTime::from_unix_time(1000, 0);
+        let newer_time = FileTime::from_unix_time(2000, 0);
+        set_file_mtime(&ambiguous_file, older_time).unwrap();
+        set_file_mtime(&unambiguous_file, newer_time).unwrap();
+
+        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false).unwrap();
+        // Even though the older file is ambiguous, the most recent file is unambiguous so it should be chosen.
+        assert_eq!(result, unambiguous_file, "Expected the most recent unambiguous file to be chosen");
     }
 }
