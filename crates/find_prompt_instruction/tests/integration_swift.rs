@@ -81,4 +81,80 @@ mod integration_swift {
             .expect("Expected to find a file even with verbose enabled");
         assert_eq!(result, file_path);
     }
+    
+    /// Test that if the most recent file contains multiple TODO markers,
+    /// the function returns an error and the error message includes the trimmed marker lines.
+    #[test]
+    fn test_find_prompt_instruction_error_on_ambiguous_marker_in_most_recent() {
+        let dir = tempdir().unwrap();
+        let ambiguous_file = dir.path().join("AmbiguousInstruction.swift");
+        let unambiguous_file = dir.path().join("CleanInstruction.swift");
+
+        // ambiguous_file (most recent) has two markers.
+        let ambiguous_content = "\
+public func ambiguous() {}\n\
+// TODO: - First marker\n\
+Some intermediate text\n\
+// TODO: - Second marker\n\
+Extra text";
+        fs::write(&ambiguous_file, ambiguous_content).unwrap();
+
+        // unambiguous_file (older) has one marker.
+        let unambiguous_content = "\
+public func clean() {}\n\
+// TODO: - Only marker\n\
+Extra text";
+        fs::write(&unambiguous_file, unambiguous_content).unwrap();
+
+        // Set modification times: ambiguous_file is more recent.
+        let older_time = FileTime::from_unix_time(1000, 0);
+        let newer_time = FileTime::from_unix_time(2000, 0);
+        set_file_mtime(&unambiguous_file, older_time).unwrap();
+        set_file_mtime(&ambiguous_file, newer_time).unwrap();
+
+        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false);
+        assert!(result.is_err(), "Expected error due to multiple markers in most recent file");
+
+        if let Err(e) = result {
+            let err_msg = e.to_string();
+            assert!(err_msg.to_lowercase().contains("ambiguous"), "Error message should indicate ambiguity");
+            assert!(err_msg.contains("// TODO: - First marker"), "Error message should include the first marker");
+            assert!(err_msg.contains("// TODO: - Second marker"), "Error message should include the second marker");
+        }
+    }
+
+    /// Test that if an older file is ambiguous but the most recent file is unambiguous,
+    /// the unambiguous file is returned.
+    #[test]
+    fn test_find_prompt_instruction_selects_most_recent_unambiguous_file() {
+        let dir = tempdir().unwrap();
+        let ambiguous_file = dir.path().join("AmbiguousInstruction.swift");
+        let unambiguous_file = dir.path().join("CleanInstruction.swift");
+
+        // ambiguous_file (older) has two markers.
+        let ambiguous_content = "\
+public func ambiguous() {}\n\
+// TODO: - First marker\n\
+Some text\n\
+// TODO: - Second marker\n\
+Extra text";
+        fs::write(&ambiguous_file, ambiguous_content).unwrap();
+
+        // unambiguous_file (most recent) has one marker.
+        let unambiguous_content = "\
+public func clean() {}\n\
+// TODO: - Only marker\n\
+Extra text";
+        fs::write(&unambiguous_file, unambiguous_content).unwrap();
+
+        // Set modification times: ambiguous_file older, unambiguous_file more recent.
+        let older_time = FileTime::from_unix_time(1000, 0);
+        let newer_time = FileTime::from_unix_time(2000, 0);
+        set_file_mtime(&ambiguous_file, older_time).unwrap();
+        set_file_mtime(&unambiguous_file, newer_time).unwrap();
+
+        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false)
+            .expect("Expected to select the most recent unambiguous file");
+        assert_eq!(result, unambiguous_file, "Expected the unambiguous file to be selected");
+    }
 }
