@@ -1,3 +1,4 @@
 **/.DS_Store
 **/target/
 lcov.info
+tarpaulin-report.html
