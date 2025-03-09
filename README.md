@@ -16,7 +16,7 @@ Transforms your TODO comments into AI-friendly prompts with relevant contextual 
 
 ## Legacy
 
-Some workplaces won't allow you to build this into a binary. Therefore, use the scripts which kinda do the same thing: https://github.com/tomblah/auto-prompt-generator/tree/legacy
+Some workplaces won't allow you to build this into a binary. Therefore, use the legacy shell scripts which kinda do the same thing: https://github.com/tomblah/auto-prompt-generator/tree/legacy
 
 ## CLI Options
 
