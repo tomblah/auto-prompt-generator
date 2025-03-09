@@ -512,5 +512,3 @@ mod tests {
         env::set_var("PATH", original_path);
     }
 }
-
-// Note: Only unit test blocks have been extracted from this file.
