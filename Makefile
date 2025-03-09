@@ -1,8 +1,8 @@
 SHELL = /bin/bash
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: build test tests clean mc meta-context context \
-        ut-% uts-% its-% itss-% itjs-% itsjs-% all
+.PHONY: build test tests clean mc meta-context context mmc ut-% uts-% its-% itss-% itjs-% itsjs-% all
+
 
 # Check if Cargo is installed
 ifeq ($(shell command -v cargo 2> /dev/null),)
@@ -49,6 +49,17 @@ its-% itss-%:
 # Usage (aliases): make itjs-cratename or itsjs-cratename
 itjs-% itsjs-%:
 	./scripts/meta-context.sh --integration-tests-js crates/$*
+	
+# Copy the meta-context script to the clipboard and report success.
+mmc:
+	@echo "Copying scripts/meta-context.sh to clipboard..."
+	@if command -v pbcopy >/dev/null; then \
+	  cat scripts/meta-context.sh | pbcopy && echo "Copied to clipboard successfully using pbcopy."; \
+	elif command -v xclip >/dev/null; then \
+	  cat scripts/meta-context.sh | xclip -selection clipboard && echo "Copied to clipboard successfully using xclip."; \
+	else \
+	  echo "Error: No clipboard tool found (requires pbcopy or xclip)"; exit 1; \
+	fi
 
 # Default target: cleans artifacts, builds all Rust components, and runs tests.
 all: clean build test
