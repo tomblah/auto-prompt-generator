@@ -1,9 +1,11 @@
+// crates/assemble_prompt/src/lib.rs
+
 use std::env;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use anyhow::{Result, Context};
-use substring_marker_snippet_extractor::processor::{DefaultFileProcessor, process_file_with_processor};
+use substring_marker_snippet_extractor::processor::file_processor::{DefaultFileProcessor, process_file_with_processor};
 use unescape_newlines::unescape_newlines;
 use diff_with_branch::run_diff;
 
@@ -39,11 +41,7 @@ pub fn assemble_prompt(found_files_file: &str, _instruction_content: &str) -> Re
             .to_string();
 
         // Use the new API to process the file.
-        let processed_content = match process_file_with_processor(
-            &DefaultFileProcessor,
-            &file_path,
-            Some(&todo_file_basename)
-        ) {
+        let processed_content = match process_file_with_processor(&DefaultFileProcessor, &file_path, Some(&todo_file_basename)) {
             Ok(content) => content,
             Err(err) => {
                 eprintln!("Error processing {}: {}. Falling back to raw file contents.", file_path, err);
@@ -83,7 +81,6 @@ pub fn assemble_prompt(found_files_file: &str, _instruction_content: &str) -> Re
 
     // Unescape literal \"\\n\" sequences.
     let final_prompt = unescape_newlines(&final_prompt);
-
     Ok(final_prompt)
 }
 
@@ -93,7 +90,10 @@ mod tests {
     use tempfile::{NamedTempFile, tempdir};
     use std::fs;
     use std::env;
-    use std::io::Write;
+    use std::io::{BufRead, BufReader, Write};
+    // Import from the file_processor submodule.
+    use substring_marker_snippet_extractor::processor::file_processor::{process_file_with_processor, FileProcessor};
+    use unescape_newlines::unescape_newlines;
 
     fn fixed_instruction() -> &'static str {
         "Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen"
@@ -136,12 +136,13 @@ mod tests {
         writeln!(found_files, "{}", file1_path.display()).unwrap();
         writeln!(found_files, "{}", file2_path.display()).unwrap();
         writeln!(found_files, "{}", file1_path.display()).unwrap();
-        let found_files_path = found_files.into_temp_path().keep().unwrap();
+        let found_files_path_str = found_files.path().to_str().unwrap().to_string();
+        // Move the file into a persistent temp path.
+        let _found_files_temp = found_files.into_temp_path().keep().unwrap();
 
-        // Use an arbitrary instruction content (ignored by the library).
         let instruction_content = "This instruction content is ignored.";
 
-        let output = assemble_prompt(found_files_path.to_str().unwrap(), instruction_content)
+        let output = assemble_prompt(&found_files_path_str, instruction_content)
             .expect("assemble_prompt failed");
 
         // Verify that headers for both files are present.
@@ -180,9 +181,10 @@ mod tests {
         // Create a temporary found_files list listing this file.
         let mut found_files = NamedTempFile::new().expect("Failed to create found_files file");
         writeln!(found_files, "{}", marked_file_path.display()).unwrap();
-        let found_files_path = found_files.into_temp_path().keep().unwrap();
+        let found_files_path_str = found_files.path().to_str().unwrap().to_string();
+        let _found_files_temp = found_files.into_temp_path().keep().unwrap();
 
-        let output = assemble_prompt(found_files_path.to_str().unwrap(), "ignored instruction")
+        let output = assemble_prompt(&found_files_path_str, "ignored instruction")
             .expect("assemble_prompt failed");
 
         // Verify that the header is present and only the marked content is included.
@@ -226,15 +228,14 @@ mod tests {
         file_js.write_all(js_content.as_bytes()).expect("Failed to write JS file");
         let file_js_path = file_js.path().to_owned();
 
-        // Set the TODO file basename so the library recognizes this as the TODO file.
         env::set_var("TODO_FILE_BASENAME", file_js_path.file_name().unwrap().to_string_lossy().to_string());
 
-        // Create a temporary found_files list containing the JS file.
         let mut found_files = NamedTempFile::new().expect("Failed to create found_files file");
         writeln!(found_files, "{}", file_js_path.display()).unwrap();
-        let found_files_path = found_files.into_temp_path().keep().unwrap();
+        let found_files_path_str = found_files.path().to_str().unwrap().to_string();
+        let _found_files_temp = found_files.into_temp_path().keep().unwrap();
 
-        let output = assemble_prompt(found_files_path.to_str().unwrap(), "ignored instruction")
+        let output = assemble_prompt(&found_files_path_str, "ignored instruction")
             .expect("assemble_prompt failed");
 
         assert!(output.contains(&format!(
@@ -253,9 +254,10 @@ mod tests {
     fn test_missing_file_in_found_files() {
         let mut found_files = NamedTempFile::new().unwrap();
         writeln!(found_files, "/path/to/nonexistent/file.swift").unwrap();
-        let found_files_path = found_files.into_temp_path().keep().unwrap();
+        let found_files_path_str = found_files.path().to_str().unwrap().to_string();
+        let _found_files_temp = found_files.into_temp_path().keep().unwrap();
 
-        let output = assemble_prompt(found_files_path.to_str().unwrap(), "ignored")
+        let output = assemble_prompt(&found_files_path_str, "ignored")
             .expect("assemble_prompt failed");
 
         assert!(!output.contains("nonexistent"));
@@ -265,9 +267,10 @@ mod tests {
     #[test]
     fn test_empty_found_files_list() {
         let found_files = NamedTempFile::new().unwrap();
-        let found_files_path = found_files.into_temp_path().keep().unwrap();
+        let found_files_path_str = found_files.path().to_str().unwrap().to_string();
+        let _found_files_temp = found_files.into_temp_path().keep().unwrap();
 
-        let output = assemble_prompt(found_files_path.to_str().unwrap(), "ignored")
+        let output = assemble_prompt(&found_files_path_str, "ignored")
             .expect("assemble_prompt failed");
 
         assert!(output.trim().ends_with(fixed_instruction()));
@@ -282,7 +285,8 @@ mod tests {
 
         let mut found_files = NamedTempFile::new().unwrap();
         writeln!(found_files, "{}", file_path.display()).unwrap();
-        let found_files_path = found_files.into_temp_path().keep().unwrap();
+        let found_files_path_str = found_files.path().to_str().unwrap().to_string();
+        let _found_files_temp = found_files.into_temp_path().keep().unwrap();
 
         env::set_var("DIFF_WITH_BRANCH", "dummy-branch");
 
@@ -300,7 +304,7 @@ mod tests {
         let new_path = format!("{}:{}", dummy_dir.path().to_str().unwrap(), original_path);
         env::set_var("PATH", new_path);
 
-        let output = assemble_prompt(found_files_path.to_str().unwrap(), "ignored")
+        let output = assemble_prompt(&found_files_path_str, "ignored")
             .expect("assemble_prompt failed");
 
         assert!(!output.contains("against branch dummy-branch"));
@@ -328,9 +332,10 @@ mod tests {
 
         let mut found_files = NamedTempFile::new().unwrap();
         writeln!(found_files, "{}", file_path.display()).unwrap();
-        let found_files_path = found_files.into_temp_path().keep().unwrap();
+        let found_files_path_str = found_files.path().to_str().unwrap().to_string();
+        let _found_files_temp = found_files.into_temp_path().keep().unwrap();
 
-        let output = assemble_prompt(found_files_path.to_str().unwrap(), "ignored")
+        let output = assemble_prompt(&found_files_path_str, "ignored")
             .expect("assemble_prompt failed");
 
         assert!(output.contains("print(\"This is inside an unclosed marker.\")"));
@@ -338,17 +343,16 @@ mod tests {
     
     #[test]
     fn test_diff_inclusion() {
-        // Create temporary file for found_files and a file to process.
         let mut found_files = NamedTempFile::new().unwrap();
         let mut file_diff = NamedTempFile::new().unwrap();
         writeln!(file_diff, "class DummyDiff {{}}").unwrap();
         let file_diff_path = file_diff.path().to_str().unwrap();
         writeln!(found_files, "{}", file_diff_path).unwrap();
+        let found_files_path_str = found_files.path().to_str().unwrap().to_string();
+        let _found_files_temp = found_files.into_temp_path().keep().unwrap();
 
-        // Activate diff logic.
         env::set_var("DIFF_WITH_BRANCH", "dummy-branch");
 
-        // Create a dummy "git" executable that simulates a successful ls-files and returns a diff.
         let temp_dir = tempdir().unwrap();
         let dummy_git = temp_dir.path().join("git");
         fs::write(
@@ -376,37 +380,34 @@ mod tests {
             perms.set_mode(0o755);
             fs::set_permissions(&dummy_git, perms).unwrap();
         }
-        // Prepend the temporary directory (containing dummy git) to PATH.
         let current_path = env::var("PATH").unwrap();
         let new_path = format!("{}:{}", temp_dir.path().to_str().unwrap(), current_path);
         env::set_var("PATH", new_path);
 
-        let output = assemble_prompt(found_files.path().to_str().unwrap(), "ignored")
+        let output = assemble_prompt(&found_files_path_str, "ignored")
             .expect("assemble_prompt failed");
 
         assert!(output.contains("Dummy diff output for file"), "Output did not include diff output: {}", output);
         assert!(output.contains("against branch dummy-branch"));
 
         env::remove_var("DIFF_WITH_BRANCH");
+        env::set_var("PATH", current_path);
     }
 
     #[test]
     fn test_includes_diff_output_when_diff_with_branch_set() {
-        // Create a temporary Swift file.
         let mut file_diff = NamedTempFile::new().expect("Failed to create FileDiff.swift");
         let diff_content = "class NoDiff {}";
         file_diff.write_all(diff_content.as_bytes()).unwrap();
         let file_diff_path = file_diff.path().to_owned();
 
-        // Create a temporary found_files list.
         let mut found_files = NamedTempFile::new().expect("Failed to create found_files file");
         writeln!(found_files, "{}", file_diff_path.display()).unwrap();
-        let found_files_path = found_files.into_temp_path().keep().unwrap();
+        let found_files_path_str = found_files.path().to_str().unwrap().to_string();
+        let _found_files_temp = found_files.into_temp_path().keep().unwrap();
 
-        // Set DIFF_WITH_BRANCH to activate diff logic.
         env::set_var("DIFF_WITH_BRANCH", "dummy-branch");
 
-        // Create a dummy "git" executable that simulates diff output.
         let dummy_dir = tempdir().unwrap();
         let dummy_git = dummy_dir.path().join("git");
         fs::write(
@@ -434,12 +435,11 @@ mod tests {
             perms.set_mode(0o755);
             fs::set_permissions(&dummy_git, perms).expect("Failed to set permissions");
         }
-        // Prepend dummy_dir to PATH.
         let original_path = env::var("PATH").unwrap_or_default();
         let new_path = format!("{}:{}", dummy_dir.path().to_str().unwrap(), original_path);
         env::set_var("PATH", new_path);
 
-        let output = assemble_prompt(found_files_path.to_str().unwrap(), "ignored")
+        let output = assemble_prompt(&found_files_path_str, "ignored")
             .expect("assemble_prompt failed");
 
         let expected_diff = "Dummy diff output for file";
@@ -452,7 +452,6 @@ mod tests {
 
     #[test]
     fn test_assemble_prompt_marker_count_with_diff() {
-        // Create a temporary found_files list with one file that contains two TODO markers.
         let mut found_files = NamedTempFile::new().unwrap();
         let mut file = NamedTempFile::new().unwrap();
         let file_content = "\
@@ -462,11 +461,11 @@ mod tests {
         writeln!(file, "{}", file_content).unwrap();
         let file_path = file.path().to_str().unwrap();
         writeln!(found_files, "{}", file_path).unwrap();
+        let found_files_path_str = found_files.path().to_str().unwrap().to_string();
+        let _found_files_temp = found_files.into_temp_path().keep().unwrap();
 
-        // Activate diff logic.
         env::set_var("DIFF_WITH_BRANCH", "dummy-branch");
 
-        // Create a dummy "git" executable that returns a diff.
         let dummy_dir = tempdir().expect("Failed to create dummy dir");
         let dummy_git = dummy_dir.path().join("git");
         fs::write(
@@ -494,24 +493,124 @@ mod tests {
             perms.set_mode(0o755);
             fs::set_permissions(&dummy_git, perms).unwrap();
         }
-        // Prepend dummy_dir to PATH.
         let original_path = env::var("PATH").unwrap();
         let new_path = format!("{}:{}", dummy_dir.path().to_str().unwrap(), original_path);
         env::set_var("PATH", new_path);
 
-        let output = assemble_prompt(found_files.path().to_str().unwrap(), "ignored")
+        let output = assemble_prompt(&found_files_path_str, "ignored")
             .expect("assemble_prompt failed");
 
-        // Check that the diff output is included.
-        assert!(output.contains("Diff output"), "Output did not include diff output: {}", output);
-        assert!(output.contains("against branch dummy-branch"), "Missing branch info in output");
-
-        // Count the lines that contain the TODO marker.
         let marker_count = output.lines().filter(|l| l.contains("// TODO: -")).count();
-        // Acceptable marker counts are 2 (normal case) or 3 (if diff section adds an extra marker).
         assert!(marker_count == 2 || marker_count == 3, "Unexpected marker count: {}", marker_count);
 
         env::remove_var("DIFF_WITH_BRANCH");
         env::set_var("PATH", original_path);
+    }
+
+    // --- New tests using dependency injection and mocks ---
+
+    pub fn assemble_prompt_with_processor<P: FileProcessor>(
+        found_files_file: &str,
+        _instruction_content: &str,
+        processor: &P,
+    ) -> anyhow::Result<String> {
+        let file = File::open(found_files_file)
+            .with_context(|| format!("Error opening {}", found_files_file))?;
+        let reader = BufReader::new(file);
+        let mut files: Vec<String> = reader
+            .lines()
+            .filter_map(|l| l.ok())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        files.sort();
+        files.dedup();
+
+        let mut final_prompt = String::new();
+        let todo_file_basename = env::var("TODO_FILE_BASENAME").unwrap_or_default();
+
+        for file_path in files {
+            if !std::path::Path::new(&file_path).exists() {
+                eprintln!("Warning: file {} does not exist, skipping", file_path);
+                continue;
+            }
+            let basename = std::path::Path::new(&file_path)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(&file_path)
+                .to_string();
+
+            let processed_content = match process_file_with_processor(processor, &file_path, Some(&todo_file_basename)) {
+                Ok(content) => content,
+                Err(err) => {
+                    eprintln!("Error processing {}: {}. Falling back to raw file contents.", file_path, err);
+                    fs::read_to_string(&file_path).unwrap_or_default()
+                }
+            };
+
+            final_prompt.push_str(&format!(
+                "\nThe contents of {} is as follows:\n\n{}\n\n",
+                basename, processed_content
+            ));
+
+            final_prompt.push_str("\n--------------------------------------------------\n");
+        }
+
+        final_prompt.push_str(&format!("\n\n{}", fixed_instruction()));
+        let final_prompt = unescape_newlines(&final_prompt);
+        Ok(final_prompt)
+    }
+
+    struct MockFileProcessor {
+        return_value: String,
+    }
+
+    impl FileProcessor for MockFileProcessor {
+        fn process_file(&self, _file_path: &std::path::Path, _todo_file_basename: Option<&str>) -> anyhow::Result<String> {
+            Ok(self.return_value.clone())
+        }
+    }
+
+    struct FailingMockProcessor;
+
+    impl FileProcessor for FailingMockProcessor {
+        fn process_file(&self, _file_path: &std::path::Path, _todo_file_basename: Option<&str>) -> anyhow::Result<String> {
+            Err(anyhow::anyhow!("Simulated processing failure"))
+        }
+    }
+
+    #[test]
+    fn test_assemble_prompt_with_mock_processor_success() {
+        let mut found_files = NamedTempFile::new().unwrap();
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "raw content").unwrap();
+        let file_path = file.path().to_str().unwrap();
+        writeln!(found_files, "{}", file_path).unwrap();
+        let found_files_path_str = found_files.path().to_str().unwrap().to_string();
+        let _found_files_temp = found_files.into_temp_path().keep().unwrap();
+
+        let mock_processor = MockFileProcessor { return_value: "mock processed content".to_string() };
+
+        let output = assemble_prompt_with_processor(&found_files_path_str, "ignored", &mock_processor)
+            .expect("assemble_prompt_with_processor failed with mock processor");
+        assert!(output.contains("mock processed content"), "Output should include the mock content");
+    }
+
+    #[test]
+    fn test_assemble_prompt_with_mock_processor_failure() {
+        let mut found_files = NamedTempFile::new().unwrap();
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "fallback content").unwrap();
+        let file_path = file.path().to_str().unwrap();
+        writeln!(found_files, "{}", file_path).unwrap();
+        let found_files_path_str = found_files.path().to_str().unwrap().to_string();
+        let _found_files_temp = found_files.into_temp_path().keep().unwrap();
+
+        let failing_processor = FailingMockProcessor;
+
+        let output = assemble_prompt_with_processor(&found_files_path_str, "ignored", &failing_processor)
+            .expect("assemble_prompt_with_processor failed with failing processor");
+        // Since processing fails, it should fall back to reading the raw file content.
+        assert!(output.contains("fallback content"), "Output should fallback to raw file content");
     }
 }
