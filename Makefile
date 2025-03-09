@@ -4,6 +4,11 @@ export PATH := $(HOME)/.cargo/bin:$(PATH)
 .PHONY: build test tests clean mc meta-context context \
         ut-% uts-% its-% itss-% itjs-% itsjs-% all
 
+# Check if Cargo is installed
+ifeq ($(shell command -v cargo 2> /dev/null),)
+  $(error "Cargo is not installed. Please install the Rust toolchain from https://rustup.rs/")
+endif
+
 # Build all Rust binaries in release mode from the workspace root.
 build:
 	@echo "Building all Rust components..."
