@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "crates/filter_files_singular",
-    "crates/filter_substring_markers",
     "crates/filter_excluded_files",
     "crates/extract_enclosing_type",
     "crates/diff_with_branch",
