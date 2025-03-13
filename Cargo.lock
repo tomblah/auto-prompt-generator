@@ -249,6 +249,7 @@ dependencies = [
  "assert_cmd",
  "predicates 2.1.5",
  "regex",
+ "substring_marker_snippet_extractor",
  "tempfile",
 ]
 

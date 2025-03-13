@@ -6,20 +6,30 @@ use std::fs;
 /// The markers are defined as:
 ///   - Opening marker: a line that, when trimmed, equals "// v"
 ///   - Closing marker: a line that, when trimmed, equals "// ^"
-/// Lines outside these markers are omitted (replaced by a placeholder).
-pub fn filter_substring_markers(content: &str) -> String {
+/// Lines outside these markers are omitted.
+///
+/// The `placeholder` parameter is inserted in place of the stripped-out sections:
+/// if `placeholder` is non-empty, it will be inserted at each marker; if it’s empty,
+/// nothing will be inserted.
+pub fn filter_substring_markers_with_placeholder(content: &str, placeholder: &str) -> String {
     let mut output = String::new();
     let mut in_block = false;
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed == "// v" {
-            output.push_str("\n// ...\n");
+            if !placeholder.is_empty() {
+                output.push_str(placeholder);
+                output.push('\n');
+            }
             in_block = true;
             continue;
         }
         if trimmed == "// ^" {
             in_block = false;
-            output.push_str("\n// ...\n");
+            if !placeholder.is_empty() {
+                output.push_str(placeholder);
+                output.push('\n');
+            }
             continue;
         }
         if in_block {

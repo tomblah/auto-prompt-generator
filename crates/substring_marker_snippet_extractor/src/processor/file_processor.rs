@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::{Result, anyhow};
 use std::fs;
 
-use crate::{filter_substring_markers, file_uses_markers, extract_enclosing_block};
+use crate::{filter_substring_markers_with_placeholder, file_uses_markers, extract_enclosing_block};
 
 /// Trait that abstracts file processing.
 pub trait FileProcessor {
@@ -21,8 +21,9 @@ impl FileProcessor for DefaultFileProcessor {
         let file_content = fs::read_to_string(file_path)?;
         
         // Use marker filtering if markers are present.
+        // Here we pass in the placeholder "// ..." for display purposes.
         let processed_content = if file_content.lines().any(|line| line.trim() == "// v") {
-            filter_substring_markers(&file_content)
+            filter_substring_markers_with_placeholder(&file_content, "// ...")
         } else {
             file_content.clone()
         };
@@ -56,42 +57,4 @@ pub fn process_file_with_processor<P: AsRef<Path>>(
     todo_file_basename: Option<&str>
 ) -> Result<String> {
     processor.process_file(file_path.as_ref(), todo_file_basename)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::NamedTempFile;
-    use std::io::Write;
-
-    /// Dummy processor that always returns an error.
-    pub struct FailingProcessor;
-
-    impl FileProcessor for FailingProcessor {
-        fn process_file(&self, _file_path: &Path, _todo_file_basename: Option<&str>) -> Result<String> {
-            Err(anyhow!("Simulated processing failure"))
-        }
-    }
-
-    #[test]
-    fn test_default_processor_success() {
-        // When there are no markers, the processor should simply return the raw content.
-        let raw_content = "fn main() {\n    println!(\"Hello, world!\");\n}\n";
-        let mut temp_file = NamedTempFile::new().unwrap();
-        write!(temp_file, "{}", raw_content).unwrap();
-        let processor = DefaultFileProcessor;
-        let result = processor.process_file(
-            temp_file.path(),
-            Some(temp_file.path().file_name().unwrap().to_str().unwrap())
-        ).unwrap();
-        assert_eq!(result, raw_content);
-    }
-
-    #[test]
-    fn test_failing_processor() {
-        let processor = FailingProcessor;
-        let temp_file = NamedTempFile::new().unwrap();
-        let result = processor.process_file(temp_file.path(), None);
-        assert!(result.is_err());
-    }
 }

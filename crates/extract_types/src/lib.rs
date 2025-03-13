@@ -1,10 +1,13 @@
 use anyhow::{Result, Context};
 use regex::Regex;
 use std::collections::BTreeSet;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+use std::fs;
+use std::io::{Write};
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
+
+// New imports from substring_marker_snippet_extractor for marker checking and filtering.
+use substring_marker_snippet_extractor::{file_uses_markers, filter_substring_markers_with_placeholder};
 
 /// A helper struct to encapsulate type extraction logic.
 struct TypeExtractor {
@@ -75,14 +78,24 @@ impl TypeExtractor {
 /// writes the sorted unique type names to a temporary file (persisted),
 /// and returns the path to that file as a String.
 pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> {
-    // Open the Swift file.
-    let file = File::open(&swift_file)
-        .with_context(|| format!("Failed to open file {}", swift_file.as_ref().display()))?;
-    let reader = BufReader::new(file);
+    // Read the entire file content.
+    let file_content = fs::read_to_string(&swift_file)
+        .with_context(|| format!("Failed to read file {}", swift_file.as_ref().display()))?;
+    
+    // If the file uses substring markers, extract only the marked content.
+    // Passing an empty placeholder string means no placeholder text will be inserted.
+    let processed_content = if file_uses_markers(&file_content) {
+        filter_substring_markers_with_placeholder(&file_content, "")
+    } else {
+        file_content
+    };
+
+    // Create an iterator over the lines of the processed content.
+    let lines = processed_content.lines().map(String::from);
 
     // Create the extractor and process the file lines.
     let extractor = TypeExtractor::new()?;
-    let types = extractor.extract_types(reader.lines().filter_map(Result::ok));
+    let types = extractor.extract_types(lines);
 
     // Write the sorted type names to a temporary file.
     let mut temp_file = NamedTempFile::new()?;

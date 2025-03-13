@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+substring_marker_snippet_extractor = { path = "../substring_marker_snippet_extractor" }
 regex = { workspace = true }
 tempfile = { workspace = true }
 anyhow = { workspace = true }
