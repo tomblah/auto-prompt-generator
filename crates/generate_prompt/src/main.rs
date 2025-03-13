@@ -1120,77 +1120,79 @@ esac
         env::remove_var("GET_GIT_ROOT");
     }
     
-    #[test]
-    #[cfg(unix)]
-    fn test_generate_prompt_markers_no_types_inside_markers_but_enclosing_todo() {
-        // Clear any stale GET_GIT_ROOT value.
-        env::remove_var("GET_GIT_ROOT");
-        let temp_dir = TempDir::new().unwrap();
-        let fake_git_root = TempDir::new().unwrap();
-        let fake_git_root_path = fake_git_root.path().to_str().unwrap();
+#[test]
+#[cfg(unix)]
+fn test_generate_prompt_markers_no_types_inside_markers_but_enclosing_todo() {
+    // Clear any stale GET_GIT_ROOT value.
+    env::remove_var("GET_GIT_ROOT");
+    let temp_dir = TempDir::new().unwrap();
+    let fake_git_root = TempDir::new().unwrap();
+    let fake_git_root_path = fake_git_root.path().to_str().unwrap();
 
-        // Set up dummy get_git_root.
-        create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
+    // Set up dummy get_git_root.
+    create_dummy_executable(&temp_dir, "get_git_root", fake_git_root_path);
 
-        // Create a TODO file with substring markers that contain no type declarations,
-        // plus an enclosing function that contains a TODO marker and a type call.
-        let todo_file = format!("{}/TODO.swift", fake_git_root_path);
-        fs::write(
-            &todo_file,
-            r#"
-            // v
-            // No types here.
-            let x = 42;
-            // ^
-            
-            let bar = TypeThatIsOutSideMarker()
-            
-            func hello() {
-                let hi = TypeThatIsInsideEnclosingFunction()
-                // TODO: - example
-            }
-            "#,
-        )
-        .unwrap();
+    // Create a TODO file with substring markers that contain no type declarations,
+    // plus an enclosing function that contains a TODO marker and a type call.
+    let todo_file = format!("{}/TODO.swift", fake_git_root_path);
+    fs::write(
+        &todo_file,
+        r#"
+        // v
+        // No types here.
+        let x = 42;
+        // ^
+        
+        let bar = TypeThatIsOutSideMarker()
+        
+        func hello() {
+            let hi = TypeThatIsInsideEnclosingFunction()
+            // TODO: - example
+        }
+        "#,
+    )
+    .unwrap();
 
-        // Dummy executables for generate_prompt.
-        create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
-        create_dummy_executable(&temp_dir, "get_package_root", "");
-        // extract_instruction_content simply echoes the TODO line (trimmed).
-        create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - example");
+    // Dummy executables for generate_prompt.
+    create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
+    create_dummy_executable(&temp_dir, "get_package_root", "");
+    // extract_instruction_content simply echoes the TODO line (trimmed).
+    create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - example");
 
-        // Create a dummy types file that should (via our extract_types changes)
-        // contain only the type from the enclosing function.
-        let types_file_path = temp_dir.path().join("types.txt");
-        // In our fixed logic, the enclosing block is appended, so the extractor should find:
-        // "TypeThatIsInsideEnclosingFunction" (and ignore "TypeThatIsOutSideMarker").
-        fs::write(&types_file_path, "TypeThatIsInsideEnclosingFunction").unwrap();
-        create_dummy_executable(&temp_dir, "extract_types", types_file_path.to_str().unwrap());
+    // Create a dummy types file that should (via our extract_types changes)
+    // contain only the type from the enclosing function.
+    let types_file_path = temp_dir.path().join("types.txt");
+    // In our fixed logic, the enclosing block is appended, so the extractor should find:
+    // "TypeThatIsInsideEnclosingFunction" (and ignore "TypeThatIsOutSideMarker").
+    fs::write(&types_file_path, "TypeThatIsInsideEnclosingFunction").unwrap();
+    create_dummy_executable(&temp_dir, "extract_types", types_file_path.to_str().unwrap());
 
-        // Dummy find_definition_files: output a dummy definition file path.
-        let def_file = format!("{}/Definition.swift", fake_git_root_path);
-        fs::write(&def_file, "class TypeThatIsInsideEnclosingFunction {}").unwrap();
-        create_dummy_executable(&temp_dir, "find_definition_files", &def_file);
-        create_dummy_executable(&temp_dir, "filter_files_singular", &todo_file);
+    // Dummy find_definition_files: output a dummy definition file path.
+    let def_file = format!("{}/Definition.swift", fake_git_root_path);
+    fs::write(&def_file, "class TypeThatIsInsideEnclosingFunction {}").unwrap();
+    create_dummy_executable(&temp_dir, "find_definition_files", &def_file);
+    create_dummy_executable(&temp_dir, "filter_files_singular", &todo_file);
 
-        // Dummy assemble_prompt: simply echo a message that includes the extracted type.
-        let assemble_output = "Extracted types: TypeThatIsInsideEnclosingFunction";
-        create_dummy_executable(&temp_dir, "assemble_prompt", assemble_output);
+    // Dummy assemble_prompt: for this test we don't need a specific output,
+    // since the final stdout already shows the extracted types.
+    create_dummy_executable(&temp_dir, "assemble_prompt", "dummy assemble output");
 
-        // Set environment variable for instruction file.
-        env::set_var("GET_INSTRUCTION_FILE", &todo_file);
-        // Prepend our dummy executables directory to PATH.
-        let original_path = env::var("PATH").unwrap();
-        env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
-        // Disable clipboard copying so that output is printed.
-        env::set_var("DISABLE_PBCOPY", "1");
+    // Set environment variable for instruction file.
+    env::set_var("GET_INSTRUCTION_FILE", &todo_file);
+    // Prepend our dummy executables directory to PATH.
+    let original_path = env::var("PATH").unwrap();
+    env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
+    // Disable clipboard copying so that output is printed.
+    env::set_var("DISABLE_PBCOPY", "1");
 
-        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-        cmd.assert()
-            .success()
-            .stdout(predicate::str::contains("Extracted types: TypeThatIsInsideEnclosingFunction"))
-            .stdout(predicate::str::not(predicate::str::contains("TypeThatIsOutSideMarker")));
-            
-        env::remove_var("GET_GIT_ROOT");
-    }
+    let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("TypeThatIsInsideEnclosingFunction"))
+        .stdout(predicate::str::contains("TypeThatIsOutSideMarker").not());
+        
+    env::remove_var("GET_GIT_ROOT");
+}
+
+
 }
