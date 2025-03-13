@@ -4,26 +4,21 @@ use std::fs;
 use regex::Regex;
 
 /// Filters the file’s content by returning only the text between substring markers.
-/// The markers are defined as:
-///   - Opening marker: a line that, when trimmed, equals "// v"
-///   - Closing marker: a line that, when trimmed, equals "// ^"
-/// Lines outside these markers are omitted and replaced by a placeholder line,
-/// which is output with two newlines before and two newlines after it.
-pub fn filter_substring_markers(content: &str) -> String {
-    let placeholder = "// ...";
+/// Instead of always using "// ...", the caller can supply a custom placeholder.
+///
+/// # Arguments
+///
+/// * `content` - The file content.
+/// * `placeholder` - The string to use as a placeholder for omitted code.
+pub fn filter_substring_markers(content: &str, placeholder: &str) -> String {
     let mut output = String::new();
-    // We use a state machine: "included" for content between markers and "omitted" otherwise.
     let mut state = "omitted";
-    // Count lines that are being skipped in the current omitted region.
     let mut omitted_line_count = 0;
-    // Remember if the last processed line was a closing marker.
     let mut last_was_closing = false;
 
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed == "// v" {
-            // If we've skipped any omitted lines before entering the included region,
-            // output one placeholder with two newlines before and after it.
             if omitted_line_count > 0 {
                 output.push_str("\n\n");
                 output.push_str(placeholder);
@@ -34,7 +29,6 @@ pub fn filter_substring_markers(content: &str) -> String {
             last_was_closing = false;
             continue;
         } else if trimmed == "// ^" {
-            // End the included region; mark that we just closed a block.
             state = "omitted";
             omitted_line_count = 0;
             last_was_closing = true;
@@ -48,7 +42,6 @@ pub fn filter_substring_markers(content: &str) -> String {
                 last_was_closing = false;
             }
             "omitted" => {
-                // We are skipping these lines.
                 omitted_line_count += 1;
                 last_was_closing = false;
             }
@@ -56,8 +49,6 @@ pub fn filter_substring_markers(content: &str) -> String {
         }
     }
 
-    // At the end of the file, if we are in an omitted region and either some lines were skipped
-    // or the last processed line was a closing marker, output one final placeholder.
     if state == "omitted" && (omitted_line_count > 0 || last_was_closing) {
         output.push_str("\n\n");
         output.push_str(placeholder);
@@ -182,7 +173,7 @@ Line after";
         // The expected output has two newlines before and after the placeholder,
         // and due to the included region ending with a newline, an extra newline appears.
         let expected = "\n\n// ...\n\ncontent line 1\ncontent line 2\n\n\n// ...\n\n";
-        let result = filter_substring_markers(input);
+        let result = filter_substring_markers(input, "// ...");
         assert_eq!(result, expected);
     }
 

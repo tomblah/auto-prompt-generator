@@ -43,7 +43,7 @@ function myFunction() {
     let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
         .expect("process_file should succeed for file with markers and TODO inside marker block");
     // The expected output should be just the filtered marker content.
-    let expected = filter_substring_markers(content);
+    let expected = filter_substring_markers(content, "// ...");
     assert_eq!(result, expected);
     fs::remove_file(&path).expect("Failed to remove temporary file");
 }
@@ -68,7 +68,7 @@ function myFunction() {
         .expect("process_file should succeed for file with markers and TODO outside marker block");
 
     // Compute the filtered content portion.
-    let filtered = filter_substring_markers(content);
+    let filtered = filter_substring_markers(content, "// ...");
     
     // Verify that the result:
     // 1. Starts with the filtered marker content.
@@ -119,7 +119,7 @@ line c
     
     // In this scenario, since there is no TODO marker at all,
     // the output should be solely the filtered content.
-    let expected = filter_substring_markers(content);
+    let expected = filter_substring_markers(content, "// ...");
     assert_eq!(result, expected);
     
     fs::remove_file(&path).expect("Failed to remove temporary file");
