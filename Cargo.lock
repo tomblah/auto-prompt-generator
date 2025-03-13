@@ -247,6 +247,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "once_cell",
  "predicates 2.1.5",
  "regex",
  "substring_marker_snippet_extractor",

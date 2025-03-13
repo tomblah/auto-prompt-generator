@@ -8,6 +8,7 @@ substring_marker_snippet_extractor = { path = "../substring_marker_snippet_extra
 regex = { workspace = true }
 tempfile = { workspace = true }
 anyhow = { workspace = true }
+once_cell = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }
