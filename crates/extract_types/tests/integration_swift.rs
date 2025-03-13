@@ -134,3 +134,32 @@ fn integration_extract_types_todo_outside_markers() -> Result<()> {
     assert_eq!(result.trim(), expected);
     Ok(())
 }
+
+#[test]
+fn test_extract_types_with_markers_and_enclosing_todo_no_types_inside_markers() -> anyhow::Result<()> {
+    // This Swift file content includes:
+    // - A marked section (between "// v" and "// ^") that does NOT contain any capitalized type.
+    // - An outside declaration "TypeThatIsOutSideMarker" which should be ignored.
+    // - A function with a TODO marker that contains "TypeThatIsInsideEnclosingFunction", which should be included.
+    let mut swift_file = tempfile::NamedTempFile::new()?;
+    writeln!(swift_file, r#"
+        // v
+        // No types are declared in this marked block.
+        let x = 42;
+        // ^
+        
+        let bar = TypeThatIsOutSideMarker()
+        
+        func hello() {{
+            let hi = TypeThatIsInsideEnclosingFunction()
+            // TODO: - example
+        }}
+    "#)?;
+    let result_path = extract_types::extract_types_from_file(swift_file.path())?;
+    let result = std::fs::read_to_string(&result_path)?;
+    // Expect that only "TypeThatIsInsideEnclosingFunction" is extracted.
+    let expected = "TypeThatIsInsideEnclosingFunction";
+    assert_eq!(result.trim(), expected);
+    Ok(())
+}
+
