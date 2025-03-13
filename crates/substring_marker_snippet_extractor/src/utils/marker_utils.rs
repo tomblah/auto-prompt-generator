@@ -7,26 +7,61 @@ use regex::Regex;
 /// The markers are defined as:
 ///   - Opening marker: a line that, when trimmed, equals "// v"
 ///   - Closing marker: a line that, when trimmed, equals "// ^"
-/// Lines outside these markers are omitted (replaced by a placeholder).
+/// Lines outside these markers are omitted and replaced by a placeholder line,
+/// which is output with two newlines before and two newlines after it.
 pub fn filter_substring_markers(content: &str) -> String {
+    let placeholder = "// ...";
     let mut output = String::new();
-    let mut in_block = false;
+    // We use a state machine: "included" for content between markers and "omitted" otherwise.
+    let mut state = "omitted";
+    // Count lines that are being skipped in the current omitted region.
+    let mut omitted_line_count = 0;
+    // Remember if the last processed line was a closing marker.
+    let mut last_was_closing = false;
+
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed == "// v" {
-            output.push_str("\n// ...\n");
-            in_block = true;
+            // If we've skipped any omitted lines before entering the included region,
+            // output one placeholder with two newlines before and after it.
+            if omitted_line_count > 0 {
+                output.push_str("\n\n");
+                output.push_str(placeholder);
+                output.push_str("\n\n");
+            }
+            omitted_line_count = 0;
+            state = "included";
+            last_was_closing = false;
+            continue;
+        } else if trimmed == "// ^" {
+            // End the included region; mark that we just closed a block.
+            state = "omitted";
+            omitted_line_count = 0;
+            last_was_closing = true;
             continue;
         }
-        if trimmed == "// ^" {
-            in_block = false;
-            output.push_str("\n// ...\n");
-            continue;
+
+        match state {
+            "included" => {
+                output.push_str(line);
+                output.push('\n');
+                last_was_closing = false;
+            }
+            "omitted" => {
+                // We are skipping these lines.
+                omitted_line_count += 1;
+                last_was_closing = false;
+            }
+            _ => unreachable!(),
         }
-        if in_block {
-            output.push_str(line);
-            output.push('\n');
-        }
+    }
+
+    // At the end of the file, if we are in an omitted region and either some lines were skipped
+    // or the last processed line was a closing marker, output one final placeholder.
+    if state == "omitted" && (omitted_line_count > 0 || last_was_closing) {
+        output.push_str("\n\n");
+        output.push_str(placeholder);
+        output.push_str("\n\n");
     }
     output
 }
@@ -144,7 +179,9 @@ content line 1
 content line 2
 // ^
 Line after";
-        let expected = "\n// ...\ncontent line 1\ncontent line 2\n\n// ...\n";
+        // The expected output has two newlines before and after the placeholder,
+        // and due to the included region ending with a newline, an extra newline appears.
+        let expected = "\n\n// ...\n\ncontent line 1\ncontent line 2\n\n\n// ...\n\n";
         let result = filter_substring_markers(input);
         assert_eq!(result, expected);
     }
