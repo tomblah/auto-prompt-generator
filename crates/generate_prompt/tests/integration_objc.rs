@@ -10,7 +10,6 @@ mod strict_end_to_end_tests {
 
     #[test]
     #[cfg(unix)]
-    #[ignore]
     fn test_generate_prompt_with_objc_input() {
         // Remove any diff branch setting so we don't run diff mode.
         env::remove_var("DIFF_WITH_BRANCH");
