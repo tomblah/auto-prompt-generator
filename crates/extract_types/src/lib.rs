@@ -5,7 +5,35 @@ use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
-use substring_marker_snippet_extractor::utils::marker_utils::{file_uses_markers, filter_substring_markers};
+use substring_marker_snippet_extractor::utils::marker_utils::{
+    file_uses_markers, filter_substring_markers, is_todo_inside_markers,
+};
+use once_cell::sync::Lazy;
+
+/// Static regex definitions for candidate line detection.
+static SWIFT_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+(?:<[^>]+>)?\s*\([^)]*\)\s*(?:->\s*\S+)?\s*\{"#).unwrap()
+});
+static JS_ASSIGNMENT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#).unwrap()
+});
+static JS_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^\s*(?:async\s+)?function\s+\w+\s*\([^)]*\)\s*\{"#).unwrap()
+});
+static PARSE_CLOUD_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r#"^\s*Parse\.Cloud\.(?:define|beforeSave|afterSave)\s*\(\s*(?:"[^"]+"|[A-Za-z][A-Za-z0-9_.]*)\s*,\s*(?:async\s+)?\([^)]*\)\s*=>\s*\{"#
+    )
+    .unwrap()
+});
+
+/// Private helper: determines if a given line is a candidate declaration line.
+fn is_candidate_line(line: &str) -> bool {
+    SWIFT_FUNCTION_RE.is_match(line)
+        || JS_ASSIGNMENT_RE.is_match(line)
+        || JS_FUNCTION_RE.is_match(line)
+        || PARSE_CLOUD_RE.is_match(line)
+}
 
 /// A helper struct to encapsulate type extraction logic.
 struct TypeExtractor {
@@ -81,10 +109,18 @@ pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> 
         .with_context(|| format!("Failed to open file {}", swift_file.as_ref().display()))?;
 
     // If substring markers are used, filter the content to include only the desired parts.
+    // Additionally, if the filtered content does not contain a TODO marker, append the enclosing block that has the TODO.
     let content_to_process = if file_uses_markers(&full_content) {
-        filter_substring_markers(&full_content, "")
+        let mut filtered = filter_substring_markers(&full_content, "");
+        if !filtered.contains("// TODO: -") {
+            if let Some(enclosing) = extract_enclosing_block_from_content(&full_content) {
+                filtered.push_str("\n");
+                filtered.push_str(&enclosing);
+            }
+        }
+        filtered
     } else {
-        full_content
+        full_content.clone()
     };
 
     let reader = BufReader::new(content_to_process.as_bytes());
@@ -103,6 +139,45 @@ pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> 
         .keep()
         .context("Failed to persist temporary file")?;
     Ok(temp_path.display().to_string())
+}
+
+/// Extracts the enclosing block (such as a function) from the provided content,
+/// starting from the candidate line for a declaration up to the matching closing brace.
+/// This block is expected to contain the TODO marker.
+fn extract_enclosing_block_from_content(content: &str) -> Option<String> {
+    let todo_idx = content.lines().position(|line| line.contains("// TODO: - "))?;
+    if is_todo_inside_markers(content, todo_idx) {
+        return None;
+    }
+    let lines: Vec<&str> = content.lines().collect();
+    let mut candidate_index = None;
+    for (i, line) in lines.iter().enumerate().take(todo_idx) {
+        if is_candidate_line(line) {
+            candidate_index = Some(i);
+        }
+    }
+    let start_index = candidate_index?;
+    let mut brace_count = 0;
+    let mut found_open = false;
+    let mut extracted_lines = Vec::new();
+    for line in &lines[start_index..] {
+        if !found_open {
+            if line.contains('{') {
+                found_open = true;
+                brace_count += line.matches('{').count();
+                brace_count = brace_count.saturating_sub(line.matches('}').count());
+            }
+            extracted_lines.push(*line);
+        } else {
+            extracted_lines.push(*line);
+            brace_count += line.matches('{').count();
+            brace_count = brace_count.saturating_sub(line.matches('}').count());
+            if brace_count == 0 {
+                break;
+            }
+        }
+    }
+    Some(extracted_lines.join("\n"))
 }
 
 #[cfg(test)]
@@ -239,6 +314,36 @@ enum MyEnum {{}}"
         let result = fs::read_to_string(&result_path)?;
         // Expect only "InsideType" to be extracted.
         assert_eq!(result.trim(), "InsideType");
+        Ok(())
+    }
+
+    // New test: Ensure that when substring markers are present but the TODO marker is outside,
+    // the enclosing block with the TODO is appended and its types are extracted.
+    #[test]
+    fn test_extract_types_with_markers_and_enclosing_todo() -> Result<()> {
+        // The Swift file content includes:
+        // - A marked section (between "// v" and "// ^") containing a call that yields "TypeThatIsInsideMarker".
+        // - Outside the markers, a declaration "TypeThatIsOutSideMarker" which should be ignored.
+        // - A function with a TODO marker that contains "TypeThatIsInsideEnclosingFunction", which should be included.
+        let mut swift_file = NamedTempFile::new()?;
+        writeln!(swift_file, r#"
+            // v
+            let foo = TypeThatIsInsideMarker()
+            // ^
+            
+            let bar = TypeThatIsOutSideMarker()
+            
+            func hello() {{
+                let hi = TypeThatIsInsideEnclosingFunction()
+                // TODO: - example
+            }}
+        "#)?;
+        let result_path = extract_types_from_file(swift_file.path())?;
+        let result = fs::read_to_string(&result_path)?;
+        // Expected output: both types are extracted and sorted alphabetically.
+        // "TypeThatIsInsideEnclosingFunction" comes before "TypeThatIsInsideMarker".
+        let expected = "TypeThatIsInsideEnclosingFunction\nTypeThatIsInsideMarker";
+        assert_eq!(result.trim(), expected);
         Ok(())
     }
 }
