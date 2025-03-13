@@ -102,11 +102,14 @@ static JS_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^\s*(?:async\s+)?function\s+\w+\s*\([^)]*\)\s*\{"#).unwrap()
 });
 static PARSE_CLOUD_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"^\s*Parse\.Cloud\.define\s*\(\s*".+?"\s*,\s*(?:async\s+)?\([^)]*\)\s*=>\s*\{"#).unwrap()
+    Regex::new(
+        r#"^\s*Parse\.Cloud\.(?:define|beforeSave|afterSave)\s*\(\s*(?:"[^"]+"|[A-Za-z][A-Za-z0-9_.]*)\s*,\s*(?:async\s+)?\([^)]*\)\s*=>\s*\{"#
+    )
+    .unwrap()
 });
 
 /// Private helper: determines if a given line is a candidate declaration line.
-/// It uses regex patterns for Swift functions, JS functions/assignments, or Parse.Cloud.define.
+/// It uses regex patterns for Swift functions, JS functions/assignments, or Parse.Cloud methods.
 fn is_candidate_line(line: &str) -> bool {
     SWIFT_FUNCTION_RE.is_match(line)
         || JS_ASSIGNMENT_RE.is_match(line)
@@ -232,7 +235,7 @@ More text";
 
     #[test]
     fn test_extract_enclosing_block_success() {
-        // Create a temporary file with candidate declaration, markers, and a TODO.
+        // Create a temporary file with a candidate declaration, markers, and a TODO.
         let content = "\
 Some irrelevant text
 func myFunction() {
@@ -265,5 +268,109 @@ func myFunction() {
         write!(temp_file, "{}", content).unwrap();
         let block = extract_enclosing_block(temp_file.path().to_str().unwrap());
         assert!(block.is_none());
+    }
+
+    #[test]
+    fn test_extract_enclosing_block_parse_cloud_success() {
+        // Create a temporary file where substring markers wrap header content
+        // and a Parse.Cloud.beforeSave function (which contains the TODO marker)
+        // appears after the markers. The "Footer text" outside the function should be omitted.
+        let content = "\
+Header text
+// v
+Header content inside markers
+// ^
+Parse.Cloud.beforeSave(\"Message\", async (request) => {
+    console.log(\"Setup\");
+    // TODO: - Do something important
+    console.log(\"Teardown\");
+});
+Footer text that should be omitted";
+        let mut temp_file = NamedTempFile::new().unwrap();
+        write!(temp_file, "{}", content).unwrap();
+        let block = extract_enclosing_block(temp_file.path().to_str().unwrap());
+        assert!(block.is_some());
+        let block_str = block.unwrap();
+        // Verify that the extracted block is the entire Parse.Cloud function
+        assert!(block_str.contains("Parse.Cloud.beforeSave(\"Message\", async (request) => {"));
+        assert!(block_str.contains("// TODO: - Do something important"));
+        assert!(block_str.contains("console.log(\"Teardown\");"));
+        // Ensure that footer text is not included
+        assert!(!block_str.contains("Footer text"));
+    }
+
+    #[test]
+    fn test_extract_enclosing_block_after_save_success() {
+        // Test a Parse.Cloud.afterSave function with a quoted first argument.
+        let content = "\
+Header text
+// v
+Header section that is not part of the function
+// ^
+Parse.Cloud.afterSave(\"Message\", async (request) => {
+    console.log(\"AfterSave Setup\");
+    // TODO: - Handle after save logic
+    console.log(\"AfterSave Teardown\");
+});
+Some trailing footer text";
+        let mut temp_file = NamedTempFile::new().unwrap();
+        write!(temp_file, "{}", content).unwrap();
+        let block = extract_enclosing_block(temp_file.path().to_str().unwrap());
+        assert!(block.is_some());
+        let block_str = block.unwrap();
+        assert!(block_str.contains("Parse.Cloud.afterSave(\"Message\", async (request) => {"));
+        assert!(block_str.contains("// TODO: - Handle after save logic"));
+        assert!(block_str.contains("console.log(\"AfterSave Teardown\");"));
+        assert!(!block_str.contains("trailing footer text"));
+    }
+
+    #[test]
+    fn test_extract_enclosing_block_before_save_parse_user_success() {
+        // Test a Parse.Cloud.beforeSave function with Parse.User as the first argument.
+        let content = "\
+Some header information
+// v
+Ignored header details
+// ^
+Parse.Cloud.beforeSave(Parse.User, async (request) => {
+    console.log(\"BeforeSave Init\");
+    // TODO: - Process user before save
+    console.log(\"BeforeSave Complete\");
+});
+Extra text that should be omitted";
+        let mut temp_file = NamedTempFile::new().unwrap();
+        write!(temp_file, "{}", content).unwrap();
+        let block = extract_enclosing_block(temp_file.path().to_str().unwrap());
+        assert!(block.is_some());
+        let block_str = block.unwrap();
+        assert!(block_str.contains("Parse.Cloud.beforeSave(Parse.User, async (request) => {"));
+        assert!(block_str.contains("// TODO: - Process user before save"));
+        assert!(block_str.contains("console.log(\"BeforeSave Complete\");"));
+        assert!(!block_str.contains("Extra text"));
+    }
+
+    #[test]
+    fn test_extract_enclosing_block_after_save_parse_user_success() {
+        // Test a Parse.Cloud.afterSave function with Parse.User as the first argument.
+        let content = "\
+Introductory header
+// v
+Header content that is not part of the function
+// ^
+Parse.Cloud.afterSave(Parse.User, async (request) => {
+    console.log(\"AfterSave Start\");
+    // TODO: - Process user after save
+    console.log(\"AfterSave End\");
+});
+Irrelevant footer";
+        let mut temp_file = NamedTempFile::new().unwrap();
+        write!(temp_file, "{}", content).unwrap();
+        let block = extract_enclosing_block(temp_file.path().to_str().unwrap());
+        assert!(block.is_some());
+        let block_str = block.unwrap();
+        assert!(block_str.contains("Parse.Cloud.afterSave(Parse.User, async (request) => {"));
+        assert!(block_str.contains("// TODO: - Process user after save"));
+        assert!(block_str.contains("console.log(\"AfterSave End\");"));
+        assert!(!block_str.contains("Irrelevant footer"));
     }
 }
