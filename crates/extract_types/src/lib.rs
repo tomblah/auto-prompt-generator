@@ -1,10 +1,11 @@
 use anyhow::{Result, Context};
 use regex::Regex;
 use std::collections::BTreeSet;
-use std::fs::File;
+use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
+use substring_marker_snippet_extractor::utils::marker_utils::{file_uses_markers, filter_substring_markers};
 
 /// A helper struct to encapsulate type extraction logic.
 struct TypeExtractor {
@@ -75,12 +76,18 @@ impl TypeExtractor {
 /// writes the sorted unique type names to a temporary file (persisted),
 /// and returns the path to that file as a String.
 pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> {
-    // Open the Swift file.
-    let file = File::open(&swift_file)
+    // Read the full file content.
+    let full_content = fs::read_to_string(&swift_file)
         .with_context(|| format!("Failed to open file {}", swift_file.as_ref().display()))?;
-    let reader = BufReader::new(file);
 
-    // Create the extractor and process the file lines.
+    // If substring markers are used, filter the content to include only the desired parts.
+    let content_to_process = if file_uses_markers(&full_content) {
+        filter_substring_markers(&full_content, "")
+    } else {
+        full_content
+    };
+
+    let reader = BufReader::new(content_to_process.as_bytes());
     let extractor = TypeExtractor::new()?;
     let types = extractor.extract_types(reader.lines().filter_map(Result::ok));
 
@@ -213,6 +220,25 @@ enum MyEnum {{}}"
         let result = fs::read_to_string(&result_path)?;
         // Expect that only "TriggeredType" is extracted.
         assert_eq!(result.trim(), "TriggeredType");
+        Ok(())
+    }
+
+    // New test: Ensure that when substring markers are present,
+    // only the marked (included) content is processed.
+    #[test]
+    fn test_extract_types_with_substring_markers() -> Result<()> {
+        // Create a temporary Swift file with substring markers.
+        // Only the type declaration between "// v" and "// ^" should be considered.
+        let mut swift_file = NamedTempFile::new()?;
+        writeln!(swift_file, "class OutsideType {{}}")?;
+        writeln!(swift_file, "// v")?;
+        writeln!(swift_file, "class InsideType {{}}")?;
+        writeln!(swift_file, "// ^")?;
+        writeln!(swift_file, "class OutsideType2 {{}}")?;
+        let result_path = extract_types_from_file(swift_file.path())?;
+        let result = fs::read_to_string(&result_path)?;
+        // Expect only "InsideType" to be extracted.
+        assert_eq!(result.trim(), "InsideType");
         Ok(())
     }
 }
