@@ -93,7 +93,8 @@ pub fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
 
 /// Static, precompiled regexes for candidate line detection.
 static SWIFT_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+(?:<[^>]+>)?\s*\([^)]*\)\s*(?:->\s*\S+)?\s*\{"#).unwrap()
+    Regex::new(r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+(?:<[^>]+>)?\s*\([^)]*\)\s*(?:->\s*\S+)?\s*\{"#)
+        .unwrap()
 });
 static JS_ASSIGNMENT_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#).unwrap()
@@ -107,14 +108,18 @@ static PARSE_CLOUD_RE: Lazy<Regex> = Lazy::new(|| {
     )
     .unwrap()
 });
+static OBJC_METHOD_RE: Lazy<Regex> = Lazy::new(|| {
+    // Matches Objective‑C method declarations.
+    Regex::new(r"^\s*[-+]\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*(?::\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*)*\s*\{")
+        .unwrap()
+});
 
-/// Private helper: determines if a given line is a candidate declaration line.
-/// It uses regex patterns for Swift functions, JS functions/assignments, or Parse.Cloud methods.
 fn is_candidate_line(line: &str) -> bool {
     SWIFT_FUNCTION_RE.is_match(line)
         || JS_ASSIGNMENT_RE.is_match(line)
         || JS_FUNCTION_RE.is_match(line)
         || PARSE_CLOUD_RE.is_match(line)
+        || OBJC_METHOD_RE.is_match(line)
 }
 
 /// Extracts the enclosing block (such as a function) that should contain the TODO marker.
@@ -131,9 +136,15 @@ pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
     }
     let lines: Vec<&str> = content.lines().collect();
     let mut candidate_index = None;
-    for (i, line) in lines.iter().enumerate().take(todo_idx) {
+    for i in 0..todo_idx {
+        let line = lines[i];
         if is_candidate_line(line) {
             candidate_index = Some(i);
+        } else if line.trim_start().starts_with('-') || line.trim_start().starts_with('+') {
+            // If the next line exists and contains '{', consider this a candidate.
+            if i + 1 < todo_idx && lines[i + 1].contains('{') {
+                candidate_index = Some(i);
+            }
         }
     }
     let start_index = candidate_index?;
@@ -372,5 +383,63 @@ Irrelevant footer";
         assert!(block_str.contains("// TODO: - Process user after save"));
         assert!(block_str.contains("console.log(\"AfterSave End\");"));
         assert!(!block_str.contains("Irrelevant footer"));
+    }
+
+    #[test]
+    fn test_objc_method_candidate_line() {
+        let objc_line = " - (void)myMethod:(NSString *)arg {";
+        // Verify that the OBJC method regex matches and the candidate line check returns true.
+        assert!(OBJC_METHOD_RE.is_match(objc_line));
+        assert!(is_candidate_line(objc_line));
+    }
+
+    #[test]
+    fn test_extract_enclosing_block_objc_success() {
+        // Create a temporary file with an Objective-C method declaration,
+        // markers, and a TODO marker after the markers.
+        let content = "\
+Some header info
+// v
+// ^
+- (void)myMethod:(NSString *)arg {
+    NSLog(@\"Start\");
+    // TODO: - Do something in ObjC
+    NSLog(@\"End\");
+}";
+        let mut temp_file = NamedTempFile::new().unwrap();
+        write!(temp_file, "{}", content).unwrap();
+        let block = extract_enclosing_block(temp_file.path().to_str().unwrap());
+        assert!(block.is_some());
+        let block_str = block.unwrap();
+        assert!(block_str.contains("- (void)myMethod:(NSString *)arg {"));
+        assert!(block_str.contains("// TODO: - Do something in ObjC"));
+        assert!(block_str.contains("NSLog(@\"End\");"));
+    }
+
+    #[test]
+    fn test_extract_enclosing_block_objc_split_declaration_success() {
+        // Test an Objective-C method declaration split across two lines:
+        // The first line has the method signature without the opening brace,
+        // and the following line contains the opening brace.
+        let content = "\
+Some header info
+// v
+Header details that are not part of the method
+// ^
+- (void)myMethod:(NSString *)arg
+{
+    NSLog(@\"Start split\");
+    // TODO: - Do something split
+    NSLog(@\"End split\");
+}";
+        let mut temp_file = NamedTempFile::new().unwrap();
+        write!(temp_file, "{}", content).unwrap();
+        let block = extract_enclosing_block(temp_file.path().to_str().unwrap());
+        assert!(block.is_some());
+        let block_str = block.unwrap();
+        assert!(block_str.contains("- (void)myMethod:(NSString *)arg"));
+        assert!(block_str.contains("{"));
+        assert!(block_str.contains("// TODO: - Do something split"));
+        assert!(block_str.contains("NSLog(@\"End split\");"));
     }
 }

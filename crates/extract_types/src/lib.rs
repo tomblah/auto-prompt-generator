@@ -10,7 +10,7 @@ use substring_marker_snippet_extractor::utils::marker_utils::{
 };
 use once_cell::sync::Lazy;
 
-/// Static regex definitions for candidate line detection.
+// Static regex definitions for candidate line detection.
 static SWIFT_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+(?:<[^>]+>)?\s*\([^)]*\)\s*(?:->\s*\S+)?\s*\{"#).unwrap()
 });
@@ -26,13 +26,18 @@ static PARSE_CLOUD_RE: Lazy<Regex> = Lazy::new(|| {
     )
     .unwrap()
 });
+// New static regex for Objective‑C method declarations (for one-line declarations).
+static OBJC_METHOD_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^\s*[-+]\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*(?::\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*)*\s*\{").unwrap()
+});
 
-/// Private helper: determines if a given line is a candidate declaration line.
+// Private helper: determines if a given line is a candidate declaration line.
 fn is_candidate_line(line: &str) -> bool {
     SWIFT_FUNCTION_RE.is_match(line)
         || JS_ASSIGNMENT_RE.is_match(line)
         || JS_FUNCTION_RE.is_match(line)
         || PARSE_CLOUD_RE.is_match(line)
+        || OBJC_METHOD_RE.is_match(line) // added to match Objective‑C methods on one line
 }
 
 /// A helper struct to encapsulate type extraction logic.
@@ -56,9 +61,11 @@ impl TypeExtractor {
     /// (unless it starts with the trigger comment "// TODO: -").
     fn extract_tokens(&self, line: &str) -> Option<Vec<String>> {
         let trimmed = line.trim();
-        // Skip empty lines, import lines, or lines that are comments (unless they are trigger comments).
+        // Skip empty lines, import/include directives, or lines that are comments (unless they are trigger comments).
         if trimmed.is_empty()
             || trimmed.starts_with("import ")
+            || trimmed.starts_with("#import")
+            || trimmed.starts_with("#include")
             || (trimmed.starts_with("//") && !trimmed.starts_with("// TODO: -"))
         {
             return None;
@@ -137,7 +144,7 @@ pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> 
     let temp_path: PathBuf = temp_file
         .into_temp_path()
         .keep()
-        .context("Failed to persist temporary file")?;
+        .with_context(|| "Failed to persist temporary file")?;
     Ok(temp_path.display().to_string())
 }
 
@@ -151,9 +158,16 @@ fn extract_enclosing_block_from_content(content: &str) -> Option<String> {
     }
     let lines: Vec<&str> = content.lines().collect();
     let mut candidate_index = None;
-    for (i, line) in lines.iter().enumerate().take(todo_idx) {
+    // Look for a candidate line up to the TODO marker.
+    for i in 0..todo_idx {
+        let line = lines[i];
         if is_candidate_line(line) {
             candidate_index = Some(i);
+        } else if line.trim_start().starts_with('-') || line.trim_start().starts_with('+') {
+            // For Objective‑C methods split across lines, check if the next line contains '{'.
+            if i + 1 < todo_idx && lines[i + 1].contains('{') {
+                candidate_index = Some(i);
+            }
         }
     }
     let start_index = candidate_index?;
@@ -437,5 +451,58 @@ mod type_extractor_tests {
         let types = extractor.extract_types(lines.into_iter());
         let expected: BTreeSet<String> = ["DuplicateType"].iter().map(|s| s.to_string()).collect();
         assert_eq!(types, expected);
+    }
+}
+
+#[cfg(test)]
+mod objc_tests {
+    use super::*;
+
+    // Test that the new OBJC_METHOD_RE regex correctly recognizes a one‐line Objective‑C method declaration.
+    #[test]
+    fn test_is_candidate_line_objc_method_single_line() {
+        let objc_line = "- (void)MyObjCMethod {";
+        // The line should be recognized as a candidate declaration.
+        assert!(is_candidate_line(objc_line));
+    }
+
+    // Test that an Objective‑C method declaration split across lines is recognized.
+    #[test]
+    fn test_extract_enclosing_block_with_objc_method_split_lines() {
+        // Simulate a file content where an Objective‑C method declaration is split:
+        // The declaration is on one line without the opening brace and the next line contains the brace.
+        let content = "\
+- (void)MyObjCMethod\n\
+{\n\
+    // method implementation\n\
+}\n\
+void anotherFunction() {\n\
+    // TODO: - Fix issue\n\
+}";
+        // Since the TODO marker appears later, extract the enclosing block for the TODO.
+        // The candidate should be selected based on the split Objective‑C declaration.
+        let block = extract_enclosing_block_from_content(content);
+        assert!(block.is_some());
+        let block_str = block.unwrap();
+        // The extracted block should include the Objective‑C declaration parts.
+        assert!(block_str.contains("- (void)MyObjCMethod"));
+        assert!(block_str.contains("{"));
+    }
+
+    // Test that the candidate line is chosen from an Objective‑C method when it appears as a one‐line declaration.
+    #[test]
+    fn test_extract_enclosing_block_with_objc_method_single_line() {
+        let content = "\
+- (void)MyObjCMethod { // implementation start\n\
+    // method body\n\
+}\n\
+void someFunction() {\n\
+    // TODO: - Address bug\n\
+}";
+        let block = extract_enclosing_block_from_content(content);
+        assert!(block.is_some());
+        let block_str = block.unwrap();
+        // Ensure the block contains the Objective‑C method declaration.
+        assert!(block_str.contains("- (void)MyObjCMethod {"));
     }
 }
