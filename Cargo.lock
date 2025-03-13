@@ -703,6 +703,7 @@ name = "substring_marker_snippet_extractor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "once_cell",
  "rand",
  "regex",
  "tempfile",
