@@ -1,10 +1,10 @@
-// crates/substring_marker_snippet_extractor/src/processor/file_processor.rs
+// src/processor/file_processor.rs
 
 use std::path::Path;
 use anyhow::{Result, anyhow};
 use std::fs;
 
-use crate::{filter_substring_markers, file_uses_markers, extract_enclosing_block};
+use crate::utils::marker_utils::{filter_substring_markers, file_uses_markers, extract_enclosing_block};
 
 /// Trait that abstracts file processing.
 pub trait FileProcessor {
