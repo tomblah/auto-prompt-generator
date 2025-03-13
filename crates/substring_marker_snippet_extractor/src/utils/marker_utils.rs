@@ -2,6 +2,7 @@
 
 use std::fs;
 use regex::Regex;
+use once_cell::sync::Lazy;
 
 /// Filters the file’s content by returning only the text between substring markers.
 /// Instead of always using "// ...", the caller can supply a custom placeholder.
@@ -90,26 +91,27 @@ pub fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
     marker_depth > 0
 }
 
+/// Static, precompiled regexes for candidate line detection.
+static SWIFT_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+(?:<[^>]+>)?\s*\([^)]*\)\s*(?:->\s*\S+)?\s*\{"#).unwrap()
+});
+static JS_ASSIGNMENT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#).unwrap()
+});
+static JS_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^\s*(?:async\s+)?function\s+\w+\s*\([^)]*\)\s*\{"#).unwrap()
+});
+static PARSE_CLOUD_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^\s*Parse\.Cloud\.define\s*\(\s*".+?"\s*,\s*(?:async\s+)?\([^)]*\)\s*=>\s*\{"#).unwrap()
+});
+
 /// Private helper: determines if a given line is a candidate declaration line.
 /// It uses regex patterns for Swift functions, JS functions/assignments, or Parse.Cloud.define.
 fn is_candidate_line(line: &str) -> bool {
-    let swift_function = Regex::new(
-        r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+(?:<[^>]+>)?\s*\([^)]*\)\s*(?:->\s*\S+)?\s*\{"#
-    ).unwrap();
-    let js_assignment = Regex::new(
-        r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#
-    ).unwrap();
-    let js_function = Regex::new(
-        r#"^\s*(?:async\s+)?function\s+\w+\s*\([^)]*\)\s*\{"#
-    ).unwrap();
-    let parse_cloud = Regex::new(
-        r#"^\s*Parse\.Cloud\.define\s*\(\s*".+?"\s*,\s*(?:async\s+)?\([^)]*\)\s*=>\s*\{"#
-    ).unwrap();
-
-    swift_function.is_match(line)
-        || js_assignment.is_match(line)
-        || js_function.is_match(line)
-        || parse_cloud.is_match(line)
+    SWIFT_FUNCTION_RE.is_match(line)
+        || JS_ASSIGNMENT_RE.is_match(line)
+        || JS_FUNCTION_RE.is_match(line)
+        || PARSE_CLOUD_RE.is_match(line)
 }
 
 /// Extracts the enclosing block (such as a function) that should contain the TODO marker.
