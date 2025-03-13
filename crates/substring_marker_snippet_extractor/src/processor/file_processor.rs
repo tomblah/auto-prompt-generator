@@ -22,7 +22,7 @@ impl FileProcessor for DefaultFileProcessor {
         
         // Use marker filtering if markers are present.
         let processed_content = if file_content.lines().any(|line| line.trim() == "// v") {
-            filter_substring_markers(&file_content)
+            filter_substring_markers(&file_content, "// ...")
         } else {
             file_content.clone()
         };
@@ -93,5 +93,52 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let result = processor.process_file(temp_file.path(), None);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_default_processor_with_markers() {
+        // Create a temporary file with a candidate declaration (using Swift syntax),
+        // markers, and a TODO. Using `concat!` ensures that the literal is not affected
+        // by source code indentation.
+        let content = concat!(
+            "Some preamble text\n",
+            "func myFunction() {\n",
+            "let x = 10;\n",
+            "}\n",
+            "Other text\n",
+            "// v\n",
+            "ignored text\n",
+            "// ^\n",
+            "Trailing text\n",
+            "// TODO: - Do something"
+        );
+        // Expected behavior:
+        // 1. The marker filtering produces the following output:
+        let expected_filtered = "\n\n// ...\n\nignored text\n\n\n// ...\n\n\n\n";
+        // 2. The extract_enclosing_block function should extract the candidate declaration
+        //    exactly as it appears in the file:
+        let expected_context = "func myFunction() {\nlet x = 10;\n}";
+        // 3. The processor appends the context, prefixed by the header.
+        let expected_context_appended = format!("// Enclosing function context:\n{}", expected_context);
+        let expected = format!("{}{}", expected_filtered, expected_context_appended);
+
+        // Create an isolated temporary file for this test.
+        let mut temp_file = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write;
+        write!(temp_file, "{}", content).unwrap();
+        let file_basename = temp_file
+            .path()
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let processor = DefaultFileProcessor;
+        let result = processor
+            .process_file(temp_file.path(), Some(&file_basename))
+            .unwrap();
+
+        assert_eq!(result, expected);
     }
 }
