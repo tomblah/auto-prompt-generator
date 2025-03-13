@@ -14,7 +14,6 @@ use get_git_root::get_git_root;
 use find_prompt_instruction::find_prompt_instruction_in_dir;
 use filter_excluded_files::filter_excluded_files_lines;
 use extract_types::extract_types_from_file;
-use filter_files_singular;
 use extract_enclosing_type::extract_enclosing_type;
 use find_referencing_files;
 
@@ -180,9 +179,12 @@ fn main() -> Result<()> {
     let found_files_path: PathBuf;
     if singular {
         println!("Singular mode enabled: only including the TODO file");
-        found_files_path = filter_files_singular::create_todo_temp_file(&file_path)
-            .map_err(|e| anyhow::anyhow!(e))
-            .context("Failed to create singular temp file")?;
+        // Directly use the TODO file content instead of writing it to a temp file.
+        let todo_data = fs::read_to_string(&file_path)
+            .context("Failed to read TODO file")?;
+        // Now pass todo_data directly to assemble_prompt (assuming you update its API)
+        // or simply store it in a variable to be used later.
+        found_files_data = todo_data;
     } else {
         let types_file_path = extract_types_from_file(&file_path)
             .context("Failed to extract types")?;
