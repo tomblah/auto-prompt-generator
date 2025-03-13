@@ -124,3 +124,80 @@ line c
     
     fs::remove_file(&path).expect("Failed to remove temporary file");
 }
+
+// --- New tests for Parse.Cloud functionality ---
+
+#[test]
+fn test_parse_cloud_after_save_quoted() {
+    // Test a Parse.Cloud.afterSave function with a quoted first argument.
+    let content = r#"
+    // v
+    Header content that is within markers
+    // ^
+    Parse.Cloud.afterSave("Message", async (request) => {
+        console.log("AfterSave Setup");
+        // TODO: - Handle after save logic
+        console.log("AfterSave Teardown");
+    });
+    Trailing footer text
+    "#;
+    let path = create_temp_file_with_content(content);
+    let file_name = path.file_name().unwrap().to_str().unwrap();
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
+       .expect("process_file should succeed for Parse.Cloud.afterSave with quoted argument");
+    assert!(result.contains("Parse.Cloud.afterSave(\"Message\", async (request) => {"));
+    assert!(result.contains("// TODO: - Handle after save logic"));
+    assert!(result.contains("console.log(\"AfterSave Teardown\");"));
+    assert!(!result.contains("Trailing footer text"));
+    fs::remove_file(&path).expect("Failed to remove temporary file");
+}
+
+#[test]
+fn test_parse_cloud_before_save_parse_user() {
+    // Test a Parse.Cloud.beforeSave function with Parse.User as the first argument.
+    let content = r#"
+    // v
+    Header section that is not part of the function block
+    // ^
+    Parse.Cloud.beforeSave(Parse.User, async (request) => {
+        console.log("BeforeSave Init");
+        // TODO: - Process user before save
+        console.log("BeforeSave Complete");
+    });
+    Extra footer text that should be omitted
+    "#;
+    let path = create_temp_file_with_content(content);
+    let file_name = path.file_name().unwrap().to_str().unwrap();
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
+       .expect("process_file should succeed for Parse.Cloud.beforeSave with Parse.User");
+    assert!(result.contains("Parse.Cloud.beforeSave(Parse.User, async (request) => {"));
+    assert!(result.contains("// TODO: - Process user before save"));
+    assert!(result.contains("console.log(\"BeforeSave Complete\");"));
+    assert!(!result.contains("Extra footer text"));
+    fs::remove_file(&path).expect("Failed to remove temporary file");
+}
+
+#[test]
+fn test_parse_cloud_after_save_parse_user() {
+    // Test a Parse.Cloud.afterSave function with Parse.User as the first argument.
+    let content = r#"
+    // v
+    Some header that is filtered out
+    // ^
+    Parse.Cloud.afterSave(Parse.User, async (request) => {
+        console.log("AfterSave Start");
+        // TODO: - Process user after save
+        console.log("AfterSave End");
+    });
+    Irrelevant footer text
+    "#;
+    let path = create_temp_file_with_content(content);
+    let file_name = path.file_name().unwrap().to_str().unwrap();
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
+       .expect("process_file should succeed for Parse.Cloud.afterSave with Parse.User");
+    assert!(result.contains("Parse.Cloud.afterSave(Parse.User, async (request) => {"));
+    assert!(result.contains("// TODO: - Process user after save"));
+    assert!(result.contains("console.log(\"AfterSave End\");"));
+    assert!(!result.contains("Irrelevant footer text"));
+    fs::remove_file(&path).expect("Failed to remove temporary file");
+}
