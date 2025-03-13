@@ -20,7 +20,7 @@ test tests:
 	@while IFS= read -r -d '' manifest; do \
 	    package_dir=$$(dirname "$$manifest"); \
 	    echo "Running tests in package: $$package_dir"; \
-	    cargo test --manifest-path "$$manifest" -- --test-threads=1; \
+	    cargo test --manifest-path "$$manifest" -- --test-threads=1 || exit 1; \
 	done < <(find crates -name Cargo.toml -print0)
 
 coverage:
