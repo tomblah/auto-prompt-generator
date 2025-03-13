@@ -58,3 +58,45 @@ fn integration_extract_types_no_types() -> Result<()> {
     assert!(result.trim().is_empty());
     Ok(())
 }
+
+// New integration test: Ensure that when substring markers are present,
+// only the content between the markers is considered.
+#[test]
+fn integration_extract_types_with_substring_markers() -> Result<()> {
+    let swift_content = r#"
+        // This type is outside the markers and should be ignored.
+        class OutsideType {}
+        // v
+        // Only this section should be processed:
+        class InsideType {}
+        // ^
+        // This type is also outside and should be ignored.
+        class OutsideType2 {}
+    "#;
+    let mut temp_file = NamedTempFile::new()?;
+    write!(temp_file, "{}", swift_content)?;
+    
+    let result_path = extract_types_from_file(temp_file.path())?;
+    let result = fs::read_to_string(result_path)?;
+    // Expect only "InsideType" to be extracted.
+    let expected = "InsideType";
+    assert_eq!(result.trim(), expected);
+    Ok(())
+}
+
+// New integration test: Ensure that trigger comments are processed correctly.
+#[test]
+fn integration_extract_types_trigger_comment() -> Result<()> {
+    let swift_content = r#"
+        import Foundation
+        // TODO: - TriggeredType
+    "#;
+    let mut temp_file = NamedTempFile::new()?;
+    write!(temp_file, "{}", swift_content)?;
+    
+    let result_path = extract_types_from_file(temp_file.path())?;
+    let result = fs::read_to_string(result_path)?;
+    let expected = "TriggeredType";
+    assert_eq!(result.trim(), expected);
+    Ok(())
+}
