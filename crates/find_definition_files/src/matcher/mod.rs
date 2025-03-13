@@ -1,8 +1,10 @@
 pub mod swift;
 pub mod js;
+pub mod objc;
 
 pub use swift::SwiftMatcher;
 pub use js::JSMatcher;
+pub use objc::ObjCMatcher;
 
 /// Trait for language-specific definition matching.
 pub trait DefinitionMatcher {
@@ -14,6 +16,8 @@ pub fn get_matcher_for_extension(ext: &str) -> Option<Box<dyn DefinitionMatcher>
     match ext.to_lowercase().as_str() {
         "swift" => Some(Box::new(SwiftMatcher)),
         "js" => Some(Box::new(JSMatcher)),
+        // Use ObjCMatcher for both .h and .m files.
+        "h" | "m" => Some(Box::new(ObjCMatcher)),
         _ => None,
     }
 }
@@ -26,7 +30,7 @@ mod tests {
     fn test_get_matcher_for_extension_swift() {
         let matcher = get_matcher_for_extension("swift");
         assert!(matcher.is_some(), "Expected a Swift matcher for 'swift' extension");
-        // Use some Swift content to verify the matcher works.
+        // Example Swift content: using a simple class declaration.
         let content = "public class MyClass { }";
         assert!(matcher.unwrap().matches_definition(content, "MyClass"));
     }
@@ -37,6 +41,34 @@ mod tests {
         assert!(matcher.is_some(), "Expected a JS matcher for 'js' extension");
         let content = "class MyClass { constructor() {} }";
         assert!(matcher.unwrap().matches_definition(content, "MyClass"));
+    }
+
+    #[test]
+    fn test_get_matcher_for_extension_objc_h() {
+        let matcher = get_matcher_for_extension("h");
+        assert!(matcher.is_some(), "Expected an ObjC matcher for 'h' extension");
+        let content = r#"
+            #import <Foundation/Foundation.h>
+            @interface Message : NSObject
+            - (void)printMessage;
+            @end
+        "#;
+        assert!(matcher.unwrap().matches_definition(content, "Message"));
+    }
+
+    #[test]
+    fn test_get_matcher_for_extension_objc_m() {
+        let matcher = get_matcher_for_extension("m");
+        assert!(matcher.is_some(), "Expected an ObjC matcher for 'm' extension");
+        let content = r#"
+            #import "Message.h"
+            @implementation Message
+            - (void)printMessage {
+                NSLog(@"Hello, world!");
+            }
+            @end
+        "#;
+        assert!(matcher.unwrap().matches_definition(content, "Message"));
     }
 
     #[test]
