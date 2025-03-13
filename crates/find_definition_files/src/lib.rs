@@ -274,7 +274,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Objective-C support not yet implemented"]
     fn test_includes_objc_files() {
         let dir = tempdir().unwrap();
         let root = dir.path();
