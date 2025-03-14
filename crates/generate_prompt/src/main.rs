@@ -59,6 +59,13 @@ fn main() -> Result<()> {
                 .action(clap::ArgAction::SetTrue)
                 .default_value("false"),
         )
+        .arg(
+            Arg::new("slim")
+                .long("slim")
+                .help("Treat the found TODO marker file as if it uses substring markers")
+                .action(clap::ArgAction::SetTrue)
+                .default_value("false"),
+        )
         .get_matches();
 
     let singular = *matches.get_one::<bool>("singular").unwrap();
@@ -69,6 +76,12 @@ fn main() -> Result<()> {
         .unwrap_or_default()
         .map(|s| s.to_string())
         .collect();
+
+    // Set the slim mode environment variable if enabled.
+    let slim_mode = *matches.get_one::<bool>("slim").unwrap();
+    if slim_mode {
+        env::set_var("SLIM_MODE", "true");
+    }
 
     // Set the diff branch from CLI if not already set via env.
     if env::var("DIFF_WITH_BRANCH").is_err() {
