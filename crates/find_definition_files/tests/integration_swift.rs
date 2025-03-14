@@ -126,9 +126,10 @@ mod integration_swift {
         // Read the types file content.
         let types_content = fs::read_to_string(&types_path).unwrap();
 
-        // Calling find_definition_files should return an error.
-        let result = find_definition_files(types_content.as_str(), dir.path());
-        assert!(result.is_err(), "Expected error for empty types file");
+        // Calling find_definition_files should return an empty set.
+        let result = find_definition_files(types_content.as_str(), dir.path())
+            .expect("Should succeed with empty set for empty types file");
+        assert!(result.is_empty(), "Expected an empty set when types file is empty");
     }
 
     #[test]
