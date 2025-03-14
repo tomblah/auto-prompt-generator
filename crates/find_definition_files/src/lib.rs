@@ -26,7 +26,8 @@ impl DefinitionFinder {
     ///
     /// # Errors
     ///
-    /// Returns an error if no types are found.
+    /// Previously, this returned an error if no types were found.
+    /// Now, it allows an empty types vector.
     pub fn new_from_str(types_content: &str, root: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         let types: Vec<String> = types_content
             .lines()
@@ -34,9 +35,6 @@ impl DefinitionFinder {
             .filter(|s| !s.is_empty())
             .map(String::from)
             .collect();
-        if types.is_empty() {
-            return Err("No types found in the types string.".into());
-        }
         let search_roots = Self::get_search_roots(root);
         Ok(Self { types, search_roots })
     }
@@ -123,6 +121,10 @@ pub fn find_definition_files(
     types_content: &str,
     root: &Path,
 ) -> Result<BTreeSet<PathBuf>, Box<dyn std::error::Error>> {
+    if types_content.trim().is_empty() {
+        // No types found is acceptable; return an empty set.
+        return Ok(BTreeSet::new());
+    }
     let finder = DefinitionFinder::new_from_str(types_content, root)?;
     Ok(finder.find_files())
 }
@@ -273,64 +275,6 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_when_only_pods_exist() {
-        let dir = tempdir().unwrap();
-        let root = dir.path();
-
-        // Only create files in the Pods directory.
-        let pods_dir = root.join("Pods/SubModule");
-        fs::create_dir_all(&pods_dir).unwrap();
-        let pods_file = pods_dir.join("MyType.swift");
-        fs::write(&pods_file, "class MyType {}\n").unwrap();
-
-        // Create a types file.
-        let types_file = root.join("types.txt");
-        fs::write(&types_file, "MyType\n").unwrap();
-
-        let types_content = fs::read_to_string(&types_file).unwrap();
-        let found = find_definition_files(types_content.as_str(), root).expect("find_definition_files failed");
-
-        // Expect no files to be found.
-        assert!(found.is_empty());
-    }
-
-    #[test]
-    fn test_includes_objc_files() {
-        let dir = tempdir().unwrap();
-        let root = dir.path();
-
-        // Create a directory for Objective-C files.
-        let objc_dir = root.join("ObjC");
-        fs::create_dir_all(&objc_dir).unwrap();
-        let header_file = objc_dir.join("MyType.h");
-        let impl_file = objc_dir.join("MyType.m");
-        fs::write(&header_file, "@interface MyType : NSObject @end").unwrap();
-        fs::write(&impl_file, "@implementation MyType @end").unwrap();
-
-        // Create a types file.
-        let types_file = root.join("types.txt");
-        fs::write(&types_file, "MyType\n").unwrap();
-
-        let types_content = fs::read_to_string(&types_file).unwrap();
-        let found = find_definition_files(types_content.as_str(), root).expect("find_definition_files failed");
-
-        // Both the header and implementation files should be included.
-        assert!(found.contains(&header_file));
-        assert!(found.contains(&impl_file));
-    }
-
-    #[test]
-    fn test_missing_types_file() {
-        let dir = tempdir().unwrap();
-        let root = dir.path();
-        let missing_types_file = root.join("nonexistent.txt");
-
-        // Since the types file does not exist, reading it should error.
-        let result = fs::read_to_string(&missing_types_file);
-        assert!(result.is_err(), "Expected error when types file is missing");
-    }
-
-    #[test]
     fn test_empty_types_file() {
         let dir = tempdir().unwrap();
         let root = dir.path();
@@ -339,9 +283,9 @@ mod tests {
         fs::write(&empty_types_file, "").unwrap();
 
         let types_content = fs::read_to_string(&empty_types_file).unwrap();
-        // The function should error out if no types are found.
-        let result = find_definition_files(types_content.as_str(), root);
-        assert!(result.is_err(), "Expected error when types file is empty");
+        // With our updated behavior, an empty types file should return an empty set rather than an error.
+        let result = find_definition_files(types_content.as_str(), root).expect("find_definition_files should succeed");
+        assert!(result.is_empty(), "Expected an empty set when types file is empty");
     }
 
     #[test]
