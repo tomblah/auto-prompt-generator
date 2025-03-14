@@ -1,7 +1,9 @@
+// crates/generate_prompt/src/main.rs
+
 use anyhow::{Context, Result};
 use clap::{Arg, Command};
 use std::env;
-use std::path::{PathBuf};
+use std::path::PathBuf;
 use std::process::{Command as ProcessCommand, Stdio};
 
 // Library dependencies.
@@ -15,6 +17,7 @@ use post_processing;
 mod clipboard;
 mod search_root;
 mod file_selector;
+mod prompt_validation; // Added the prompt_validation module
 
 fn main() -> Result<()> {
     let matches = Command::new("generate_prompt")
@@ -66,7 +69,6 @@ fn main() -> Result<()> {
     let force_global = *matches.get_one::<bool>("force_global").unwrap();
     let include_references = *matches.get_one::<bool>("include_references").unwrap();
 
-    // Use DIFF_WITH_BRANCH from the environment if it already exists; otherwise, if provided as an argument, set it.
     if env::var("DIFF_WITH_BRANCH").is_err() {
         if let Some(diff_branch) = matches.get_one::<String>("diff_with") {
             env::set_var("DIFF_WITH_BRANCH", diff_branch);
@@ -92,7 +94,6 @@ fn main() -> Result<()> {
     println!("Git root: {}", git_root);
     println!("--------------------------------------------------");
 
-    // If diff mode is enabled, verify that the specified branch exists.
     if let Ok(diff_branch) = env::var("DIFF_WITH_BRANCH") {
         let verify_status = ProcessCommand::new("git")
             .args(&["rev-parse", "--verify", &diff_branch])
@@ -139,7 +140,6 @@ fn main() -> Result<()> {
     }
 
     // 4. Determine package scope.
-    // If force_global is enabled, use the Git root directly.
     let base_dir = if force_global {
         println!("Force global enabled: using Git root for context");
         PathBuf::from(&git_root)
@@ -169,48 +169,28 @@ fn main() -> Result<()> {
         include_references,
     )?;
 
-    // 8. Assemble the final prompt by calling the library function.
+    // 8. Assemble the final prompt.
     let final_prompt = assemble_prompt::assemble_prompt(
         &found_files,
         instruction_content.trim(),
     )
     .context("Failed to assemble prompt")?;
 
-    // Determine if diff mode is enabled.
     let diff_enabled = env::var("DIFF_WITH_BRANCH").is_ok();
 
-    // 9a. Post-process the prompt to scrub extra TODO markers.
+    // 9a. Post-process the prompt.
     let final_prompt = post_processing::scrub_extra_todo_markers(&final_prompt, diff_enabled, instruction_content.trim())
         .unwrap_or_else(|err| {
             eprintln!("Error during post-processing: {}", err);
             std::process::exit(1);
         });
 
-    // 10. Check that there are exactly two markers unless diff reporting is enabled.
-    let marker = "// TODO: -";
-    let marker_lines: Vec<&str> = final_prompt
-        .lines()
-        .filter(|line| line.contains(marker))
-        .collect();
-    if diff_enabled {
-        if marker_lines.len() != 2 && marker_lines.len() != 3 {
-            eprintln!(
-                "Expected 2 or 3 {} markers (with diff enabled), but found {}. Exiting.",
-                marker,
-                marker_lines.len()
-            );
+    // 10. Validate the marker count using the new prompt_validation module.
+    prompt_validation::validate_marker_count(&final_prompt, diff_enabled)
+        .unwrap_or_else(|err| {
+            eprintln!("{}", err);
             std::process::exit(1);
-        }
-    } else {
-        if marker_lines.len() != 2 {
-            eprintln!(
-                "Expected exactly 2 {} markers, but found {}. Exiting.",
-                marker,
-                marker_lines.len()
-            );
-            std::process::exit(1);
-        }
-    }
+        });
 
     println!("--------------------------------------------------");
     println!("Success:\n");
@@ -221,7 +201,6 @@ fn main() -> Result<()> {
     println!("--------------------------------------------------\n");
     println!("Prompt has been copied to clipboard.");
 
-    // Copy the final prompt to the clipboard.
     clipboard::copy_to_clipboard(&final_prompt);
 
     Ok(())
