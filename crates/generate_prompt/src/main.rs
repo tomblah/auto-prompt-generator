@@ -1,11 +1,8 @@
-// crates/generate_prompt/src/main.rs
-
 use anyhow::{Context, Result};
 use clap::{Arg, Command};
 use std::env;
 use std::process::{Command as ProcessCommand, Stdio};
 
-// Library dependencies.
 use get_git_root::get_git_root;
 
 mod clipboard;
@@ -59,11 +56,19 @@ fn main() -> Result<()> {
                 .action(clap::ArgAction::SetTrue)
                 .default_value("false"),
         )
+        .arg(
+            Arg::new("slim")
+                .long("slim")
+                .help("Only consider finding types from the enclosing function by treating the file as if it uses substring markers. This forces the application to only extract the content enclosing the TODO: - marker.")
+                .action(clap::ArgAction::SetTrue)
+                .default_value("false"),
+        )
         .get_matches();
 
     let singular = *matches.get_one::<bool>("singular").unwrap();
     let force_global = *matches.get_one::<bool>("force_global").unwrap();
     let include_references = *matches.get_one::<bool>("include_references").unwrap();
+    let slim_mode = *matches.get_one::<bool>("slim").unwrap();
     let excludes: Vec<String> = matches
         .get_many::<String>("exclude")
         .unwrap_or_default()
@@ -117,6 +122,7 @@ fn main() -> Result<()> {
     println!("--------------------------------------------------");
 
     // 5. Delegate to the prompt generator module.
+    // Note: The generate_prompt function has been updated to accept the slim_mode flag.
     prompt_generator::generate_prompt(
         &git_root,
         &file_path,
@@ -124,6 +130,7 @@ fn main() -> Result<()> {
         force_global,
         include_references,
         &excludes,
+        slim_mode,
     )?;
 
     Ok(())

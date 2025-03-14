@@ -2,14 +2,17 @@
 use std::env;
 use std::fs;
 use std::path::Path;
-use anyhow::{Result};
+use anyhow::Result;
 use substring_marker_snippet_extractor::processor::file_processor::{DefaultFileProcessor, process_file_with_processor};
 use unescape_newlines::unescape_newlines;
 use diff_with_branch::run_diff;
 
 /// Public API: assembles the final prompt from the found files (provided as an in‑memory slice)
 /// and instruction content. The prompt is returned as a String.
-pub fn assemble_prompt(found_files: &[String], _instruction_content: &str) -> Result<String> {
+///
+/// The `slim_mode` parameter forces the file processor to treat the file as if it uses substring markers,
+/// meaning it will only extract the content from the enclosing function around the TODO marker.
+pub fn assemble_prompt(found_files: &[String], _instruction_content: &str, slim_mode: bool) -> Result<String> {
     // Sort and deduplicate the list.
     let mut files = found_files.to_vec();
     files.sort();
@@ -31,8 +34,13 @@ pub fn assemble_prompt(found_files: &[String], _instruction_content: &str) -> Re
             .unwrap_or(&file_path)
             .to_string();
 
-        // Process the file using the DefaultFileProcessor.
-        let processed_content = match process_file_with_processor(&DefaultFileProcessor, &file_path, Some(&todo_file_basename)) {
+        // Process the file using the DefaultFileProcessor with the slim_mode flag.
+        let processed_content = match process_file_with_processor(
+            &DefaultFileProcessor,
+            &file_path,
+            Some(&todo_file_basename),
+            slim_mode,
+        ) {
             Ok(content) => content,
             Err(err) => {
                 eprintln!("Error processing {}: {}. Falling back to raw file contents.", file_path, err);

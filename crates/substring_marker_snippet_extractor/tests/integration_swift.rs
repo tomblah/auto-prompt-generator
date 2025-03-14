@@ -17,11 +17,12 @@ fn create_temp_file_with_content(content: &str) -> PathBuf {
 
 #[test]
 fn test_no_markers() {
-    // When there are no markers, process_file should return the raw file content.
+    // When there are no markers and slim_mode is false,
+    // process_file should return the raw file content.
     let raw_content = "func main() {\n    print(\"Hello, world!\")\n}\n";
     let path = create_temp_file_with_content(raw_content);
     let file_name = path.file_name().unwrap().to_str().unwrap();
-    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name), false)
         .expect("process_file should succeed for file with no markers");
     assert_eq!(result, raw_content);
     fs::remove_file(&path).expect("Failed to remove temporary file");
@@ -40,7 +41,7 @@ func myFunction() {
 "#;
     let path = create_temp_file_with_content(content);
     let file_name = path.file_name().unwrap().to_str().unwrap();
-    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name), false)
         .expect("process_file should succeed for file with markers and TODO inside marker block");
     // The expected output should be just the filtered marker content.
     let expected = filter_substring_markers(content, "// ...");
@@ -64,7 +65,7 @@ func myFunction() {
 "#;
     let path = create_temp_file_with_content(content);
     let file_name = path.file_name().unwrap().to_str().unwrap();
-    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name), false)
         .expect("process_file should succeed for file with markers and TODO outside marker block");
 
     // Compute the filtered content portion.
@@ -91,7 +92,7 @@ func myFunction() {
 fn test_file_not_found() {
     // process_file should return an error when the file does not exist.
     let path = PathBuf::from("non_existent_file.swift");
-    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some("non_existent_file.swift"));
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some("non_existent_file.swift"), false);
     assert!(result.is_err(), "process_file should error for a non-existent file");
 }
 
@@ -114,7 +115,7 @@ line c
 "#;
     let path = create_temp_file_with_content(content);
     let file_name = path.file_name().unwrap().to_str().unwrap();
-    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name), false)
         .expect("process_file should succeed for file with multiple marker blocks");
     
     // In this scenario, since there is no TODO marker at all,
@@ -122,5 +123,20 @@ line c
     let expected = filter_substring_markers(content, "// ...");
     assert_eq!(result, expected);
     
+    fs::remove_file(&path).expect("Failed to remove temporary file");
+}
+
+/// New test for slim mode.
+/// This test ensures that when slim_mode is enabled, the file is processed as if it contains markers,
+/// even if it does not. The output should match what filter_substring_markers produces.
+#[test]
+fn test_slim_mode_with_no_markers() {
+    let raw_content = "func main() {\n    println!(\"Hello, world!\");\n}\n";
+    let path = create_temp_file_with_content(raw_content);
+    let file_name = path.file_name().unwrap().to_str().unwrap();
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name), true)
+         .expect("process_file should succeed with slim_mode enabled");
+    let expected = filter_substring_markers(raw_content, "// ...");
+    assert_eq!(result, expected);
     fs::remove_file(&path).expect("Failed to remove temporary file");
 }

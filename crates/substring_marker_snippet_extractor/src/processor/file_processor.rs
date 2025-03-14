@@ -1,5 +1,4 @@
 // src/processor/file_processor.rs
-
 use std::path::Path;
 use anyhow::{Result, anyhow};
 use std::fs;
@@ -7,21 +6,22 @@ use std::fs;
 use crate::utils::marker_utils::{filter_substring_markers, file_uses_markers, extract_enclosing_block};
 
 /// Trait that abstracts file processing.
+/// Now accepts a `slim_mode` flag to force treating the file as if it uses substring markers.
 pub trait FileProcessor {
-    /// Processes the file at the given path, optionally using the expected file basename.
-    fn process_file(&self, file_path: &Path, todo_file_basename: Option<&str>) -> Result<String>;
+    fn process_file(&self, file_path: &Path, todo_file_basename: Option<&str>, slim_mode: bool) -> Result<String>;
 }
 
 /// Default implementation of the `FileProcessor` trait.
 pub struct DefaultFileProcessor;
 
 impl FileProcessor for DefaultFileProcessor {
-    fn process_file(&self, file_path: &Path, todo_file_basename: Option<&str>) -> Result<String> {
+    fn process_file(&self, file_path: &Path, todo_file_basename: Option<&str>, slim_mode: bool) -> Result<String> {
         let file_path_str = file_path.to_str().ok_or_else(|| anyhow!("Invalid file path"))?;
         let file_content = fs::read_to_string(file_path)?;
         
-        // Use marker filtering if markers are present.
-        let processed_content = if file_content.lines().any(|line| line.trim() == "// v") {
+        // Use substring marker filtering if slim_mode is enabled
+        // or if the file already contains the expected marker ("// v").
+        let processed_content = if slim_mode || file_content.lines().any(|line| line.trim() == "// v") {
             filter_substring_markers(&file_content, "// ...")
         } else {
             file_content.clone()
@@ -50,12 +50,14 @@ impl FileProcessor for DefaultFileProcessor {
 }
 
 /// Public API function to process a file using a provided `FileProcessor` implementation.
+/// The `slim_mode` flag is passed along to the processor.
 pub fn process_file_with_processor<P: AsRef<Path>>(
     processor: &dyn FileProcessor,
     file_path: P,
-    todo_file_basename: Option<&str>
+    todo_file_basename: Option<&str>,
+    slim_mode: bool,
 ) -> Result<String> {
-    processor.process_file(file_path.as_ref(), todo_file_basename)
+    processor.process_file(file_path.as_ref(), todo_file_basename, slim_mode)
 }
 
 #[cfg(test)]
@@ -68,7 +70,12 @@ mod tests {
     pub struct FailingProcessor;
 
     impl FileProcessor for FailingProcessor {
-        fn process_file(&self, _file_path: &Path, _todo_file_basename: Option<&str>) -> Result<String> {
+        fn process_file(
+            &self,
+            _file_path: &Path,
+            _todo_file_basename: Option<&str>,
+            _slim_mode: bool,
+        ) -> Result<String> {
             Err(anyhow!("Simulated processing failure"))
         }
     }
@@ -82,7 +89,8 @@ mod tests {
         let processor = DefaultFileProcessor;
         let result = processor.process_file(
             temp_file.path(),
-            Some(temp_file.path().file_name().unwrap().to_str().unwrap())
+            Some(temp_file.path().file_name().unwrap().to_str().unwrap()),
+            false, // slim_mode is false
         ).unwrap();
         assert_eq!(result, raw_content);
     }
@@ -91,7 +99,7 @@ mod tests {
     fn test_failing_processor() {
         let processor = FailingProcessor;
         let temp_file = NamedTempFile::new().unwrap();
-        let result = processor.process_file(temp_file.path(), None);
+        let result = processor.process_file(temp_file.path(), None, false);
         assert!(result.is_err());
     }
 
@@ -124,7 +132,6 @@ mod tests {
 
         // Create an isolated temporary file for this test.
         let mut temp_file = tempfile::NamedTempFile::new().unwrap();
-        use std::io::Write;
         write!(temp_file, "{}", content).unwrap();
         let file_basename = temp_file
             .path()
@@ -136,8 +143,34 @@ mod tests {
 
         let processor = DefaultFileProcessor;
         let result = processor
-            .process_file(temp_file.path(), Some(&file_basename))
+            .process_file(temp_file.path(), Some(&file_basename), false)
             .unwrap();
+
+        assert_eq!(result, expected);
+    }
+    
+    #[test]
+    fn test_default_processor_slim_mode_without_markers() {
+        // When there are no markers in the file, but slim_mode is enabled,
+        // the processor should apply the filter_substring_markers logic.
+        let raw_content = "fn main() {\n    println!(\"Hello, world!\");\n}\n";
+        let mut temp_file = NamedTempFile::new().unwrap();
+        write!(temp_file, "{}", raw_content).unwrap();
+        let processor = DefaultFileProcessor;
+
+        // Enable slim mode.
+        let result = processor
+            .process_file(
+                temp_file.path(),
+                Some(temp_file.path().file_name().unwrap().to_str().unwrap()),
+                true, // slim_mode enabled
+            )
+            .unwrap();
+
+        // The expected output is what the filter_substring_markers produces for raw_content.
+        // Note: This behavior depends on how filter_substring_markers handles content without markers.
+        // If it simply returns a placeholder, adjust the expected string accordingly.
+        let expected = crate::utils::marker_utils::filter_substring_markers(raw_content, "// ...");
 
         assert_eq!(result, expected);
     }

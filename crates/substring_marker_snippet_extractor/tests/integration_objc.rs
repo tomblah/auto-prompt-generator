@@ -33,7 +33,7 @@ fn test_no_markers_objc() {
 ";
     let path = create_temp_file_with_objc_content(raw_content);
     let file_name = path.file_name().unwrap().to_str().unwrap();
-    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name), false)
         .expect("process_file should succeed for file with no markers");
     assert_eq!(result, raw_content);
     fs::remove_file(&path).expect("Failed to remove temporary file");
@@ -62,7 +62,7 @@ fn test_markers_todo_inside_objc() {
 "#;
     let path = create_temp_file_with_objc_content(content);
     let file_name = path.file_name().unwrap().to_str().unwrap();
-    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name), false)
         .expect("process_file should succeed for file with markers and TODO inside marker block");
     // The expected output should be just the filtered marker content.
     let expected = filter_substring_markers(content, "// ...");
@@ -96,7 +96,7 @@ fn test_markers_todo_outside_objc() {
 "#;
     let path = create_temp_file_with_objc_content(content);
     let file_name = path.file_name().unwrap().to_str().unwrap();
-    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name), false)
         .expect("process_file should succeed for file with markers and TODO outside marker block");
 
     // Compute the filtered content portion.
@@ -105,7 +105,7 @@ fn test_markers_todo_outside_objc() {
     // Verify that the result:
     // 1. Starts with the filtered marker content.
     // 2. Contains the header indicating that an enclosing context was appended.
-    // 3. Contains some content from the extracted enclosing block (e.g. the Objective-C method declaration).
+    // 3. Contains some content from the extracted enclosing block (e.g. the Objective‑C method declaration).
     assert!(result.starts_with(&filtered), "Result should start with the filtered content");
     assert!(
         result.contains("// Enclosing function context:"),
@@ -123,7 +123,7 @@ fn test_markers_todo_outside_objc() {
 fn test_file_not_found_objc() {
     // process_file should return an error when the file does not exist.
     let path = PathBuf::from("non_existent_file.m");
-    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some("non_existent_file.m"));
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some("non_existent_file.m"), false);
     assert!(result.is_err(), "process_file should error for a non-existent file");
 }
 
@@ -156,7 +156,7 @@ line c
 "#;
     let path = create_temp_file_with_objc_content(content);
     let file_name = path.file_name().unwrap().to_str().unwrap();
-    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name), false)
         .expect("process_file should succeed for file with multiple marker blocks");
     
     let expected = filter_substring_markers(content, "// ...");

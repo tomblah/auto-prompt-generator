@@ -19,6 +19,8 @@ use post_processing;    // imported as an external crate
 /// - `force_global`: If true, the Git root is used directly as the context.
 /// - `include_references`: Whether to include files referencing the enclosing type.
 /// - `excludes`: A slice of file basenames to exclude.
+/// - `slim_mode`: When true, forces the file to be treated as if it uses substring markers,
+///   limiting type extraction to the enclosing function around the TODO marker.
 ///
 /// # Returns
 ///
@@ -30,6 +32,7 @@ pub fn generate_prompt(
     force_global: bool,
     include_references: bool,
     excludes: &[String],
+    slim_mode: bool,
 ) -> Result<()> {
     // Set the environment variable for the TODO file's basename.
     let todo_file_basename = Path::new(file_path)
@@ -78,10 +81,11 @@ pub fn generate_prompt(
         include_references,
     )?;
 
-    // Assemble the final prompt.
+    // Assemble the final prompt, passing the slim_mode flag.
     let assembled_prompt = assemble_prompt::assemble_prompt(
         &found_files,
         instruction_content.trim(),
+        slim_mode,
     )
     .context("Failed to assemble prompt")?;
 
@@ -167,6 +171,7 @@ mod tests {
         let include_references = false;
         let excludes: Vec<String> = vec![];
 
+        // Pass slim_mode as false.
         let result = generate_prompt(
             git_root,
             file_path_str,
@@ -174,6 +179,7 @@ mod tests {
             force_global,
             include_references,
             &excludes,
+            false
         );
         assert!(result.is_ok(), "Expected generate_prompt to succeed in singular mode");
     }
@@ -213,6 +219,7 @@ class Dummy {}
             force_global,
             include_references,
             &excludes,
+            false
         );
         assert!(result.is_ok(), "Expected generate_prompt to succeed for Swift file with references");
     }
@@ -252,6 +259,7 @@ class Dummy {}
             force_global,
             include_references,
             &excludes,
+            false
         );
         assert!(result.is_ok(), "Expected generate_prompt to succeed in force global mode");
     }
@@ -291,7 +299,52 @@ class Dummy {}
             force_global,
             include_references,
             &excludes,
+            false
         );
         assert!(result.is_ok(), "Expected generate_prompt to succeed for a JS file (with warning)");
+    }
+
+    /// New test: Verify that generate_prompt works in slim mode.
+    #[test]
+    fn test_generate_prompt_slim_mode_success() {
+        // Create a temporary directory to simulate the Git root.
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let git_root = temp_dir.path().to_str().unwrap();
+
+        // Create a dummy Swift instruction file without substring markers
+        // so that slim mode forces the use of substring marker filtering.
+        let file_content = r#"
+func exampleFunction() {
+    // Some implementation details.
+}
+ // TODO: - Perform slim mode test
+"#;
+        let instruction_file = write_temp_file(
+            &temp_dir.path().to_path_buf(),
+            "instruction.swift",
+            file_content,
+        );
+        let file_path_str = instruction_file.to_str().unwrap();
+
+        // Disable clipboard copying.
+        env::set_var("DISABLE_PBCOPY", "1");
+
+        // Use singular mode for simplicity.
+        let singular = true;
+        let force_global = false;
+        let include_references = false;
+        let excludes: Vec<String> = vec![];
+
+        // Enable slim mode.
+        let result = generate_prompt(
+            git_root,
+            file_path_str,
+            singular,
+            force_global,
+            include_references,
+            &excludes,
+            true
+        );
+        assert!(result.is_ok(), "Expected generate_prompt to succeed in slim mode");
     }
 }
