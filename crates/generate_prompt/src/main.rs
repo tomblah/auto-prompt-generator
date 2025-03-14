@@ -1,27 +1,20 @@
 use anyhow::{Context, Result};
 use clap::{Arg, Command};
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use std::process::{Command as ProcessCommand, Stdio};
 
 // Library dependencies.
 use extract_instruction_content::extract_instruction_content;
 use get_git_root::get_git_root;
 use find_prompt_instruction::find_prompt_instruction_in_dir;
-use extract_types::extract_types_from_file;
-use extract_enclosing_type::extract_enclosing_type;
-use find_referencing_files;
-
-// Import the assemble_prompt library.
 use assemble_prompt;
-// NEW: Import the updated find_definition_files library function.
-use find_definition_files::find_definition_files;
-// NEW: Import the post_processing crate.
 use post_processing;
 
 // Import our new modules.
 mod clipboard;
 mod search_root;
+mod file_selector;
 
 fn main() -> Result<()> {
     let matches = Command::new("generate_prompt")
@@ -146,7 +139,7 @@ fn main() -> Result<()> {
     }
 
     // 4. Determine package scope.
-    // If force_global is enabled, use the Git root directly as the search root.
+    // If force_global is enabled, use the Git root directly.
     let base_dir = if force_global {
         println!("Force global enabled: using Git root for context");
         PathBuf::from(&git_root)
@@ -167,95 +160,14 @@ fn main() -> Result<()> {
     println!("Instruction content: {}", instruction_content.trim());
     println!("--------------------------------------------------");
 
-    // 6. Determine files to include, using an in-memory vector.
-    let mut found_files: Vec<String> = Vec::new();
-
-    if singular {
-        println!("Singular mode enabled: only including the TODO file");
-        found_files.push(file_path.clone());
-    } else {
-        // Extract types as a newline-separated string.
-        let types_content = extract_types_from_file(&file_path)
-            .context("Failed to extract types")?;
-        println!("Types found:");
-        println!("{}", types_content.trim());
-        println!("--------------------------------------------------");
-
-        // Find definition files using the extracted types string directly.
-        let def_files_set = find_definition_files(
-            types_content.as_str(),
-            &search_root,
-        )
-        .map_err(|err| anyhow::anyhow!("Failed to find definition files: {}", err))?;
-        
-        // Add definition files to the in-memory list.
-        for path in def_files_set {
-            found_files.push(path.to_string_lossy().into_owned());
-        }
-        
-        // Append the TODO file.
-        found_files.push(file_path.clone());
-        
-        // Apply initial exclusion filtering.
-        if !excludes.is_empty() {
-            println!("Excluding files matching: {:?}", excludes);
-            found_files.retain(|line| {
-                let basename = Path::new(line)
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy();
-                !excludes.contains(&basename.to_string())
-            });
-        }
-    }
-
-    // 7. Optionally include referencing files.
-    if include_references {
-        println!("Including files that reference the enclosing type");
-        let enclosing_type = match extract_enclosing_type(&file_path) {
-            Ok(ty) => ty,
-            Err(err) => {
-                eprintln!("Error extracting enclosing type: {}", err);
-                String::new()
-            }
-        };
-        if !enclosing_type.is_empty() {
-            println!("Enclosing type: {}", enclosing_type);
-            println!("Searching for files referencing {}", enclosing_type);
-            let referencing_files = find_referencing_files::find_files_referencing(
-                &enclosing_type,
-                search_root.to_str().unwrap(),
-            )
-            .map_err(|e| anyhow::anyhow!("Failed to find referencing files: {}", e))?;
-            found_files.extend(referencing_files);
-        } else {
-            println!("No enclosing type found; skipping reference search.");
-        }
-        // Reapply exclusion filtering after appending referencing files.
-        if !excludes.is_empty() {
-            println!("Excluding files matching: {:?}", excludes);
-            found_files.retain(|line| {
-                let basename = Path::new(line)
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy();
-                !excludes.contains(&basename.to_string())
-            });
-        }
-    }
-
-    // Sort and deduplicate the final list.
-    found_files.sort();
-    found_files.dedup();
-    println!("--------------------------------------------------");
-    println!("Files (final list):");
-    for file in &found_files {
-        let basename = Path::new(file)
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy();
-        println!("{}", basename);
-    }
+    // 6 & 7. Determine the list of files to include.
+    let found_files = file_selector::determine_files_to_include(
+        &file_path,
+        singular,
+        &search_root,
+        &excludes,
+        include_references,
+    )?;
 
     // 8. Assemble the final prompt by calling the library function.
     let final_prompt = assemble_prompt::assemble_prompt(
@@ -268,9 +180,6 @@ fn main() -> Result<()> {
     let diff_enabled = env::var("DIFF_WITH_BRANCH").is_ok();
 
     // 9a. Post-process the prompt to scrub extra TODO markers.
-    // Here we supply the trimmed instruction content as the primary marker.
-    // The post_processing function will preserve the first occurrence of this primary marker
-    // and will never scrub the very last marker line.
     let final_prompt = post_processing::scrub_extra_todo_markers(&final_prompt, diff_enabled, instruction_content.trim())
         .unwrap_or_else(|err| {
             eprintln!("Error during post-processing: {}", err);
@@ -312,7 +221,7 @@ fn main() -> Result<()> {
     println!("--------------------------------------------------\n");
     println!("Prompt has been copied to clipboard.");
 
-    // Use the new clipboard module to copy the final prompt.
+    // Copy the final prompt to the clipboard.
     clipboard::copy_to_clipboard(&final_prompt);
 
     Ok(())
