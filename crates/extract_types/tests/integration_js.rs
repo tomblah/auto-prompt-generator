@@ -1,5 +1,4 @@
 use extract_types::extract_types_from_file;
-use std::fs;
 use std::io::Write;
 use tempfile::NamedTempFile;
 use anyhow::Result;
@@ -25,8 +24,8 @@ fn integration_extract_types_javascript_class() -> Result<()> {
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", js_content)?;
 
-    let result_path = extract_types_from_file(temp_file.path())?;
-    let result = fs::read_to_string(result_path)?;
+    // Directly get the extracted types as a String.
+    let result = extract_types_from_file(temp_file.path())?;
     let expected = "Component\nMyComponent\nReact";
     assert_eq!(result.trim(), expected);
     Ok(())
@@ -45,8 +44,8 @@ fn integration_extract_types_javascript_no_types() -> Result<()> {
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", js_content)?;
 
-    let result_path = extract_types_from_file(temp_file.path())?;
-    let result = fs::read_to_string(result_path)?;
+    // Directly get the extracted types as a String.
+    let result = extract_types_from_file(temp_file.path())?;
     // Since there are no tokens starting with an uppercase letter,
     // we expect no types to be extracted.
     assert!(result.trim().is_empty());
@@ -62,8 +61,8 @@ fn integration_extract_types_javascript_trigger_comment() -> Result<()> {
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", js_content)?;
 
-    let result_path = extract_types_from_file(temp_file.path())?;
-    let result = fs::read_to_string(result_path)?;
+    // Directly get the extracted types as a String.
+    let result = extract_types_from_file(temp_file.path())?;
     let expected = "TriggeredType";
     assert_eq!(result.trim(), expected);
     Ok(())

@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Arg, Command};
 use std::env;
-use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, Stdio};
@@ -18,7 +17,7 @@ use find_referencing_files;
 
 // Import the assemble_prompt library.
 use assemble_prompt;
-// NEW: Import the new find_definition_files library function.
+// NEW: Import the updated find_definition_files library function.
 use find_definition_files::find_definition_files;
 // NEW: Import the post_processing crate.
 use post_processing;
@@ -180,17 +179,16 @@ fn main() -> Result<()> {
         println!("Singular mode enabled: only including the TODO file");
         found_files.push(file_path.clone());
     } else {
-        let types_file_path = extract_types_from_file(&file_path)
+        // Extract types as a newline-separated string.
+        let types_content = extract_types_from_file(&file_path)
             .context("Failed to extract types")?;
-        let types_content = fs::read_to_string(&types_file_path)
-            .context("Failed to read extracted types")?;
         println!("Types found:");
         println!("{}", types_content.trim());
         println!("--------------------------------------------------");
 
-        // Find definition files.
+        // Find definition files using the extracted types string directly.
         let def_files_set = find_definition_files(
-            Path::new(&types_file_path),
+            types_content.as_str(),
             &search_root,
         )
         .map_err(|err| anyhow::anyhow!("Failed to find definition files: {}", err))?;

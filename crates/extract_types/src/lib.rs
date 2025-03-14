@@ -2,9 +2,8 @@ use anyhow::{Result, Context};
 use regex::Regex;
 use std::collections::BTreeSet;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
-use tempfile::NamedTempFile;
+use std::io::{BufRead, BufReader};
+use std::path::Path;
 use substring_marker_snippet_extractor::utils::marker_utils::{
     file_uses_markers, filter_substring_markers, is_todo_inside_markers,
 };
@@ -108,15 +107,14 @@ impl TypeExtractor {
 }
 
 /// Reads a Swift file, extracts potential type names using two regexes,
-/// writes the sorted unique type names to a temporary file (persisted),
-/// and returns the path to that file as a String.
+/// and returns the sorted unique type names as a newline-separated String.
 pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> {
     // Read the full file content.
     let full_content = fs::read_to_string(&swift_file)
         .with_context(|| format!("Failed to open file {}", swift_file.as_ref().display()))?;
 
     // If substring markers are used, filter the content to include only the desired parts.
-    // Additionally, if the filtered content does not contain a TODO marker, append the enclosing block that has the TODO.
+    // Additionally, if the filtered content does not contain a TODO marker, append the enclosing block.
     let content_to_process = if file_uses_markers(&full_content) {
         let mut filtered = filter_substring_markers(&full_content, "");
         if !filtered.contains("// TODO: -") {
@@ -134,18 +132,9 @@ pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> 
     let extractor = TypeExtractor::new()?;
     let types = extractor.extract_types(reader.lines().filter_map(Result::ok));
 
-    // Write the sorted type names to a temporary file.
-    let mut temp_file = NamedTempFile::new()?;
-    for type_name in &types {
-        writeln!(temp_file, "{}", type_name)?;
-    }
-
-    // Persist the temporary file so it won't be deleted when dropped.
-    let temp_path: PathBuf = temp_file
-        .into_temp_path()
-        .keep()
-        .with_context(|| "Failed to persist temporary file")?;
-    Ok(temp_path.display().to_string())
+    // Join the sorted unique type names into a single newline-separated string.
+    let result = types.into_iter().collect::<Vec<String>>().join("\n");
+    Ok(result)
 }
 
 /// Extracts the enclosing block (such as a function) from the provided content,
@@ -197,7 +186,6 @@ fn extract_enclosing_block_from_content(content: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
     use std::io::Write;
     use tempfile::NamedTempFile;
     use anyhow::Result;
@@ -207,8 +195,7 @@ mod tests {
         // Create a temporary Swift file with no capitalized words.
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "import foundation\nlet x = 5")?;
-        let result_path = extract_types_from_file(swift_file.path())?;
-        let result = fs::read_to_string(&result_path)?;
+        let result = extract_types_from_file(swift_file.path())?;
         // Expect no types to be found.
         assert!(result.trim().is_empty());
         Ok(())
@@ -225,8 +212,7 @@ class MyClass {{}}
 struct MyStruct {{}}
 enum MyEnum {{}}"
         )?;
-        let result_path = extract_types_from_file(swift_file.path())?;
-        let result = fs::read_to_string(&result_path)?;
+        let result = extract_types_from_file(swift_file.path())?;
         // BTreeSet sorts alphabetically.
         let expected = "MyClass\nMyEnum\nMyStruct";
         assert_eq!(result.trim(), expected);
@@ -238,8 +224,7 @@ enum MyEnum {{}}"
         // Create a Swift file using bracket notation.
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "import UIKit\nlet array: [CustomType] = []")?;
-        let result_path = extract_types_from_file(swift_file.path())?;
-        let result = fs::read_to_string(&result_path)?;
+        let result = extract_types_from_file(swift_file.path())?;
         assert_eq!(result.trim(), "CustomType");
         Ok(())
     }
@@ -251,8 +236,7 @@ enum MyEnum {{}}"
         writeln!(swift_file, "class DuplicateType {{}}")?;
         writeln!(swift_file, "struct DuplicateType {{}}")?;
         writeln!(swift_file, "enum DuplicateType {{}}")?;
-        let result_path = extract_types_from_file(swift_file.path())?;
-        let result = fs::read_to_string(&result_path)?;
+        let result = extract_types_from_file(swift_file.path())?;
         // Only one instance should appear.
         assert_eq!(result.trim(), "DuplicateType");
         Ok(())
@@ -263,8 +247,7 @@ enum MyEnum {{}}"
         // Create a file with multiple declarations separated by punctuation.
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "class MyClass, struct MyStruct; enum MyEnum.")?;
-        let result_path = extract_types_from_file(swift_file.path())?;
-        let result = fs::read_to_string(&result_path)?;
+        let result = extract_types_from_file(swift_file.path())?;
         // The tokens should be split correctly and sorted alphabetically.
         let expected = "MyClass\nMyEnum\nMyStruct";
         assert_eq!(result.trim(), expected);
@@ -278,8 +261,7 @@ enum MyEnum {{}}"
         // so "My_Class" should not appear as a single token.
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "class My_Class {{}}")?;
-        let result_path = extract_types_from_file(swift_file.path())?;
-        let result = fs::read_to_string(&result_path)?;
+        let result = extract_types_from_file(swift_file.path())?;
         // Ensure that the token "My_Class" does not appear.
         for token in result.lines() {
             assert_ne!(token, "My_Class", "Found token 'My_Class', which should have been split.");
@@ -292,28 +274,23 @@ enum MyEnum {{}}"
         // Create a file where the type declaration is followed by punctuation.
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "enum MyEnum.")?;
-        let result_path = extract_types_from_file(swift_file.path())?;
-        let result = fs::read_to_string(&result_path)?;
+        let result = extract_types_from_file(swift_file.path())?;
         // The trailing punctuation should be removed.
         assert_eq!(result.trim(), "MyEnum");
         Ok(())
     }
 
-    // New test: Ensure that types in trigger comments (// TODO: -) are extracted.
     #[test]
     fn test_extract_types_includes_trigger_comment() -> Result<()> {
         // Create a temporary Swift file with a trigger comment.
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "import Foundation\n// TODO: - TriggeredType")?;
-        let result_path = extract_types_from_file(swift_file.path())?;
-        let result = fs::read_to_string(&result_path)?;
+        let result = extract_types_from_file(swift_file.path())?;
         // Expect that only "TriggeredType" is extracted.
         assert_eq!(result.trim(), "TriggeredType");
         Ok(())
     }
 
-    // New test: Ensure that when substring markers are present,
-    // only the marked (included) content is processed.
     #[test]
     fn test_extract_types_with_substring_markers() -> Result<()> {
         // Create a temporary Swift file with substring markers.
@@ -324,15 +301,12 @@ enum MyEnum {{}}"
         writeln!(swift_file, "class InsideType {{}}")?;
         writeln!(swift_file, "// ^")?;
         writeln!(swift_file, "class OutsideType2 {{}}")?;
-        let result_path = extract_types_from_file(swift_file.path())?;
-        let result = fs::read_to_string(&result_path)?;
+        let result = extract_types_from_file(swift_file.path())?;
         // Expect only "InsideType" to be extracted.
         assert_eq!(result.trim(), "InsideType");
         Ok(())
     }
 
-    // New test: Ensure that when substring markers are present but the TODO marker is outside,
-    // the enclosing block with the TODO is appended and its types are extracted.
     #[test]
     fn test_extract_types_with_markers_and_enclosing_todo() -> Result<()> {
         // The Swift file content includes:
@@ -352,8 +326,7 @@ enum MyEnum {{}}"
                 // TODO: - example
             }}
         "#)?;
-        let result_path = extract_types_from_file(swift_file.path())?;
-        let result = fs::read_to_string(&result_path)?;
+        let result = extract_types_from_file(swift_file.path())?;
         // Expected output: both types are extracted and sorted alphabetically.
         // "TypeThatIsInsideEnclosingFunction" comes before "TypeThatIsInsideMarker".
         let expected = "TypeThatIsInsideEnclosingFunction\nTypeThatIsInsideMarker";
