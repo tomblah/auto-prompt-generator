@@ -1,4 +1,5 @@
 use extract_types::extract_types_from_file;
+use std::env;
 use std::io::Write;
 use tempfile::NamedTempFile;
 use anyhow::Result;
@@ -16,7 +17,6 @@ fn integration_extract_types_basic() -> Result<()> {
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", swift_content)?;
     
-    // Now extract_types_from_file returns the result directly as a String.
     let result = extract_types_from_file(temp_file.path())?;
     // Expected sorted order: MyClass, MyEnum, MyStruct.
     let expected = "MyClass\nMyEnum\nMyStruct";
@@ -51,13 +51,11 @@ fn integration_extract_types_no_types() -> Result<()> {
     write!(temp_file, "{}", swift_content)?;
     
     let result = extract_types_from_file(temp_file.path())?;
-    // Expecting no types to be extracted.
     assert!(result.trim().is_empty());
     Ok(())
 }
 
-// New integration test: Ensure that when substring markers are present,
-// only the content between the markers is considered.
+/// When substring markers are used, only the content between them should be processed.
 #[test]
 fn integration_extract_types_with_substring_markers() -> Result<()> {
     let swift_content = r#"
@@ -74,13 +72,13 @@ fn integration_extract_types_with_substring_markers() -> Result<()> {
     write!(temp_file, "{}", swift_content)?;
     
     let result = extract_types_from_file(temp_file.path())?;
-    // Expect only "InsideType" to be extracted.
+    // Expect only the content between markers to yield "InsideType"
     let expected = "InsideType";
     assert_eq!(result.trim(), expected);
     Ok(())
 }
 
-// New integration test: Ensure that trigger comments are processed correctly.
+/// A trigger comment (starting with "// TODO: -") is tokenized broadly.
 #[test]
 fn integration_extract_types_trigger_comment() -> Result<()> {
     let swift_content = r#"
@@ -96,13 +94,9 @@ fn integration_extract_types_trigger_comment() -> Result<()> {
     Ok(())
 }
 
+/// When a TODO marker appears outside the markers, the enclosing block is appended.
 #[test]
 fn integration_extract_types_todo_outside_markers() -> Result<()> {
-    // The Swift file content includes:
-    // - The substring markers ("// v" and "// ^") enclose a declaration that should yield "TypeThatIsInsideMarker".
-    // - Outside the markers, there's a type "TypeThatIsOutSideMarker" which should be ignored.
-    // - In a function (which is outside the markers) with a TODO marker, we have "TypeThatIsInsideEnclosingFunction",
-    //   and this type should be recognized.
     let swift_content = r#"
         // v
         let foo = TypeThatIsInsideMarker()
@@ -118,12 +112,68 @@ fn integration_extract_types_todo_outside_markers() -> Result<()> {
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", swift_content)?;
 
-    // Call the extraction function.
     let result = extract_types_from_file(temp_file.path())?;
-    
     // Expected output: both types are extracted and sorted alphabetically.
-    // "TypeThatIsInsideEnclosingFunction" comes before "TypeThatIsInsideMarker" lexicographically.
+    // "TypeThatIsInsideEnclosingFunction" (from the function) and "TypeThatIsInsideMarker" (from the markers)
     let expected = "TypeThatIsInsideEnclosingFunction\nTypeThatIsInsideMarker";
     assert_eq!(result.trim(), expected);
+    Ok(())
+}
+
+/// --- Integration tests covering the new TARGETED mode functionality ---
+
+#[test]
+fn integration_extract_types_targeted_mode() -> Result<()> {
+    // Set TARGETED so that only the enclosing block is processed.
+    env::set_var("TARGETED", "1");
+
+    // In this Swift content, an outer declaration exists, but the function block (the candidate)
+    // contains both an inner type and a trigger comment.
+    let swift_content = r#"
+        class OuterType {}
+        func testFunction() {
+            class InnerType {}
+            // TODO: - Perform action
+        }
+    "#;
+    let mut temp_file = NamedTempFile::new()?;
+    write!(temp_file, "{}", swift_content)?;
+    
+    let result = extract_types_from_file(temp_file.path())?;
+    // In targeted mode:
+    // - "class InnerType {}" produces "InnerType"
+    // - The trigger comment " // TODO: - Perform action" yields tokens ["Perform", "action"]
+    //   but only "Perform" qualifies because "action" is lower-case.
+    // Therefore, the expected output is "InnerType\nPerform".
+    let expected = "InnerType\nPerform";
+    assert_eq!(result.trim(), expected);
+
+    env::remove_var("TARGETED");
+    Ok(())
+}
+
+#[test]
+fn integration_extract_types_targeted_mode_no_enclosing_block() -> Result<()> {
+    // Set TARGETED so that only the enclosing block is processed.
+    env::set_var("TARGETED", "1");
+
+    // In this content no candidate enclosing block is found.
+    let swift_content = r#"
+        class OuterType {}
+        // TODO: - Some todo
+    "#;
+    let mut temp_file = NamedTempFile::new()?;
+    write!(temp_file, "{}", swift_content)?;
+    
+    let result = extract_types_from_file(temp_file.path())?;
+    // Since no candidate block is found, the full content is processed:
+    // - "class OuterType {}" produces "OuterType"
+    // - The trigger comment " // TODO: - Some todo" yields tokens ["Some", "todo"],
+    //   but only "Some" qualifies because "todo" is lower-case.
+    // Expected sorted order: "OuterType\nSome"
+    let expected = "OuterType\nSome";
+    assert_eq!(result.trim(), expected);
+
+    env::remove_var("TARGETED");
     Ok(())
 }

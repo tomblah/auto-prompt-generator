@@ -59,6 +59,14 @@ fn main() -> Result<()> {
                 .action(clap::ArgAction::SetTrue)
                 .default_value("false"),
         )
+        // New flag for targeted type extraction.
+        .arg(
+            Arg::new("tgtd")
+                .long("tgtd")
+                .help("Only consider types from the enclosing block for extraction")
+                .action(clap::ArgAction::SetTrue)
+                .default_value("false"),
+        )
         .get_matches();
 
     let singular = *matches.get_one::<bool>("singular").unwrap();
@@ -75,6 +83,11 @@ fn main() -> Result<()> {
         if let Some(diff_branch) = matches.get_one::<String>("diff_with") {
             env::set_var("DIFF_WITH_BRANCH", diff_branch);
         }
+    }
+
+    // Set the TARGETED environment variable if the flag is enabled.
+    if *matches.get_one::<bool>("tgtd").unwrap() {
+        env::set_var("TARGETED", "1");
     }
 
     // 1. Save the current directory and determine the Git root.
