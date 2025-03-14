@@ -96,7 +96,6 @@ mod tests {
     }
 
     /// A helper test function that, when run in child mode, calls run_child_mode().
-    /// (This function is intended to be invoked in a spawned child process.)
     #[test]
     fn run_git_utils_child_mode_test() {
         run_child_mode();
@@ -117,6 +116,7 @@ mod tests {
         env::set_var("DIFF_WITH_BRANCH", "nonexistent_branch");
 
         let output = Command::new(env::current_exe().unwrap())
+            .args(&[] as &[&str])  // Override any default arguments.
             .env("GIT_UTILS_RUN_CHILD", "1")
             .env("GIT_UTILS_TEST_PATH", dir.path().to_str().unwrap())
             .output()
