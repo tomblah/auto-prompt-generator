@@ -102,6 +102,7 @@ mod tests {
     }
 
     /// For the negative test, we spawn a child process with DIFF_WITH_BRANCH set to a nonexistent branch.
+    /// This version now creates an initial commit so that the repository is valid.
     #[test]
     fn test_verify_diff_branch_nonexistent_child() {
         let dir = tempdir().unwrap();
@@ -113,6 +114,23 @@ mod tests {
             .expect("Failed to initialize git repository");
         assert!(init_status.success());
 
+        // Create an initial commit.
+        let dummy_file = dir.path().join("dummy.txt");
+        fs::write(&dummy_file, "dummy").unwrap();
+        let add_status = Command::new("git")
+            .args(&["add", "dummy.txt"])
+            .current_dir(dir.path())
+            .status()
+            .expect("Failed to add dummy.txt");
+        assert!(add_status.success());
+        let commit_status = Command::new("git")
+            .args(&["commit", "-m", "Initial commit"])
+            .current_dir(dir.path())
+            .status()
+            .expect("Failed to commit");
+        assert!(commit_status.success());
+
+        // Set DIFF_WITH_BRANCH to a branch that does not exist.
         env::set_var("DIFF_WITH_BRANCH", "nonexistent_branch");
 
         let output = Command::new(env::current_exe().unwrap())
