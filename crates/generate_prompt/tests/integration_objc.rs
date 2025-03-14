@@ -1,4 +1,5 @@
-// NB: these tests are currently for when we find a bug and want to reproduce it
+// crates/generate_prompt/tests/integration_objc.rs
+
 mod strict_end_to_end_tests {
     use assert_cmd::Command;           // for running your binary via cargo_bin
     use std::env;                      // for env::set_var etc.

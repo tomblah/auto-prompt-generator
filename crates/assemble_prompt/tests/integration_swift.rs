@@ -1,4 +1,4 @@
-// rust/assemble_prompt/tests/integration_swift.rs
+// crates/assemble_prompt/tests/integration_swift.rs
 
 #[cfg(test)]
 mod integration_swift {

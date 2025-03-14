@@ -1,4 +1,5 @@
-// rust/find_definition_files/src/lib.rs
+// crates/find_definition_files/src/lib.rs
+
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};

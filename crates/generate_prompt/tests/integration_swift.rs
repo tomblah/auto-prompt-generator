@@ -1,3 +1,5 @@
+// crates/generate_prompt/tests/integration_swift.rs
+
 #[cfg(test)]
 mod integration_tests {
     use assert_cmd::Command;

@@ -1,3 +1,5 @@
+// crates/assemble_prompt/tests/integration_js.rs
+
 #[cfg(test)]
 mod integration_js {
     use assemble_prompt::assemble_prompt;

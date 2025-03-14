@@ -1,4 +1,4 @@
-// rust/get_search_roots/src/lib.rs
+// crates/get_search_roots/src/lib.rs
 
 use std::collections::BTreeSet;
 use std::error::Error;
