@@ -23,14 +23,21 @@ set -euo pipefail
 #         Include only integration test files whose names contain "js" or "javascript" (case insensitive)
 #         from the crate’s tests/ directory.
 #
+#   --include-readme
+#         Additionally include any README files (e.g. README, README.md, README.txt)
+#         from the repository root.
+#
 # Default (no option): include Rust source files in all crates’ src directories (excluding tests)
 # and all Cargo.toml files.
 ##########################################
 
+# Default settings
 MODE="default"
 CRATE=""
+INCLUDE_README=false
 
-if [[ $# -gt 0 ]]; then
+# Process all command-line arguments.
+while [[ $# -gt 0 ]]; do
     case "$1" in
         --unit-tests)
             if [[ $# -lt 2 ]]; then
@@ -68,12 +75,16 @@ if [[ $# -gt 0 ]]; then
             CRATE="$2"
             shift 2
             ;;
+        --include-readme)
+            INCLUDE_README=true
+            shift
+            ;;
         *)
             echo "Unknown option: $1" >&2
             exit 1
             ;;
     esac
-fi
+done
 
 # Determine the directory where this script resides and the repository root.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -175,6 +186,16 @@ elif [[ "$MODE" == "integration-js" ]]; then
         echo "Error: No JavaScript test files found in '$CRATE/tests'." >&2
         exit 1
     fi
+fi
+
+# Append README files if the flag is set.
+if [ "$INCLUDE_README" = true ]; then
+    echo "Including README files in the context."
+    for readme in README README.md README.txt; do
+        if [ -f "$readme" ]; then
+            files="$files $readme"
+        fi
+    done
 fi
 
 # Display the collected files.
