@@ -41,6 +41,9 @@ The `generate_prompt` tool accepts several command-line options to customize how
 - **`--verbose`**  
   Enable verbose logging, which outputs additional details about the prompt generation process (such as which files were found and how they were processed).
 
+- **`--tgtd`**  
+  Only consider types from the enclosing block for extraction. This option limits the context gathered to the block immediately surrounding the TODO marker, ensuring that only the most relevant types are included.
+
 
 ## How It Works
 
