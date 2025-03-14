@@ -21,3 +21,115 @@ pub fn verify_diff_branch(git_root: &Path) {
         }
     }
 }
+
+/// If the environment variable GIT_UTILS_RUN_CHILD is set to "1",
+/// then run verify_diff_branch using the path provided in GIT_UTILS_TEST_PATH.
+/// This function is intended to be invoked when the test binary is spawned as a child process.
+pub fn run_child_mode() {
+    if std::env::var("GIT_UTILS_RUN_CHILD").unwrap_or_default() == "1" {
+        let path = std::env::var("GIT_UTILS_TEST_PATH").expect("GIT_UTILS_TEST_PATH not set");
+        verify_diff_branch(Path::new(&path));
+        // If verification passes, exit with 0.
+        std::process::exit(0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    use std::process::Command;
+    use tempfile::tempdir;
+    use std::fs;
+
+    /// Test that when DIFF_WITH_BRANCH is not set, verify_diff_branch returns normally.
+    #[test]
+    fn test_verify_diff_branch_no_diff() {
+        env::remove_var("DIFF_WITH_BRANCH");
+        let dir = tempdir().unwrap();
+        // Calling verify_diff_branch should not cause an exit.
+        verify_diff_branch(dir.path());
+    }
+
+    /// Test that when DIFF_WITH_BRANCH is set to an existing branch, verification passes.
+    #[test]
+    fn test_verify_diff_branch_existing() {
+        let dir = tempdir().unwrap();
+        // Initialize a git repository.
+        let init_status = Command::new("git")
+            .arg("init")
+            .current_dir(dir.path())
+            .status()
+            .expect("Failed to initialize git repository");
+        assert!(init_status.success());
+
+        // Create an initial commit.
+        let dummy_file = dir.path().join("dummy.txt");
+        fs::write(&dummy_file, "dummy").unwrap();
+        let add_status = Command::new("git")
+            .args(&["add", "dummy.txt"])
+            .current_dir(dir.path())
+            .status()
+            .expect("Failed to add dummy.txt");
+        assert!(add_status.success());
+        let commit_status = Command::new("git")
+            .args(&["commit", "-m", "Initial commit"])
+            .current_dir(dir.path())
+            .status()
+            .expect("Failed to commit");
+        assert!(commit_status.success());
+
+        // Create a branch named "test_branch".
+        let branch_status = Command::new("git")
+            .args(&["checkout", "-b", "test_branch"])
+            .current_dir(dir.path())
+            .status()
+            .expect("Failed to create test_branch");
+        assert!(branch_status.success());
+
+        env::set_var("DIFF_WITH_BRANCH", "test_branch");
+        // Should pass without exiting.
+        verify_diff_branch(dir.path());
+        env::remove_var("DIFF_WITH_BRANCH");
+    }
+
+    /// A helper test that, when run in child mode, calls run_child_mode().
+    /// (This function is intended to be invoked in a spawned child process.)
+    #[test]
+    fn run_git_utils_child_mode_test() {
+        run_child_mode();
+    }
+
+    /// For the negative test, we spawn a child process with DIFF_WITH_BRANCH set to a nonexistent branch.
+    #[test]
+    fn test_verify_diff_branch_nonexistent_child() {
+        let dir = tempdir().unwrap();
+        // Initialize a git repository.
+        let init_status = Command::new("git")
+            .arg("init")
+            .current_dir(dir.path())
+            .status()
+            .expect("Failed to initialize git repository");
+        assert!(init_status.success());
+
+        // Set DIFF_WITH_BRANCH to a branch that does not exist.
+        env::set_var("DIFF_WITH_BRANCH", "nonexistent_branch");
+
+        let current_exe = env::current_exe().unwrap();
+        let output = Command::new(current_exe)
+            .env("GIT_UTILS_RUN_CHILD", "1")
+            .env("GIT_UTILS_TEST_PATH", dir.path().to_str().unwrap())
+            .output()
+            .expect("Failed to execute child process");
+
+        // The child process should exit with a nonzero status.
+        assert!(!output.status.success(), "Child process unexpectedly succeeded");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("Error: Branch 'nonexistent_branch' does not exist."),
+            "Expected error message not found in stderr: {}",
+            stderr
+        );
+        env::remove_var("DIFF_WITH_BRANCH");
+    }
+}
