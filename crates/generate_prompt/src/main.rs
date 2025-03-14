@@ -9,7 +9,6 @@ use std::process::{Command as ProcessCommand, Stdio};
 // Library dependencies.
 use extract_instruction_content::extract_instruction_content;
 use get_git_root::get_git_root;
-use find_prompt_instruction::find_prompt_instruction_in_dir;
 use assemble_prompt;
 use post_processing;
 
@@ -17,7 +16,8 @@ use post_processing;
 mod clipboard;
 mod search_root;
 mod file_selector;
-mod prompt_validation; // Added the prompt_validation module
+mod prompt_validation;
+mod instruction_locator; // New module for locating the instruction file
 
 fn main() -> Result<()> {
     let matches = Command::new("generate_prompt")
@@ -112,14 +112,8 @@ fn main() -> Result<()> {
 
     env::set_current_dir(&git_root).context("Failed to change directory to Git root")?;
 
-    // 2. Locate the TODO instruction file.
-    let file_path = if let Ok(instruction_override) = env::var("GET_INSTRUCTION_FILE") {
-        instruction_override
-    } else {
-        let instruction_path_buf = find_prompt_instruction_in_dir(&git_root, false)
-            .context("Failed to locate the TODO instruction")?;
-        instruction_path_buf.to_string_lossy().into_owned()
-    };
+    // 2. Locate the TODO instruction file using the new instruction_locator module.
+    let file_path = instruction_locator::locate_instruction_file(&git_root)?;
     println!("Found exactly one instruction in {}", file_path);
     println!("--------------------------------------------------");
 
