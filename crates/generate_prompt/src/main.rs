@@ -6,7 +6,6 @@ use std::process::{Command as ProcessCommand, Stdio};
 
 // Library dependencies.
 use extract_instruction_content::extract_instruction_content;
-use get_search_roots::get_search_roots;
 use get_git_root::get_git_root;
 use find_prompt_instruction::find_prompt_instruction_in_dir;
 use extract_types::extract_types_from_file;
@@ -20,8 +19,9 @@ use find_definition_files::find_definition_files;
 // NEW: Import the post_processing crate.
 use post_processing;
 
-// Import our new clipboard module.
+// Import our new modules.
 mod clipboard;
+mod search_root;
 
 fn main() -> Result<()> {
     let matches = Command::new("generate_prompt")
@@ -146,6 +146,7 @@ fn main() -> Result<()> {
     }
 
     // 4. Determine package scope.
+    // If force_global is enabled, use the Git root directly as the search root.
     let base_dir = if force_global {
         println!("Force global enabled: using Git root for context");
         PathBuf::from(&git_root)
@@ -153,19 +154,11 @@ fn main() -> Result<()> {
         PathBuf::from(&git_root)
     };
 
-    let candidate_roots = get_search_roots(&base_dir)
-        .unwrap_or_else(|_| vec![base_dir.clone()]);
-
-    let search_root = if candidate_roots.len() == 1 {
-        candidate_roots[0].clone()
+    let search_root = if force_global {
+        base_dir.clone()
     } else {
-        let todo_path = PathBuf::from(&file_path);
-        candidate_roots
-            .into_iter()
-            .find(|p| todo_path.starts_with(p))
-            .unwrap_or(base_dir)
+        search_root::determine_search_root(&base_dir, &file_path)
     };
-
     println!("Search root: {}", search_root.display());
 
     // 5. Extract instruction content.
