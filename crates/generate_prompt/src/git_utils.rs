@@ -22,14 +22,15 @@ pub fn verify_diff_branch(git_root: &Path) {
     }
 }
 
-/// If the environment variable GIT_UTILS_RUN_CHILD is set to "1",
-/// then run verify_diff_branch using the path provided in GIT_UTILS_TEST_PATH.
-/// This function is intended to be invoked when the test binary is spawned as a child process.
+/// Helper function for testing purposes.
+/// When the environment variable GIT_UTILS_RUN_CHILD is set to "1",
+/// this function calls `verify_diff_branch` using the path from GIT_UTILS_TEST_PATH,
+/// then exits with code 0 if verification passes.
+#[allow(dead_code)]
 pub fn run_child_mode() {
     if std::env::var("GIT_UTILS_RUN_CHILD").unwrap_or_default() == "1" {
         let path = std::env::var("GIT_UTILS_TEST_PATH").expect("GIT_UTILS_TEST_PATH not set");
         verify_diff_branch(Path::new(&path));
-        // If verification passes, exit with 0.
         std::process::exit(0);
     }
 }
@@ -55,7 +56,7 @@ mod tests {
     #[test]
     fn test_verify_diff_branch_existing() {
         let dir = tempdir().unwrap();
-        // Initialize a git repository.
+        // Initialize a git repository in the temporary directory.
         let init_status = Command::new("git")
             .arg("init")
             .current_dir(dir.path())
@@ -63,7 +64,7 @@ mod tests {
             .expect("Failed to initialize git repository");
         assert!(init_status.success());
 
-        // Create an initial commit.
+        // Create an initial commit so that HEAD exists.
         let dummy_file = dir.path().join("dummy.txt");
         fs::write(&dummy_file, "dummy").unwrap();
         let add_status = Command::new("git")
@@ -79,7 +80,7 @@ mod tests {
             .expect("Failed to commit");
         assert!(commit_status.success());
 
-        // Create a branch named "test_branch".
+        // Create a new branch called "test_branch".
         let branch_status = Command::new("git")
             .args(&["checkout", "-b", "test_branch"])
             .current_dir(dir.path())
@@ -88,12 +89,12 @@ mod tests {
         assert!(branch_status.success());
 
         env::set_var("DIFF_WITH_BRANCH", "test_branch");
-        // Should pass without exiting.
+        // verify_diff_branch should pass without exiting.
         verify_diff_branch(dir.path());
         env::remove_var("DIFF_WITH_BRANCH");
     }
 
-    /// A helper test that, when run in child mode, calls run_child_mode().
+    /// A helper test function that, when run in child mode, calls run_child_mode().
     /// (This function is intended to be invoked in a spawned child process.)
     #[test]
     fn run_git_utils_child_mode_test() {
@@ -104,7 +105,7 @@ mod tests {
     #[test]
     fn test_verify_diff_branch_nonexistent_child() {
         let dir = tempdir().unwrap();
-        // Initialize a git repository.
+        // Initialize a git repository in the temporary directory.
         let init_status = Command::new("git")
             .arg("init")
             .current_dir(dir.path())
@@ -115,8 +116,8 @@ mod tests {
         // Set DIFF_WITH_BRANCH to a branch that does not exist.
         env::set_var("DIFF_WITH_BRANCH", "nonexistent_branch");
 
-        let current_exe = env::current_exe().unwrap();
-        let output = Command::new(current_exe)
+        // Spawn a child process running the current test binary with the GIT_UTILS_RUN_CHILD flag.
+        let output = Command::new(env::current_exe().unwrap())
             .env("GIT_UTILS_RUN_CHILD", "1")
             .env("GIT_UTILS_TEST_PATH", dir.path().to_str().unwrap())
             .output()
