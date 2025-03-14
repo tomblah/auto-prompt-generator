@@ -1,4 +1,4 @@
-// src/processor/file_processor.rs
+// crates/substring_marker_snippet_extractor/src/processor/file_processor.rs
 
 use std::path::Path;
 use anyhow::{Result, anyhow};

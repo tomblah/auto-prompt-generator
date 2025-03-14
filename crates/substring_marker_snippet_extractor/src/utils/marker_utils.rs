@@ -1,4 +1,4 @@
-// src/utils/marker_utils.rs
+// crates/substring_marker_snippet_extractor/src/utils/marker_utils.rs
 
 use std::fs;
 use regex::Regex;

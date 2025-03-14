@@ -1,3 +1,5 @@
+// crates/generate_prompt/tests/integration_js.rs
+
 #[cfg(test)]
 mod integration_tests_js {
     use assert_cmd::Command;

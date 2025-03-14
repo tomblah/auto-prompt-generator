@@ -1,3 +1,5 @@
+// crates/generate_prompt/src/file_selector.rs
+
 use std::path::Path;
 use anyhow::Result;
 use extract_types::extract_types_from_file;

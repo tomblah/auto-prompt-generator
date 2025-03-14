@@ -1,4 +1,4 @@
-// tests/generate_prompt_integration.rs
+// crates/generate_prompt/tests/integration_misc.rs
 
 use assert_cmd::Command;
 use predicates::prelude::*;
@@ -617,4 +617,3 @@ The contents of Definition.swift is as follows:\n\nclass DummyType {}\n\n-------
 
     env::remove_var("GET_GIT_ROOT");
 }
-

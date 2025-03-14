@@ -1,3 +1,5 @@
+// crates/diff_with_branch/src/lib.rs
+
 use std::env;
 use std::path::Path;
 use std::process::{Command, Stdio};

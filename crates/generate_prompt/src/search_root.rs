@@ -1,3 +1,5 @@
+// crates/generate_prompt/src/search_root.rs
+
 use std::path::{Path, PathBuf};
 use get_search_roots::get_search_roots;
 

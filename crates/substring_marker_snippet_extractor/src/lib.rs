@@ -1,4 +1,5 @@
 // crates/substring_marker_snippet_extractor/src/lib.rs
+
 /*!
 # substring_marker_snippet_extractor
 

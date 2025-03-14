@@ -1,3 +1,5 @@
+// crates/get_git_root/src/lib.rs
+
 use std::process::Command;
 
 /// Returns the Git repository root as a trimmed String,

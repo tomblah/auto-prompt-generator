@@ -1,3 +1,5 @@
+// crates/generate_prompt/src/clipboard.rs
+
 use std::process::{Command, Stdio};
 use std::io::Write;
 use unescape_newlines::unescape_newlines;

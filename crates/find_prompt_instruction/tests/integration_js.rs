@@ -1,3 +1,5 @@
+// crates/find_prompt_instruction/tests/integration_js.rs
+
 #[cfg(test)]
 mod integration_js {
     use std::fs;

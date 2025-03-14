@@ -1,4 +1,4 @@
-// rust/find_referencing_files/src/lib.rs
+// crates/find_referencing_files/src/lib.rs
 
 use regex::Regex;
 use std::fs;

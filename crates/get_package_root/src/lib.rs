@@ -1,4 +1,4 @@
-// src/lib.rs
+// crates/get_package_root/src/lib.rs
 
 use std::path::{Path, PathBuf};
 

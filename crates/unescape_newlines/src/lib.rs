@@ -1,3 +1,5 @@
+// crates/unescape_newlines/src/lib.rs
+
 /// Converts literal "\n" sequences in the input string to actual newline characters.
 pub fn unescape_newlines(input: &str) -> String {
     input.replace("\\n", "\n")

@@ -1,3 +1,5 @@
+// crates/post_processing/src/lib.rs
+
 /// Scrubs extra TODO markers from the given prompt if diff mode is not enabled.
 ///
 /// This function takes a `primary_marker` parameter that must exactly match one of the lines in the prompt.

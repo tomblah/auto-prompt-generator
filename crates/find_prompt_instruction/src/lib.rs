@@ -1,4 +1,4 @@
-// rust/find_prompt_instruction/src/lib.rs
+// crates/find_prompt_instruction/src/lib.rs
 
 use std::fs;
 use std::io::{self, BufRead};

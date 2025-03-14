@@ -1,3 +1,5 @@
+// crates/extract_enclosing_type/src/lib.rs
+
 use regex::Regex;
 use std::fs;
 use std::path::Path;

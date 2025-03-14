@@ -1,3 +1,5 @@
+// crates/extract_instruction_content/src/lib.rs
+
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
