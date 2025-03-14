@@ -1,10 +1,8 @@
 use anyhow::{Context, Result};
 use clap::{Arg, Command};
 use std::env;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, Stdio};
-use unescape_newlines::unescape_newlines;
 
 // Library dependencies.
 use extract_instruction_content::extract_instruction_content;
@@ -21,6 +19,9 @@ use assemble_prompt;
 use find_definition_files::find_definition_files;
 // NEW: Import the post_processing crate.
 use post_processing;
+
+// Import our new clipboard module.
+mod clipboard;
 
 fn main() -> Result<()> {
     let matches = Command::new("generate_prompt")
@@ -71,6 +72,7 @@ fn main() -> Result<()> {
     let singular = *matches.get_one::<bool>("singular").unwrap();
     let force_global = *matches.get_one::<bool>("force_global").unwrap();
     let include_references = *matches.get_one::<bool>("include_references").unwrap();
+
     // Use DIFF_WITH_BRANCH from the environment if it already exists; otherwise, if provided as an argument, set it.
     if env::var("DIFF_WITH_BRANCH").is_err() {
         if let Some(diff_branch) = matches.get_one::<String>("diff_with") {
@@ -317,25 +319,8 @@ fn main() -> Result<()> {
     println!("--------------------------------------------------\n");
     println!("Prompt has been copied to clipboard.");
 
-    // Copy final prompt to clipboard if DISABLE_PBCOPY is not set.
-    if env::var("DISABLE_PBCOPY").is_err() {
-        let mut pbcopy = ProcessCommand::new("pbcopy")
-            .stdin(Stdio::piped())
-            .spawn()
-            .unwrap_or_else(|err| {
-                eprintln!("Error running pbcopy: {}", err);
-                std::process::exit(1);
-            });
-        {
-            let pb_stdin = pbcopy.stdin.as_mut().expect("Failed to open pbcopy stdin");
-            pb_stdin
-                .write_all(unescape_newlines(&final_prompt).as_bytes())
-                .expect("Failed to write to pbcopy");
-        }
-        pbcopy.wait().expect("Failed to wait on pbcopy");
-    } else {
-        eprintln!("DISABLE_PBCOPY is set; skipping clipboard copy.");
-    }
+    // Use the new clipboard module to copy the final prompt.
+    clipboard::copy_to_clipboard(&final_prompt);
 
     Ok(())
 }
