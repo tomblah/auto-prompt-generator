@@ -1005,3 +1005,69 @@ func exampleFunction() {
         temp.close().unwrap();
     }
 }
+
+mod targeted_mode {
+    use assert_cmd::Command;
+    use assert_fs::prelude::*;
+    use assert_fs::fixture::PathChild;
+    use predicates::str::contains;
+    use std::env;
+    use std::process::Command as StdCommand;
+    use assert_cmd::assert::OutputAssertExt;
+
+    #[test]
+    fn test_generate_prompt_with_targeted_mode() {
+        // Create a temporary directory to simulate a Git repository.
+        let temp = assert_fs::TempDir::new().unwrap();
+
+        // Create a Swift file ("Targeted.swift") with targeted content.
+        // The file contains:
+        // - An outer declaration that should be ignored in targeted mode.
+        // - A function block (the candidate enclosing block) that declares an inner type and includes a TODO trigger comment.
+        //   The trigger comment is: "// TODO: - Perform action"
+        //   Since tokens starting with lowercase letters are filtered out, only "Perform" should be extracted.
+        let swift_file = temp.child("Targeted.swift");
+        swift_file.write_str(
+    r#"class OuterType {}
+    func fetchData(from urlString: String) async throws -> Data {
+        class InnerType {}
+        // TODO: - Perform action
+    }
+    "#,
+        ).unwrap();
+
+        // Force generate_prompt to use this file as the instruction file.
+        env::set_var("GET_INSTRUCTION_FILE", swift_file.path().to_str().unwrap());
+
+        // Set GET_GIT_ROOT to the canonical path of the temporary directory.
+        let canonical_git_root = temp.path().canonicalize().unwrap();
+        env::set_var("GET_GIT_ROOT", canonical_git_root.to_str().unwrap());
+
+        // Disable clipboard copying during testing.
+        env::set_var("DISABLE_PBCOPY", "1");
+
+        // Initialize the temporary directory as a Git repository.
+        StdCommand::new("git")
+            .current_dir(temp.path())
+            .args(&["init"])
+            .assert()
+            .success();
+
+        // Run the generate_prompt binary with the new "--tgtd" flag,
+        // which enables targeted mode.
+        Command::cargo_bin("generate_prompt")
+            .unwrap()
+            .current_dir(temp.path())
+            .arg("--tgtd")
+            .assert()
+            .success()
+            .stdout(contains("Success:"))
+            // Verify that the printed "Types found:" section includes only "InnerType" and "Perform"
+            .stdout(contains("Types found:\nInnerType\nPerform"))
+            // Verify that the final prompt still contains the full instruction.
+            .stdout(contains("// TODO: - Perform action"));
+
+        // Cleanup temporary directory.
+        temp.close().unwrap();
+    }
+}

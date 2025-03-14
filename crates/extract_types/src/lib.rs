@@ -9,10 +9,14 @@ use substring_marker_snippet_extractor::utils::marker_utils::{
 };
 use once_cell::sync::Lazy;
 
-// Static regex definitions for candidate line detection.
+// Updated regex to match Swift function declarations that may include "async".
 static SWIFT_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+(?:<[^>]+>)?\s*\([^)]*\)\s*(?:->\s*\S+)?\s*\{"#).unwrap()
+    Regex::new(
+        r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+(?:<[^>]+>)?\s*\([^)]*\)\s*(?:->\s*\S+)?(?:\s+async)?\s*\{"#
+    ).unwrap()
 });
+
+// Existing regexes for JS and Objective-C.
 static JS_ASSIGNMENT_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#).unwrap()
 });
@@ -22,22 +26,39 @@ static JS_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
 static PARSE_CLOUD_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r#"^\s*Parse\.Cloud\.(?:define|beforeSave|afterSave)\s*\(\s*(?:"[^"]+"|[A-Za-z][A-Za-z0-9_.]*)\s*,\s*(?:async\s+)?\([^)]*\)\s*=>\s*\{"#
-    )
-    .unwrap()
+    ).unwrap()
 });
-// New static regex for Objective‑C method declarations (for one-line declarations).
 static OBJC_METHOD_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^\s*[-+]\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*(?::\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*)*\s*\{").unwrap()
+    Regex::new(r#"^\s*[-+]\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*(?::\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*)*\s*\{"#).unwrap()
 });
 
-// Private helper: determines if a given line is a candidate declaration line.
+// New regex to match Swift class declarations.
+static SWIFT_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^\s*class\s+\w+.*\{"#).unwrap()
+});
+
+// New regex to match Swift enum declarations.
+static SWIFT_ENUM_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^\s*enum\s+\w+.*\{"#).unwrap()
+});
+
+/// Updated helper function to determine if a line is a candidate declaration.
+/// It now returns true for:
+/// - Swift function declarations (including those with async),
+/// - JavaScript functions and assignments,
+/// - Objective‑C method declarations,
+/// - Swift class declarations,
+/// - Swift enum declarations.
 fn is_candidate_line(line: &str) -> bool {
     SWIFT_FUNCTION_RE.is_match(line)
         || JS_ASSIGNMENT_RE.is_match(line)
         || JS_FUNCTION_RE.is_match(line)
         || PARSE_CLOUD_RE.is_match(line)
-        || OBJC_METHOD_RE.is_match(line) // added to match Objective‑C methods on one line
+        || OBJC_METHOD_RE.is_match(line)
+        || SWIFT_CLASS_RE.is_match(line)
+        || SWIFT_ENUM_RE.is_match(line)
 }
+
 
 /// A helper struct to encapsulate type extraction logic.
 struct TypeExtractor {
@@ -113,9 +134,18 @@ pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> 
     let full_content = fs::read_to_string(&swift_file)
         .with_context(|| format!("Failed to open file {}", swift_file.as_ref().display()))?;
 
-    // If substring markers are used, filter the content to include only the desired parts.
-    // Additionally, if the filtered content does not contain a TODO marker, append the enclosing block.
-    let content_to_process = if file_uses_markers(&full_content) {
+    // Check if the targeted mode is enabled via the environment.
+    let targeted = std::env::var("TARGETED").is_ok();
+
+    // Determine what content to process.
+    let content_to_process = if targeted {
+        // When targeted mode is enabled, only use the enclosing block if available.
+        if let Some(enclosing) = extract_enclosing_block_from_content(&full_content) {
+            enclosing
+        } else {
+            full_content.clone()
+        }
+    } else if file_uses_markers(&full_content) {
         let mut filtered = filter_substring_markers(&full_content, "");
         if !filtered.contains("// TODO: -") {
             if let Some(enclosing) = extract_enclosing_block_from_content(&full_content) {
@@ -189,6 +219,7 @@ mod tests {
     use std::io::Write;
     use tempfile::NamedTempFile;
     use anyhow::Result;
+    use std::env;
 
     #[test]
     fn test_extract_types_returns_empty_for_file_with_no_capitalized_words() -> Result<()> {
@@ -286,7 +317,8 @@ enum MyEnum {{}}"
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "import Foundation\n// TODO: - TriggeredType")?;
         let result = extract_types_from_file(swift_file.path())?;
-        // Expect that only "TriggeredType" is extracted.
+        // Expect that the trigger comment produces both tokens ("TriggeredType" if only one word, or all tokens if more)
+        // In this case, "TriggeredType" is the only token.
         assert_eq!(result.trim(), "TriggeredType");
         Ok(())
     }
@@ -333,6 +365,61 @@ enum MyEnum {{}}"
         assert_eq!(result.trim(), expected);
         Ok(())
     }
+
+    // New test for targeted mode: When TARGETED is set and an enclosing block exists,
+    // all tokens from the enclosing block are extracted (including extra tokens from trigger lines).
+    #[test]
+    fn test_extract_types_targeted_mode() -> Result<()> {
+        // Set the TARGETED environment variable.
+        env::set_var("TARGETED", "1");
+
+        // Create a Swift file with an outer type and a function containing an inner type.
+        // In targeted mode the extraction uses only the enclosing block.
+        let mut swift_file = NamedTempFile::new()?;
+        // Outer declaration (should be ignored in targeted mode)
+        writeln!(swift_file, "class OuterType {{}}")?;
+        // Function block that will serve as the enclosing block
+        writeln!(swift_file, "func testFunction() {{")?;
+        writeln!(swift_file, "    class InnerType {{}}")?;
+        writeln!(swift_file, "    // TODO: - Perform action")?;
+        writeln!(swift_file, "}}")?;
+
+        let result = extract_types_from_file(swift_file.path())?;
+        // In targeted mode, from the function block:
+        // - "class InnerType {}" produces "InnerType"
+        // - The trigger comment " // TODO: - Perform action" produces tokens "Perform" (since "action" is lowercase)
+        // Thus, the expected output is both "InnerType" and "Perform", sorted alphabetically.
+        let expected = "InnerType\nPerform";
+        assert_eq!(result.trim(), expected);
+
+        // Clean up the environment variable.
+        env::remove_var("TARGETED");
+        Ok(())
+    }
+
+    // New test for targeted mode when no enclosing block is found:
+    // In this case, the full file content is processed.
+    #[test]
+    fn test_extract_types_targeted_mode_no_enclosing_block() -> Result<()> {
+        // Set the TARGETED environment variable.
+        env::set_var("TARGETED", "1");
+
+        // Create a Swift file that does not contain a candidate enclosing block.
+        // Since no enclosing block is found, the full content will be used.
+        let mut swift_file = NamedTempFile::new()?;
+        writeln!(swift_file, "class OuterType {{}}")?;
+        writeln!(swift_file, "// TODO: - Some todo")?;
+        let result = extract_types_from_file(swift_file.path())?;
+        // Expect "OuterType" from the declaration and tokens from the trigger comment.
+        // The trigger comment " // TODO: - Some todo" yields tokens "Some" (since "todo" is lowercase).
+        // Thus the expected output is "OuterType" and "Some", sorted alphabetically.
+        let expected = "OuterType\nSome";
+        assert_eq!(result.trim(), expected);
+
+        // Clean up the environment variable.
+        env::remove_var("TARGETED");
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -371,7 +458,8 @@ mod type_extractor_tests {
     #[test]
     fn test_extract_tokens_for_trigger_comment() {
         let extractor = TypeExtractor::new().unwrap();
-        // For a trigger comment, the prefix should be stripped and only the remainder processed.
+        // For a trigger comment, the prefix is stripped and the remainder is split into tokens.
+        // For example, the line "// TODO: - MyTriggeredType" produces ["MyTriggeredType"].
         let tokens = extractor.extract_tokens("// TODO: - MyTriggeredType").unwrap();
         assert_eq!(tokens, vec!["MyTriggeredType"]);
     }
@@ -477,5 +565,38 @@ void someFunction() {\n\
         let block_str = block.unwrap();
         // Ensure the block contains the Objective‑C method declaration.
         assert!(block_str.contains("- (void)MyObjCMethod {"));
+    }
+}
+
+#[cfg(test)]
+mod candidate_detection_tests {
+    use super::*;
+
+    #[test]
+    fn test_candidate_line_swift_function_async() {
+        // This line should be recognized as a candidate because it includes the "async" keyword.
+        let async_func = "func testAsyncFunction(foo: Int) async {";
+        assert!(is_candidate_line(async_func), "Swift async function should be detected as a candidate");
+    }
+
+    #[test]
+    fn test_candidate_line_swift_class() {
+        // This line should be recognized as a candidate because it is a class declaration.
+        let swift_class = "class MyInnerClass {";
+        assert!(is_candidate_line(swift_class), "Swift class declaration should be detected as a candidate");
+    }
+
+    #[test]
+    fn test_candidate_line_swift_enum() {
+        // This line should be recognized as a candidate because it is an enum declaration.
+        let swift_enum = "enum MyEnum {";
+        assert!(is_candidate_line(swift_enum), "Swift enum declaration should be detected as a candidate");
+    }
+
+    #[test]
+    fn test_candidate_line_non_candidate() {
+        // A line that does not represent a declaration should not be flagged as a candidate.
+        let non_candidate = "let x = 10;";
+        assert!(!is_candidate_line(non_candidate), "Non-declaration line should not be detected as a candidate");
     }
 }
