@@ -317,10 +317,6 @@ name = "filter_excluded_files"
 version = "0.1.0"
 
 [[package]]
-name = "filter_files_singular"
-version = "0.1.0"
-
-[[package]]
 name = "find_definition_files"
 version = "0.1.0"
 dependencies = [
@@ -370,7 +366,6 @@ dependencies = [
  "extract_types",
  "filetime",
  "filter_excluded_files",
- "filter_files_singular",
  "find_definition_files",
  "find_prompt_instruction",
  "find_referencing_files",

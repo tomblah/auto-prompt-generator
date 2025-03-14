@@ -13,7 +13,6 @@ get_git_root = { path = "../get_git_root" }
 find_prompt_instruction = { path = "../find_prompt_instruction" }
 filter_excluded_files = { path = "../filter_excluded_files" }
 extract_types = { path = "../extract_types" }
-filter_files_singular = { path = "../filter_files_singular" }
 unescape_newlines = { path = "../unescape_newlines" }
 extract_enclosing_type = { path = "../extract_enclosing_type" }
 find_referencing_files = { path = "../find_referencing_files" }

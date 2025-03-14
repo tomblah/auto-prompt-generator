@@ -42,7 +42,6 @@ fn test_generate_prompt_singular_mode() {
     create_dummy_executable(&temp_dir, "find_prompt_instruction", &todo_file);
     create_dummy_executable(&temp_dir, "get_package_root", "");
     create_dummy_executable(&temp_dir, "extract_instruction_content", "   // TODO: - Fix critical bug");
-    // (Note: filter_files_singular is no longer needed)
     create_dummy_executable(&temp_dir, "assemble_prompt", "dummy");
 
     // Override the instruction file.
