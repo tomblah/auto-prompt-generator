@@ -313,10 +313,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "filter_excluded_files"
-version = "0.1.0"
-
-[[package]]
 name = "find_definition_files"
 version = "0.1.0"
 dependencies = [
@@ -365,7 +361,6 @@ dependencies = [
  "extract_instruction_content",
  "extract_types",
  "filetime",
- "filter_excluded_files",
  "find_definition_files",
  "find_prompt_instruction",
  "find_referencing_files",

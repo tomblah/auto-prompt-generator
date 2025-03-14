@@ -381,7 +381,6 @@ esac
     fs::write(&def_file, "class TestDiff {}").unwrap();
     let find_def_script = format!("echo \"{}\"", def_file);
     create_dummy_executable(&temp_dir, "find_definition_files", &find_def_script);
-    create_dummy_executable(&temp_dir, "filter_excluded_files", "");
     create_dummy_executable(&temp_dir, "assemble_prompt", "dummy");
 
     env::remove_var("DISABLE_PBCOPY");
@@ -446,7 +445,6 @@ esac
     fs::write(&def_file, "class TestDiff {}").unwrap();
     let find_def_script = format!("echo \"{}\"", def_file);
     create_dummy_executable(&temp_dir, "find_definition_files", &find_def_script);
-    create_dummy_executable(&temp_dir, "filter_excluded_files", "");
     create_dummy_executable(&temp_dir, "assemble_prompt", "dummy");
 
     let original_path = env::var("PATH").unwrap();
@@ -546,7 +544,6 @@ fn test_final_prompt_formatting_with_multiple_files() {
 
     let find_def_script = format!("echo \"{}\\n{}\"", def_file1.display(), def_file2.display());
     create_dummy_executable(&temp_dir, "find_definition_files", &find_def_script);
-    create_dummy_executable(&temp_dir, "filter_excluded_files", "");
     let simulated_prompt = format!(
         "The contents of {} is as follows:\n\n{}\n\n--------------------------------------------------\nThe contents of {} is as follows:\n\n{}\n\n--------------------------------------------------\n\nCan you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...",
         def_file1.file_name().unwrap().to_string_lossy(),
