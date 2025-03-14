@@ -27,8 +27,9 @@ mod integration_objc {
         let non_match = dir.path().join("OtherType.h");
         fs::write(&non_match, "@interface OtherType : NSObject @end")?;
 
-        // Run the public API.
-        let result = find_definition_files(&types_path, dir.path())?;
+        // Read the types file content and run the public API.
+        let types_content = fs::read_to_string(&types_path)?;
+        let result = find_definition_files(types_content.as_str(), dir.path())?;
         let mut expected = BTreeSet::new();
         expected.insert(header_path);
         expected.insert(impl_path);
@@ -60,8 +61,9 @@ mod integration_objc {
         let pods_file = pods_dir.join("Ignored.h");
         fs::write(&pods_file, "@interface MyType : NSObject @end")?;
 
-        // Run the public API.
-        let result = find_definition_files(&types_path, dir.path())?;
+        // Read the types file content and run the public API.
+        let types_content = fs::read_to_string(&types_path)?;
+        let result = find_definition_files(types_content.as_str(), dir.path())?;
         let mut expected = BTreeSet::new();
         expected.insert(root_header);
         expected.insert(sub1_impl);
@@ -86,7 +88,9 @@ mod integration_objc {
         let txt_file = dir.path().join("b.txt");
         fs::write(&txt_file, "@interface MyType : NSObject @end")?;
 
-        let result = find_definition_files(&types_path, dir.path())?;
+        // Read the types file content and run the public API.
+        let types_content = fs::read_to_string(&types_path)?;
+        let result = find_definition_files(types_content.as_str(), dir.path())?;
         let mut expected = BTreeSet::new();
         expected.insert(objc_file);
 
@@ -106,7 +110,9 @@ mod integration_objc {
         let file = dir.path().join("MyType.h");
         fs::write(&file, "@interface MyType : NSObject @end")?;
 
-        let result = find_definition_files(&types_path, dir.path())?;
+        // Read the types file content and run the public API.
+        let types_content = fs::read_to_string(&types_path)?;
+        let result = find_definition_files(types_content.as_str(), dir.path())?;
         let expected: BTreeSet<PathBuf> = BTreeSet::new();
 
         // Verify that the returned set is empty.

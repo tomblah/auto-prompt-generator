@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
-use tempfile::{tempdir};
+use tempfile::tempdir;
 use find_definition_files::find_definition_files;
 
 mod integration_javascript {
@@ -26,8 +26,9 @@ mod integration_javascript {
         let file3_path = dir.path().join("file3.js");
         fs::write(&file3_path, "function notAMatch() {}")?;
 
-        // Run the public API.
-        let result = find_definition_files(&types_path, dir.path())?;
+        // Read the types file content and run the public API.
+        let types_content = fs::read_to_string(&types_path)?;
+        let result = find_definition_files(types_content.as_str(), dir.path())?;
         let mut expected = BTreeSet::new();
         expected.insert(file1_path);
         expected.insert(file2_path);
@@ -60,8 +61,9 @@ mod integration_javascript {
         let pods_file = pods_dir.join("ignored.js");
         fs::write(&pods_file, "class MyClass {}")?;
 
-        // Run the public API.
-        let result = find_definition_files(&types_path, dir.path())?;
+        // Read the types file content and run the public API.
+        let types_content = fs::read_to_string(&types_path)?;
+        let result = find_definition_files(types_content.as_str(), dir.path())?;
         let mut expected = BTreeSet::new();
         expected.insert(root_file);
         expected.insert(sub1_file);
@@ -86,8 +88,9 @@ mod integration_javascript {
         let txt_file = dir.path().join("b.txt");
         fs::write(&txt_file, "class MyClass {}")?;
 
-        // Run the public API.
-        let result = find_definition_files(&types_path, dir.path())?;
+        // Read the types file content and run the public API.
+        let types_content = fs::read_to_string(&types_path)?;
+        let result = find_definition_files(types_content.as_str(), dir.path())?;
         let mut expected = BTreeSet::new();
         expected.insert(js_file);
 
@@ -104,8 +107,10 @@ mod integration_javascript {
         let types_path = dir.path().join("empty_types.txt");
         fs::write(&types_path, "").unwrap();
 
+        // Read the types file content.
+        let types_content = fs::read_to_string(&types_path).unwrap();
         // Calling find_definition_files should return an error.
-        let result = find_definition_files(&types_path, dir.path());
+        let result = find_definition_files(types_content.as_str(), dir.path());
         assert!(result.is_err(), "Expected error for empty types file");
     }
 
@@ -121,8 +126,9 @@ mod integration_javascript {
         let file = dir.path().join("file.js");
         fs::write(&file, "class SomeOtherClass {}")?;
 
-        // Run the public API.
-        let result = find_definition_files(&types_path, dir.path())?;
+        // Read the types file content and run the public API.
+        let types_content = fs::read_to_string(&types_path)?;
+        let result = find_definition_files(types_content.as_str(), dir.path())?;
         let expected: BTreeSet<PathBuf> = BTreeSet::new();
 
         // Verify that the returned set is empty.

@@ -1,5 +1,4 @@
 use extract_types::extract_types_from_file;
-use std::fs;
 use std::io::Write;
 use tempfile::NamedTempFile;
 use anyhow::Result;
@@ -17,8 +16,8 @@ fn integration_extract_types_basic() -> Result<()> {
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", swift_content)?;
     
-    let result_path = extract_types_from_file(temp_file.path())?;
-    let result = fs::read_to_string(result_path)?;
+    // Now extract_types_from_file returns the result directly as a String.
+    let result = extract_types_from_file(temp_file.path())?;
     // Expected sorted order: MyClass, MyEnum, MyStruct.
     let expected = "MyClass\nMyEnum\nMyStruct";
     assert_eq!(result.trim(), expected);
@@ -35,8 +34,7 @@ fn integration_extract_types_bracket_notation() -> Result<()> {
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", swift_content)?;
     
-    let result_path = extract_types_from_file(temp_file.path())?;
-    let result = fs::read_to_string(result_path)?;
+    let result = extract_types_from_file(temp_file.path())?;
     let expected = "CustomType";
     assert_eq!(result.trim(), expected);
     Ok(())
@@ -52,8 +50,7 @@ fn integration_extract_types_no_types() -> Result<()> {
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", swift_content)?;
     
-    let result_path = extract_types_from_file(temp_file.path())?;
-    let result = fs::read_to_string(result_path)?;
+    let result = extract_types_from_file(temp_file.path())?;
     // Expecting no types to be extracted.
     assert!(result.trim().is_empty());
     Ok(())
@@ -76,8 +73,7 @@ fn integration_extract_types_with_substring_markers() -> Result<()> {
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", swift_content)?;
     
-    let result_path = extract_types_from_file(temp_file.path())?;
-    let result = fs::read_to_string(result_path)?;
+    let result = extract_types_from_file(temp_file.path())?;
     // Expect only "InsideType" to be extracted.
     let expected = "InsideType";
     assert_eq!(result.trim(), expected);
@@ -94,8 +90,7 @@ fn integration_extract_types_trigger_comment() -> Result<()> {
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", swift_content)?;
     
-    let result_path = extract_types_from_file(temp_file.path())?;
-    let result = fs::read_to_string(result_path)?;
+    let result = extract_types_from_file(temp_file.path())?;
     let expected = "TriggeredType";
     assert_eq!(result.trim(), expected);
     Ok(())
@@ -103,9 +98,9 @@ fn integration_extract_types_trigger_comment() -> Result<()> {
 
 #[test]
 fn integration_extract_types_todo_outside_markers() -> Result<()> {
-    // The Swift file content:
+    // The Swift file content includes:
     // - The substring markers ("// v" and "// ^") enclose a declaration that should yield "TypeThatIsInsideMarker".
-    // - Outside the markers, there's a type "TypeThatIsOutSideMarker" that should be ignored.
+    // - Outside the markers, there's a type "TypeThatIsOutSideMarker" which should be ignored.
     // - In a function (which is outside the markers) with a TODO marker, we have "TypeThatIsInsideEnclosingFunction",
     //   and this type should be recognized.
     let swift_content = r#"
@@ -124,12 +119,10 @@ fn integration_extract_types_todo_outside_markers() -> Result<()> {
     write!(temp_file, "{}", swift_content)?;
 
     // Call the extraction function.
-    let result_path = extract_types_from_file(temp_file.path())?;
-    let result = fs::read_to_string(result_path)?;
+    let result = extract_types_from_file(temp_file.path())?;
     
-    // The expected types are those inside the markers and inside the enclosing function,
-    // sorted in alphabetical order. Since "TypeThatIsInsideEnclosingFunction" comes before
-    // "TypeThatIsInsideMarker" lexicographically, we expect:
+    // Expected output: both types are extracted and sorted alphabetically.
+    // "TypeThatIsInsideEnclosingFunction" comes before "TypeThatIsInsideMarker" lexicographically.
     let expected = "TypeThatIsInsideEnclosingFunction\nTypeThatIsInsideMarker";
     assert_eq!(result.trim(), expected);
     Ok(())

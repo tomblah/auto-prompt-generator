@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
-use tempfile::{tempdir};
+use tempfile::tempdir;
 use find_definition_files::find_definition_files;
 
 mod integration_swift {
@@ -26,8 +26,9 @@ mod integration_swift {
         let file3_path = dir.path().join("file3.swift");
         fs::write(&file3_path, "enum Unmatched {}")?;
 
-        // Run the public API.
-        let result = find_definition_files(&types_path, dir.path())?;
+        // Read the types file content and run the public API.
+        let types_content = fs::read_to_string(&types_path)?;
+        let result = find_definition_files(types_content.as_str(), dir.path())?;
         let mut expected = BTreeSet::new();
         expected.insert(file1_path);
         expected.insert(file2_path);
@@ -73,8 +74,9 @@ mod integration_swift {
         let sub2_file = sub2.join("sub2.swift");
         fs::write(&sub2_file, "enum NotRelevant {}")?;
 
-        // Run the public API.
-        let result = find_definition_files(&types_path, dir.path())?;
+        // Read the types file content and run the public API.
+        let types_content = fs::read_to_string(&types_path)?;
+        let result = find_definition_files(types_content.as_str(), dir.path())?;
         let mut expected = BTreeSet::new();
         expected.insert(root_file);
         expected.insert(sub1_file);
@@ -100,8 +102,9 @@ mod integration_swift {
         let txt_file = dir.path().join("b.txt");
         fs::write(&txt_file, "class MyType {}")?;
 
-        // Run the public API.
-        let result = find_definition_files(&types_path, dir.path())?;
+        // Read the types file content and run the public API.
+        let types_content = fs::read_to_string(&types_path)?;
+        let result = find_definition_files(types_content.as_str(), dir.path())?;
         let mut expected = BTreeSet::new();
         expected.insert(swift_file);
 
@@ -118,8 +121,11 @@ mod integration_swift {
         let types_path = dir.path().join("empty_types.txt");
         fs::write(&types_path, "").unwrap();
 
+        // Read the types file content.
+        let types_content = fs::read_to_string(&types_path).unwrap();
+
         // Calling find_definition_files should return an error.
-        let result = find_definition_files(&types_path, dir.path());
+        let result = find_definition_files(types_content.as_str(), dir.path());
         assert!(result.is_err(), "Expected error for empty types file");
     }
 
@@ -135,8 +141,9 @@ mod integration_swift {
         let file = dir.path().join("file.swift");
         fs::write(&file, "class SomeOtherType {}")?;
 
-        // Run the public API.
-        let result = find_definition_files(&types_path, dir.path())?;
+        // Read the types file content and run the public API.
+        let types_content = fs::read_to_string(&types_path)?;
+        let result = find_definition_files(types_content.as_str(), dir.path())?;
         let expected: BTreeSet<PathBuf> = BTreeSet::new();
 
         // Verify that the returned set is empty.
