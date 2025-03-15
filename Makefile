@@ -1,20 +1,19 @@
 SHELL = /bin/bash
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: build test tests coverage clean mc mmc mmmc mmmmc mc-ut-% mc-uts-% mc-its-% mc-it-s-% mc-it-js-% mc-its-js-% all
+.PHONY: build test tests coverage clean fix-headers mc mmc mmmc mmmmc all
 
-# Check if Cargo is installed
+# Ensure Cargo is installed
 ifeq ($(shell command -v cargo 2> /dev/null),)
   $(error "Cargo is not installed. Please install the Rust toolchain from https://rustup.rs/")
 endif
 
-# Build all Rust binaries in release mode from the workspace root.
+# Build all Rust binaries in release mode.
 build:
 	@echo "Building all Rust components..."
 	cargo build --release
 
-# Run tests for all packages (searching only inside the 'crates' directory).
-# Use either "make test" or "make tests".
+# Run tests for all packages (inside the 'crates' directory).
 test tests:
 	@echo "Running Rust tests for all packages..."
 	@while IFS= read -r -d '' manifest; do \
@@ -23,11 +22,17 @@ test tests:
 	    cargo test --manifest-path "$$manifest" -- --test-threads=1 || exit 1; \
 	done < <(find crates -name Cargo.toml -print0)
 
+# Generate code coverage reports.
 coverage:
 	@echo "Generating code coverage reports with cargo tarpaulin..."
 	cargo tarpaulin --workspace --out Html
 
-# Clean up the Rust build artifacts.
+# Fix file headers.
+fix-headers:
+	@echo "Fixing headers..."
+	./scripts/fix-headers.sh
+
+# Clean Rust build artifacts.
 clean:
 	@echo "Cleaning Rust build artifacts..."
 	cargo clean
@@ -38,57 +43,38 @@ mc meta-context context:
 	@echo "Running meta-context script with arguments: $(ARGS)"
 	./scripts/meta-context.sh $(ARGS)
 
-# Unit Test Targets:
-# Run meta-context for a specific crate's unit tests.
-# Usage: make mc-ut-<crate> or make mc-uts-<crate>
-mc-ut-% mc-uts-%:
-	./scripts/meta-context.sh --unit-tests crates/$*
-
-# Swift Integration Test Targets:
-# Run meta-context for a specific crate's Swift integration tests.
-# Usage: make mc-its-<crate> or make mc-it-s-<crate>
-mc-its-% mc-it-s-%:
-	./scripts/meta-context.sh --integration-tests-swift crates/$*
-
-# Javascript Integration Test Targets:
-# Run meta-context for a specific crate's Javascript integration tests.
-# Usage: make mc-it-js-<crate> or make mc-its-js-<crate>
-mc-it-js-% mc-its-js-%:
-	./scripts/meta-context.sh --integration-tests-js crates/$*
-
-# Clipboard Targets:
 # Copy the meta-context script to the clipboard.
 mmc:
 	@echo "Copying scripts/meta-context.sh to clipboard..."
 	@if command -v pbcopy >/dev/null; then \
-	  cat scripts/meta-context.sh | pbcopy && echo "Copied to clipboard successfully using pbcopy."; \
+	  cat scripts/meta-context.sh | pbcopy && echo "Copied using pbcopy."; \
 	elif command -v xclip >/dev/null; then \
-	  cat scripts/meta-context.sh | xclip -selection clipboard && echo "Copied to clipboard successfully using xclip."; \
+	  cat scripts/meta-context.sh | xclip -selection clipboard && echo "Copied using xclip."; \
 	else \
 	  echo "Error: No clipboard tool found (requires pbcopy or xclip)"; exit 1; \
 	fi
-	
-# Copy the Makefile to the clipboard and report success.
+
+# Copy the Makefile to the clipboard.
 mmmc:
 	@echo "Copying Makefile to clipboard..."
 	@if command -v pbcopy >/dev/null; then \
-	  cat Makefile | pbcopy && echo "Makefile copied successfully using pbcopy."; \
+	  cat Makefile | pbcopy && echo "Makefile copied using pbcopy."; \
 	elif command -v xclip >/dev/null; then \
-	  cat Makefile | xclip -selection clipboard && echo "Makefile copied successfully using xclip."; \
+	  cat Makefile | xclip -selection clipboard && echo "Makefile copied using xclip."; \
 	else \
 	  echo "Error: No clipboard tool found (requires pbcopy or xclip)"; exit 1; \
 	fi
 
-# Copy a helpful AI prompt
+# Copy an AI prompt to the clipboard.
 mmmmc:
 	@echo "Copying AI prompt 'how do I use make?' to clipboard..."
 	@if command -v pbcopy >/dev/null; then \
-	  echo "how do I use make?" | pbcopy && echo "AI prompt copied successfully using pbcopy."; \
+	  echo "how do I use make?" | pbcopy && echo "AI prompt copied using pbcopy."; \
 	elif command -v xclip >/dev/null; then \
-	  echo "how do I use make?" | xclip -selection clipboard && echo "AI prompt copied successfully using xclip."; \
+	  echo "how do I use make?" | xclip -selection clipboard && echo "AI prompt copied using xclip."; \
 	else \
 	  echo "Error: No clipboard tool found (requires pbcopy or xclip)"; exit 1; \
 	fi
 
-# Default target: cleans artifacts, builds all Rust components, and runs tests.
-all: clean build test coverage
+# Default target: clean, fix headers, build, test, and generate coverage.
+all: clean fix-headers build test coverage
