@@ -71,7 +71,7 @@ This step-by-step process ensures that your prompt is both concise and rich with
 
 ## Caveats
 
-- This tool is still under active development.
-- It currently supports **Swift** projects, with only partial support for JavaScript.
+- This was developed almost entirely by AI. As such, there are many uncanny patterns that need to be fixed.
+- It currently supports **Swift** projects, with only partial support for JavaScript and Objective-C.
 - TODO comments must be written in the exact format `// TODO: - ...` (including the hyphen) to prevent inadvertently capturing all your other TODO's.
 - The method used to identify code “types” (such as classes, protocols, enums, etc.) is based on a simple heuristic—scanning for capitalized words and then locating their definitions—which may not capture every scenario accurately.
