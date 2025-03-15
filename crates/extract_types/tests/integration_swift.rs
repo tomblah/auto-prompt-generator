@@ -179,3 +179,38 @@ fn integration_extract_types_targeted_mode_no_enclosing_block() -> Result<()> {
     env::remove_var("TARGETED");
     Ok(())
 }
+
+#[test]
+fn integration_extract_types_targeted_inner_block_excludes_outer() -> Result<()> {
+    // Set TARGETED so that only the inner block is processed.
+    env::set_var("TARGETED", "1");
+
+    // In this Swift content, there's an outer declaration and then inside a function block,
+    // an inner block containing both an inner type and a trigger comment.
+    // We expect that only the tokens from the inner block are extracted.
+    let swift_content = r#"
+        class OuterType {}
+        func testFunction() {
+            // This declaration is inside the function but outside the inner block.
+            class OuterType {}
+            {
+                class InnerType {}
+                // TODO: - Do something important
+            }
+        }
+    "#;
+    let mut temp_file = NamedTempFile::new()?;
+    write!(temp_file, "{}", swift_content)?;
+
+    let result = extract_types_from_file(temp_file.path())?;
+    // In targeted mode:
+    // - "class InnerType {}" produces the token "InnerType"
+    // - The trigger comment produces "Do" (ignoring lowercase words)
+    // These tokens are stored in a BTreeSet, so they are sorted alphabetically.
+    // Alphabetically, "Do" comes before "InnerType".
+    let expected = "Do\nInnerType";
+    assert_eq!(result.trim(), expected);
+
+    env::remove_var("TARGETED");
+    Ok(())
+}

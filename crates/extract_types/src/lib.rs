@@ -17,7 +17,6 @@ static SWIFT_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
         r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+(?:<[^>]+>)?\s*\([^)]*\)\s*(?:->\s*\S+)?(?:\s+async)?\s*\{"#
     ).unwrap()
 });
-
 // Existing regexes for JS and Objective-C.
 static JS_ASSIGNMENT_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#).unwrap()
@@ -33,12 +32,10 @@ static PARSE_CLOUD_RE: Lazy<Regex> = Lazy::new(|| {
 static OBJC_METHOD_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^\s*[-+]\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*(?::\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*)*\s*\{"#).unwrap()
 });
-
 // New regex to match Swift class declarations.
 static SWIFT_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^\s*class\s+\w+.*\{"#).unwrap()
 });
-
 // New regex to match Swift enum declarations.
 static SWIFT_ENUM_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^\s*enum\s+\w+.*\{"#).unwrap()
@@ -61,7 +58,6 @@ fn is_candidate_line(line: &str) -> bool {
         || SWIFT_ENUM_RE.is_match(line)
 }
 
-
 /// A helper struct to encapsulate type extraction logic.
 struct TypeExtractor {
     re_simple: Regex,
@@ -83,7 +79,6 @@ impl TypeExtractor {
     /// (unless it starts with the trigger comment "// TODO: -").
     fn extract_tokens(&self, line: &str) -> Option<Vec<String>> {
         let trimmed = line.trim();
-        // Skip empty lines, import/include directives, or lines that are comments (unless they are trigger comments).
         if trimmed.is_empty()
             || trimmed.starts_with("import ")
             || trimmed.starts_with("#import")
@@ -92,7 +87,6 @@ impl TypeExtractor {
         {
             return None;
         }
-        // If it's a trigger comment, remove the prefix before processing.
         let content = if trimmed.starts_with("// TODO: -") {
             trimmed.trim_start_matches("// TODO: -").trim_start()
         } else {
@@ -131,19 +125,18 @@ impl TypeExtractor {
 
 /// Reads a Swift file, extracts potential type names using two regexes,
 /// and returns the sorted unique type names as a newline-separated String.
+///
+/// # Parameters
+/// * `swift_file` - The file to process.
 pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> {
-    // Read the full file content.
     let full_content = fs::read_to_string(&swift_file)
         .with_context(|| format!("Failed to open file {}", swift_file.as_ref().display()))?;
 
-    // Check if the targeted mode is enabled via the environment.
     let targeted = std::env::var("TARGETED").is_ok();
 
-    // Determine what content to process.
     let content_to_process = if targeted {
-        // When targeted mode is enabled, only use the enclosing block if available.
-        if let Some(enclosing) = extract_enclosing_block_from_content(&full_content) {
-            enclosing
+        if let Some(inner_block) = extract_inner_block_from_content(&full_content) {
+            inner_block
         } else {
             full_content.clone()
         }
@@ -164,7 +157,6 @@ pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> 
     let extractor = TypeExtractor::new()?;
     let types = extractor.extract_types(reader.lines().filter_map(Result::ok));
 
-    // Join the sorted unique type names into a single newline-separated string.
     let result = types.into_iter().collect::<Vec<String>>().join("\n");
     Ok(result)
 }
@@ -172,6 +164,7 @@ pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> 
 /// Extracts the enclosing block (such as a function) from the provided content,
 /// starting from the candidate line for a declaration up to the matching closing brace.
 /// This block is expected to contain the TODO marker.
+/// (This is the original helper used when not in targeted mode.)
 fn extract_enclosing_block_from_content(content: &str) -> Option<String> {
     let todo_idx = content.lines().position(|line| line.contains("// TODO: - "))?;
     if is_todo_inside_markers(content, todo_idx) {
@@ -179,13 +172,11 @@ fn extract_enclosing_block_from_content(content: &str) -> Option<String> {
     }
     let lines: Vec<&str> = content.lines().collect();
     let mut candidate_index = None;
-    // Look for a candidate line up to the TODO marker.
     for i in 0..todo_idx {
         let line = lines[i];
         if is_candidate_line(line) {
             candidate_index = Some(i);
         } else if line.trim_start().starts_with('-') || line.trim_start().starts_with('+') {
-            // For Objective‑C methods split across lines, check if the next line contains '{'.
             if i + 1 < todo_idx && lines[i + 1].contains('{') {
                 candidate_index = Some(i);
             }
@@ -215,6 +206,41 @@ fn extract_enclosing_block_from_content(content: &str) -> Option<String> {
     Some(extracted_lines.join("\n"))
 }
 
+/// Extracts the inner block—that is, the content inside the braces that immediately enclose
+/// the first occurrence of the TODO marker. This is done using a stack-based approach
+/// to correctly identify the innermost unclosed '{'.
+fn extract_inner_block_from_content(content: &str) -> Option<String> {
+    let todo_marker = "// TODO: - ";
+    let pos = content.find(todo_marker)?;
+    let mut stack = Vec::new();
+    // Process characters up to the TODO marker.
+    for (i, ch) in content[..pos].char_indices() {
+        if ch == '{' {
+            stack.push(i);
+        } else if ch == '}' {
+            stack.pop();
+        }
+    }
+    let open_brace = stack.pop()?;
+    // Now find the matching closing brace.
+    let mut brace_count = 1;
+    let mut index = open_brace + 1;
+    let bytes = content.as_bytes();
+    while index < content.len() && brace_count > 0 {
+        match bytes[index] {
+            b'{' => brace_count += 1,
+            b'}' => brace_count -= 1,
+            _ => {}
+        }
+        index += 1;
+    }
+    if brace_count == 0 {
+        Some(content[open_brace + 1..index - 1].to_string())
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,29 +250,46 @@ mod tests {
     use std::env;
 
     #[test]
+    fn test_extract_inner_block_success() {
+        let content = r#"
+            func foo() {
+                class OuterType {}
+                {
+                    class InnerType {}
+                    // TODO: - Do something important
+                }
+            }
+        "#;
+        let inner = extract_inner_block_from_content(content);
+        assert!(inner.is_some());
+        let inner_str = inner.unwrap();
+        // Ensure that the extracted inner block contains the inner declaration and the TODO marker,
+        // and that it does not include "OuterType".
+        assert!(inner_str.contains("class InnerType"), "Extracted block: {}", inner_str);
+        assert!(inner_str.contains("// TODO: -"), "Extracted block: {}", inner_str);
+        assert!(!inner_str.contains("OuterType"), "Extracted block should not contain OuterType: {}", inner_str);
+    }
+
+    #[test]
+    fn test_extract_inner_block_no_marker() {
+        let content = "func foo() { class InnerType {} }";
+        assert!(extract_inner_block_from_content(content).is_none());
+    }
+
+    #[test]
     fn test_extract_types_returns_empty_for_file_with_no_capitalized_words() -> Result<()> {
-        // Create a temporary Swift file with no capitalized words.
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "import foundation\nlet x = 5")?;
         let result = extract_types_from_file(swift_file.path())?;
-        // Expect no types to be found.
         assert!(result.trim().is_empty());
         Ok(())
     }
 
     #[test]
     fn test_extract_types_extracts_capitalized_words() -> Result<()> {
-        // Create a temporary Swift file with type declarations.
         let mut swift_file = NamedTempFile::new()?;
-        writeln!(
-            swift_file,
-            "import Foundation
-class MyClass {{}}
-struct MyStruct {{}}
-enum MyEnum {{}}"
-        )?;
+        writeln!(swift_file, "import Foundation\nclass MyClass {{}}\nstruct MyStruct {{}}\nenum MyEnum {{}}")?;
         let result = extract_types_from_file(swift_file.path())?;
-        // BTreeSet sorts alphabetically.
         let expected = "MyClass\nMyEnum\nMyStruct";
         assert_eq!(result.trim(), expected);
         Ok(())
@@ -254,7 +297,6 @@ enum MyEnum {{}}"
 
     #[test]
     fn test_extract_types_extracts_type_names_from_bracket_notation() -> Result<()> {
-        // Create a Swift file using bracket notation.
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "import UIKit\nlet array: [CustomType] = []")?;
         let result = extract_types_from_file(swift_file.path())?;
@@ -264,24 +306,20 @@ enum MyEnum {{}}"
 
     #[test]
     fn test_extract_types_deduplicates_type_names() -> Result<()> {
-        // Create a file with duplicate declarations of the same type.
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "class DuplicateType {{}}")?;
         writeln!(swift_file, "struct DuplicateType {{}}")?;
         writeln!(swift_file, "enum DuplicateType {{}}")?;
         let result = extract_types_from_file(swift_file.path())?;
-        // Only one instance should appear.
         assert_eq!(result.trim(), "DuplicateType");
         Ok(())
     }
 
     #[test]
     fn test_extract_types_mixed_tokens_in_one_line() -> Result<()> {
-        // Create a file with multiple declarations separated by punctuation.
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "class MyClass, struct MyStruct; enum MyEnum.")?;
         let result = extract_types_from_file(swift_file.path())?;
-        // The tokens should be split correctly and sorted alphabetically.
         let expected = "MyClass\nMyEnum\nMyStruct";
         assert_eq!(result.trim(), expected);
         Ok(())
@@ -289,13 +327,9 @@ enum MyEnum {{}}"
 
     #[test]
     fn test_extract_types_with_underscores() -> Result<()> {
-        // Create a file where a type name includes an underscore.
-        // The preprocessing replaces non-alphanumeric characters with spaces,
-        // so "My_Class" should not appear as a single token.
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "class My_Class {{}}")?;
         let result = extract_types_from_file(swift_file.path())?;
-        // Ensure that the token "My_Class" does not appear.
         for token in result.lines() {
             assert_ne!(token, "My_Class", "Found token 'My_Class', which should have been split.");
         }
@@ -304,121 +338,102 @@ enum MyEnum {{}}"
 
     #[test]
     fn test_extract_types_trailing_punctuation() -> Result<()> {
-        // Create a file where the type declaration is followed by punctuation.
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "enum MyEnum.")?;
         let result = extract_types_from_file(swift_file.path())?;
-        // The trailing punctuation should be removed.
         assert_eq!(result.trim(), "MyEnum");
         Ok(())
     }
 
     #[test]
     fn test_extract_types_includes_trigger_comment() -> Result<()> {
-        // Create a temporary Swift file with a trigger comment.
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "import Foundation\n// TODO: - TriggeredType")?;
         let result = extract_types_from_file(swift_file.path())?;
-        // Expect that the trigger comment produces both tokens ("TriggeredType" if only one word, or all tokens if more)
-        // In this case, "TriggeredType" is the only token.
         assert_eq!(result.trim(), "TriggeredType");
         Ok(())
     }
 
     #[test]
     fn test_extract_types_with_substring_markers() -> Result<()> {
-        // Create a temporary Swift file with substring markers.
-        // Only the type declaration between "// v" and "// ^" should be considered.
+        let swift_content = r#"
+            // This type is outside the markers and should be ignored.
+            class OutsideType {}
+            // v
+            // Only this section should be processed:
+            class InsideType {}
+            // ^
+            // This type is also outside and should be ignored.
+            class OutsideType2 {}
+        "#;
         let mut swift_file = NamedTempFile::new()?;
-        writeln!(swift_file, "class OutsideType {{}}")?;
-        writeln!(swift_file, "// v")?;
-        writeln!(swift_file, "class InsideType {{}}")?;
-        writeln!(swift_file, "// ^")?;
-        writeln!(swift_file, "class OutsideType2 {{}}")?;
+        write!(swift_file, "{}", swift_content)?;
         let result = extract_types_from_file(swift_file.path())?;
-        // Expect only "InsideType" to be extracted.
-        assert_eq!(result.trim(), "InsideType");
+        // Expect only the content between markers to yield "InsideType"
+        let expected = "InsideType";
+        assert_eq!(result.trim(), expected);
         Ok(())
     }
 
     #[test]
     fn test_extract_types_with_markers_and_enclosing_todo() -> Result<()> {
-        // The Swift file content includes:
-        // - A marked section (between "// v" and "// ^") containing a call that yields "TypeThatIsInsideMarker".
-        // - Outside the markers, a declaration "TypeThatIsOutSideMarker" which should be ignored.
-        // - A function with a TODO marker that contains "TypeThatIsInsideEnclosingFunction", which should be included.
-        let mut swift_file = NamedTempFile::new()?;
-        writeln!(swift_file, r#"
+        let swift_content = r#"
             // v
             let foo = TypeThatIsInsideMarker()
             // ^
             
             let bar = TypeThatIsOutSideMarker()
             
-            func hello() {{
+            func hello() {
                 let hi = TypeThatIsInsideEnclosingFunction()
                 // TODO: - example
-            }}
-        "#)?;
+            }
+        "#;
+        let mut swift_file = NamedTempFile::new()?;
+        write!(swift_file, "{}", swift_content)?;
         let result = extract_types_from_file(swift_file.path())?;
-        // Expected output: both types are extracted and sorted alphabetically.
+        // Expected output: both types extracted and sorted alphabetically.
         // "TypeThatIsInsideEnclosingFunction" comes before "TypeThatIsInsideMarker".
         let expected = "TypeThatIsInsideEnclosingFunction\nTypeThatIsInsideMarker";
         assert_eq!(result.trim(), expected);
         Ok(())
     }
 
-    // New test for targeted mode: When TARGETED is set and an enclosing block exists,
-    // all tokens from the enclosing block are extracted (including extra tokens from trigger lines).
     #[test]
     fn test_extract_types_targeted_mode() -> Result<()> {
-        // Set the TARGETED environment variable.
         env::set_var("TARGETED", "1");
-
-        // Create a Swift file with an outer type and a function containing an inner type.
-        // In targeted mode the extraction uses only the enclosing block.
+        let swift_content = r#"
+            class OuterType {}
+            func testFunction() {
+                class InnerType {}
+                // TODO: - Perform action
+            }
+        "#;
         let mut swift_file = NamedTempFile::new()?;
-        // Outer declaration (should be ignored in targeted mode)
-        writeln!(swift_file, "class OuterType {{}}")?;
-        // Function block that will serve as the enclosing block
-        writeln!(swift_file, "func testFunction() {{")?;
-        writeln!(swift_file, "    class InnerType {{}}")?;
-        writeln!(swift_file, "    // TODO: - Perform action")?;
-        writeln!(swift_file, "}}")?;
-
+        write!(swift_file, "{}", swift_content)?;
         let result = extract_types_from_file(swift_file.path())?;
         // In targeted mode, from the function block:
         // - "class InnerType {}" produces "InnerType"
-        // - The trigger comment " // TODO: - Perform action" produces tokens "Perform" (since "action" is lowercase)
-        // Thus, the expected output is both "InnerType" and "Perform", sorted alphabetically.
+        // - The trigger comment yields "Perform" (ignoring "action" since it's lowercase)
         let expected = "InnerType\nPerform";
         assert_eq!(result.trim(), expected);
-
-        // Clean up the environment variable.
         env::remove_var("TARGETED");
         Ok(())
     }
 
-    // New test for targeted mode when no enclosing block is found:
-    // In this case, the full file content is processed.
     #[test]
     fn test_extract_types_targeted_mode_no_enclosing_block() -> Result<()> {
-        // Set the TARGETED environment variable.
         env::set_var("TARGETED", "1");
-
-        // Create a Swift file that does not contain a candidate enclosing block.
-        // Since no enclosing block is found, the full content will be used.
+        let swift_content = r#"
+            class OuterType {}
+            // TODO: - Some todo
+        "#;
         let mut swift_file = NamedTempFile::new()?;
-        writeln!(swift_file, "class OuterType {{}}")?;
-        writeln!(swift_file, "// TODO: - Some todo")?;
+        write!(swift_file, "{}", swift_content)?;
         let result = extract_types_from_file(swift_file.path())?;
-        // Expect "OuterType" from the declaration and tokens from the trigger comment.
-        // The trigger comment " // TODO: - Some todo" yields tokens "Some" (since "todo" is lowercase).
-        // Thus the expected output is "OuterType" and "Some", sorted alphabetically.
+        // Expect "OuterType" and "Some"
         let expected = "OuterType\nSome";
         assert_eq!(result.trim(), expected);
-
-        // Clean up the environment variable.
         env::remove_var("TARGETED");
         Ok(())
     }
@@ -432,17 +447,14 @@ mod type_extractor_tests {
     #[test]
     fn test_type_extractor_new() {
         let extractor = TypeExtractor::new().expect("Failed to create TypeExtractor");
-        // Simply verify that an instance can be created.
         assert!(extractor.re_simple.is_match("MyType"));
     }
 
     #[test]
     fn test_extract_tokens_returns_none_for_empty_or_non_eligible_lines() {
         let extractor = TypeExtractor::new().unwrap();
-        // Empty or whitespace-only lines return None.
         assert!(extractor.extract_tokens("").is_none());
         assert!(extractor.extract_tokens("   ").is_none());
-        // Lines that start with "import " or regular comments should be skipped.
         assert!(extractor.extract_tokens("import Foundation").is_none());
         assert!(extractor.extract_tokens("// comment").is_none());
     }
@@ -450,18 +462,13 @@ mod type_extractor_tests {
     #[test]
     fn test_extract_tokens_splits_and_cleans_input() {
         let extractor = TypeExtractor::new().unwrap();
-        // Input with punctuation: non-alphanumeric chars become spaces.
         let tokens = extractor.extract_tokens("MyClass,struct MyStruct").unwrap();
-        // "MyClass,struct MyStruct" becomes "MyClass struct MyStruct", then splits into tokens.
         assert_eq!(tokens, vec!["MyClass", "struct", "MyStruct"]);
     }
 
-    // New test: Ensure that trigger comments are processed correctly.
     #[test]
     fn test_extract_tokens_for_trigger_comment() {
         let extractor = TypeExtractor::new().unwrap();
-        // For a trigger comment, the prefix is stripped and the remainder is split into tokens.
-        // For example, the line "// TODO: - MyTriggeredType" produces ["MyTriggeredType"].
         let tokens = extractor.extract_tokens("// TODO: - MyTriggeredType").unwrap();
         assert_eq!(tokens, vec!["MyTriggeredType"]);
     }
@@ -521,19 +528,14 @@ mod type_extractor_tests {
 mod objc_tests {
     use super::*;
 
-    // Test that the new OBJC_METHOD_RE regex correctly recognizes a one‐line Objective‑C method declaration.
     #[test]
     fn test_is_candidate_line_objc_method_single_line() {
         let objc_line = "- (void)MyObjCMethod {";
-        // The line should be recognized as a candidate declaration.
         assert!(is_candidate_line(objc_line));
     }
 
-    // Test that an Objective‑C method declaration split across lines is recognized.
     #[test]
     fn test_extract_enclosing_block_with_objc_method_split_lines() {
-        // Simulate a file content where an Objective‑C method declaration is split:
-        // The declaration is on one line without the opening brace and the next line contains the brace.
         let content = "\
 - (void)MyObjCMethod\n\
 {\n\
@@ -542,17 +544,13 @@ mod objc_tests {
 void anotherFunction() {\n\
     // TODO: - Fix issue\n\
 }";
-        // Since the TODO marker appears later, extract the enclosing block for the TODO.
-        // The candidate should be selected based on the split Objective‑C declaration.
         let block = extract_enclosing_block_from_content(content);
         assert!(block.is_some());
         let block_str = block.unwrap();
-        // The extracted block should include the Objective‑C declaration parts.
         assert!(block_str.contains("- (void)MyObjCMethod"));
         assert!(block_str.contains("{"));
     }
 
-    // Test that the candidate line is chosen from an Objective‑C method when it appears as a one‐line declaration.
     #[test]
     fn test_extract_enclosing_block_with_objc_method_single_line() {
         let content = "\
@@ -565,7 +563,6 @@ void someFunction() {\n\
         let block = extract_enclosing_block_from_content(content);
         assert!(block.is_some());
         let block_str = block.unwrap();
-        // Ensure the block contains the Objective‑C method declaration.
         assert!(block_str.contains("- (void)MyObjCMethod {"));
     }
 }
@@ -576,28 +573,24 @@ mod candidate_detection_tests {
 
     #[test]
     fn test_candidate_line_swift_function_async() {
-        // This line should be recognized as a candidate because it includes the "async" keyword.
         let async_func = "func testAsyncFunction(foo: Int) async {";
         assert!(is_candidate_line(async_func), "Swift async function should be detected as a candidate");
     }
 
     #[test]
     fn test_candidate_line_swift_class() {
-        // This line should be recognized as a candidate because it is a class declaration.
         let swift_class = "class MyInnerClass {";
         assert!(is_candidate_line(swift_class), "Swift class declaration should be detected as a candidate");
     }
 
     #[test]
     fn test_candidate_line_swift_enum() {
-        // This line should be recognized as a candidate because it is an enum declaration.
         let swift_enum = "enum MyEnum {";
         assert!(is_candidate_line(swift_enum), "Swift enum declaration should be detected as a candidate");
     }
 
     #[test]
     fn test_candidate_line_non_candidate() {
-        // A line that does not represent a declaration should not be flagged as a candidate.
         let non_candidate = "let x = 10;";
         assert!(!is_candidate_line(non_candidate), "Non-declaration line should not be detected as a candidate");
     }
