@@ -40,9 +40,6 @@ pub fn generate_prompt(
     env::set_var("TODO_FILE_BASENAME", &todo_file_basename);
 
     // Check file type compatibility.
-    if file_path.ends_with(".js") && !singular {
-        eprintln!("WARNING: JavaScript support is beta – enforcing singular mode.");
-    }
     if include_references && !file_path.ends_with(".swift") {
         eprintln!("Error: --include-references is only supported for Swift files.");
         std::process::exit(1);
