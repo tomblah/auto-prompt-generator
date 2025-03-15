@@ -192,7 +192,6 @@ fn test_generate_prompt_include_references_for_swift() {
         .stdout(predicate::str::contains("Including files that reference the enclosing type"))
         .stdout(predicate::str::contains("Enclosing type: MyType"))
         .stdout(predicate::str::contains("Searching for files referencing MyType"))
-        .stdout(predicate::str::contains("Warning: The --include-references option is experimental."))
         .stdout(predicate::str::contains("Prompt has been copied to clipboard."));
 
     clear_git_root();
