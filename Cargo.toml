@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/enclosing_util",
     "crates/extract_enclosing_type",
     "crates/diff_with_branch",
     "crates/unescape_newlines",
