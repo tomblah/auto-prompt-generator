@@ -134,6 +134,7 @@ pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> 
 
     let targeted = std::env::var("TARGETED").is_ok();
 
+    // TODO: - I'm setting up the enclosing_util crate...it's very basic at the moment, but my hope is that it would replace extract_enclosing_block_from_content below...keen to here we might go about doing that
     let content_to_process = if targeted {
         if let Some(inner_block) = extract_inner_block_from_content(&full_content) {
             inner_block
