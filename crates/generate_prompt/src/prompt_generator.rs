@@ -105,9 +105,6 @@ pub fn generate_prompt(
     println!("--------------------------------------------------");
     println!("Success:\n");
     println!("{}", instruction_content.trim());
-    if include_references {
-        println!("\nWarning: The --include-references option is experimental.");
-    }
     println!("--------------------------------------------------\n");
     println!("Prompt has been copied to clipboard.");
 
