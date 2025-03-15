@@ -95,9 +95,7 @@ files=""
 
 if [[ "$MODE" == "default" ]]; then
     echo "Including Rust source files from all crates' src directories (excluding tests) and all Cargo.toml files."
-    # Look for .rs files in any crates/*/src folder.
     files=$(find crates -type f -path "*/src/*.rs")
-    # Find all Cargo.toml files (both in the root and in each crate)
     cargo_files=$(find . -type f -name "Cargo.toml" -not -path "./.git/*")
     if [ -n "$cargo_files" ]; then
         echo "Including all Cargo.toml files in the context."
@@ -106,7 +104,6 @@ if [[ "$MODE" == "default" ]]; then
 
 elif [[ "$MODE" == "unit" ]]; then
     echo "Extracting unit tests for crate: $CRATE"
-    # If the provided CRATE does not exist as given, try prepending 'crates/'
     if [ ! -d "$CRATE" ]; then
         if [ -d "crates/$CRATE" ]; then
             CRATE="crates/$CRATE"
@@ -115,7 +112,6 @@ elif [[ "$MODE" == "unit" ]]; then
             exit 1
         fi
     fi
-    # In unit test mode, include only the test blocks from src/lib.rs and/or src/main.rs.
     if [ -f "$CRATE/src/lib.rs" ]; then
         files="$files $CRATE/src/lib.rs"
     fi
@@ -188,7 +184,6 @@ elif [[ "$MODE" == "integration-js" ]]; then
     fi
 fi
 
-# Append README files if the flag is set.
 if [ "$INCLUDE_README" = true ]; then
     echo "Including README files in the context."
     for readme in README README.md README.txt; do
@@ -198,7 +193,6 @@ if [ "$INCLUDE_README" = true ]; then
     done
 fi
 
-# Display the collected files.
 echo "--------------------------------------------------"
 echo "Files to include in the meta-context prompt:"
 for file in $files; do
@@ -206,10 +200,8 @@ for file in $files; do
 done
 echo "--------------------------------------------------"
 
-# Create a temporary file to accumulate the context.
 temp_context=$(mktemp)
 
-# Loop over each file and append a header and its content.
 for file in $files; do
     {
       echo "--------------------------------------------------"
@@ -222,7 +214,6 @@ for file in $files; do
       fi
       echo "--------------------------------------------------"
       if [[ "$MODE" == "default" && "$file" == *.rs ]]; then
-          # Filter out inline unit test blocks from Rust source files.
           awk '
           BEGIN {in_test=0; brace_count=0}
           /^\s*#\[cfg\(test\)\]/ { in_test=1; next }
@@ -238,7 +229,6 @@ for file in $files; do
           ' "$file"
           echo -e "\n// Note: Inline unit tests have been removed for brevity."
       elif [[ "$MODE" == "unit" && "$file" == *.rs ]]; then
-          # Extract only the unit test blocks without including non-test code.
           awk '
           BEGIN { capture=0; brace_count=0 }
           /^\s*#\[cfg\(test\)\]/ { capture=1; next }
@@ -260,18 +250,144 @@ for file in $files; do
     } >> "$temp_context"
 done
 
-# Append a horizontal dashed line.
-{
-  echo "--------------------------------------------------"
-  echo ""
-} >> "$temp_context"
+###############################################################################
+# NEW SECTION: Append differences from main.
+#
+# For each file that differs from main, output a single CTA line that combines
+# the header and the first diff line. Then, if a block is found (via scanning forward
+# until an opening brace is encountered), output that block on its own (with extra newlines).
+#
+# If the diff line’s final character is alphanumeric, append a colon to the CTA line.
+###############################################################################
 
-# Copy the final context to the clipboard using pbcopy.
+echo "--------------------------------------------------" >> "$temp_context"
+
+# Global counter for diff files.
+DIFF_FILE_COUNT=0
+
+# Function to extract a block of code from a file starting at a given line.
+extract_block() {
+    local file="$1"
+    local start_line="$2"
+    local brace_count=0
+    local block=""
+    local line
+
+    line=$(sed -n "${start_line}p" "$file")
+    if [[ ! $line =~ \{ ]]; then
+        return
+    fi
+
+    for ((i=start_line; ; i++)); do
+        line=$(sed -n "${i}p" "$file")
+        if [ -z "$line" ]; then
+            break
+        fi
+        block+="$line"$'\n'
+        open_count=$(echo "$line" | grep -o "{" | wc -l)
+        close_count=$(echo "$line" | grep -o "}" | wc -l)
+        brace_count=$((brace_count + open_count - close_count))
+        if [ $brace_count -le 0 ]; then
+            break
+        fi
+    done
+    echo "$block"
+}
+
+# Function to extract the first diff line (with extra block, if any) and output a combined CTA line.
+extract_diff_with_block() {
+    local file="$1"
+    local diff_output
+    local current_line=0
+    local first_diff_found=false
+    local header_diff_line=""
+    local extra_block=""
+
+    diff_output=$(git diff --unified=0 main -- "$file")
+    if [ -z "$diff_output" ]; then
+        return
+    fi
+
+    # Determine the CTA header prefix.
+    local cta_prefix=""
+    if [ "$DIFF_FILE_COUNT" -eq 0 ]; then
+        cta_prefix="Can you have a look in $file, in particular, "
+    else
+        cta_prefix="Also, can you look in $file, in particular, "
+    fi
+
+    # Process diff output.
+    while IFS= read -r line; do
+        if [[ $line =~ ^\+\+ ]]; then
+            continue
+        fi
+        if [[ $line =~ ^@@ ]]; then
+            if [[ $line =~ \+([0-9]+) ]]; then
+                current_line=${BASH_REMATCH[1]}
+                current_line=$((current_line - 1))
+            fi
+        elif [[ $line =~ ^\+ ]]; then
+            current_line=$((current_line + 1))
+            # Process the diff line.
+            local diff_line="${line:1}"
+            diff_line="$(echo "$diff_line" | sed 's#// TODO: -##g')"
+            diff_line="$(echo "$diff_line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+            diff_line="$(echo "$diff_line" | sed 's#^//[[:space:]]*##')"
+            if [ -n "$diff_line" ] && [ "$first_diff_found" = false ]; then
+                header_diff_line="$diff_line"
+                first_diff_found=true
+            fi
+            # Scan forward for an extra block.
+            local block_start_line=$((current_line + 1))
+            while true; do
+                local next_line
+                next_line=$(sed -n "${block_start_line}p" "$file")
+                if [ -z "$next_line" ]; then
+                    break
+                fi
+                if [[ $next_line =~ \{ ]]; then
+                    extra_block=$(extract_block "$file" "$block_start_line")
+                    break
+                fi
+                block_start_line=$((block_start_line + 1))
+            done
+            # Process only the first diff line.
+            break
+        fi
+    done <<< "$diff_output"
+
+    # Only proceed if we found a diff line.
+    if [ -n "$header_diff_line" ]; then
+        local combined_line="${cta_prefix}${header_diff_line}"
+        # If the last character of header_diff_line is alphanumeric, append a colon.
+        if [[ "$header_diff_line" =~ [[:alnum:]]$ ]]; then
+            combined_line="${combined_line}:"
+        fi
+        echo "$combined_line" >> "$temp_context"
+        # If an extra block was found, output it with an extra newline before and after.
+        if [ -n "$extra_block" ]; then
+            echo "" >> "$temp_context"
+            echo "$extra_block" >> "$temp_context"
+            echo "" >> "$temp_context"
+        fi
+    fi
+}
+
+for file in $files; do
+    if git diff main -- "$file" | grep -q .; then
+         extract_diff_with_block "$file"
+         DIFF_FILE_COUNT=$((DIFF_FILE_COUNT + 1))
+    fi
+done
+
+###############################################################################
+# End NEW SECTION
+###############################################################################
+
 pbcopy < "$temp_context"
 
 echo "--------------------------------------------------"
-echo "Success: Meta context has been copied to the clipboard."
+echo "Success: Meta context (with differences from main) has been copied to the clipboard."
 echo "--------------------------------------------------"
 
-# Clean up the temporary file.
 rm "$temp_context"
