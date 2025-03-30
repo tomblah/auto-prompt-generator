@@ -4,17 +4,63 @@ Transforms your TODO comments into AI-friendly prompts with relevant contextual 
 
 *(NB: Swift projects only at the moment)*
 
-## Getting Started
+## Getting Started (AI Assisted)
 
-1. `make`
+1. **Clone the Repository:**  
+   Clone the repo to your local machine using:
+   ```bash
+   git clone https://github.com/tomblah/auto-prompt-generator
+   ```
 
-2. Add a TODO comment in your code:  
-   `// TODO: - your task here` *(include the hyphen)*
+2. **Run the Onboarding Script:**  
+   Navigate into the repository directory and run the provided script:
+   ```bash
+   ./getting-started.sh
+   ```
+
+3. **Let AI take over:**  
+   Paste the generated "getting started" prompt into your favorite AI tool. The AI will then instruct you from there.
+
+## Getting Started (Traditional)
+
+If you prefer a more hands‑on approach, follow these five steps:
+
+1. **Install Rust Toolchain:**  
+   Ensure you have Rust and Cargo installed. You can install them from [rustup.rs](https://rustup.rs). For example:
+   ```bash
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   ```  
+   This will set up the Rust toolchain and Cargo on your system.
+
+2. **Clone & Setup Repository:**  
+   Clone the repository to your machine:
+   ```bash
+   git clone https://github.com/tomblah/auto-prompt-generator
+   cd auto-prompt-generator
+   ```  
+   Once inside, perform any initial setup required (such as installing dependencies via Cargo).
+
+3. **Build the Project:**  
+   Build all Rust components in release mode by running:
+   ```bash
+   make build
+   ```  
+   This compiles the project and generates the required binaries.
+
+4. **Add to PATH:**  
+   Locate the `generate_prompt` binary (typically found in `target/release`) and add its directory to your PATH. For example:
+   ```bash
+   export PATH=$(pwd)/target/release:$PATH
+   ```  
+   You may add this line to your shell’s startup file (like `.bashrc` or `.zshrc`) for convenience.
+
+5. **Play Around:**  
+   Insert a `// TODO: -` comment into one of your Swift files and run the prompt generator:
+   ```bash
+   generate_prompt
+   ```  
+   Then copy the generated prompt and paste it into your favorite AI tool. This process shows how the auto prompt generator converts your TODO into a detailed prompt, which the AI can then turn into a helpful answer.
    
-3. Run `generate_prompt` in your project
-
-4. Paste the generated prompt into your favorite AI.
-
 ## Legacy
 
 Some workplaces won't allow you to build this into a binary. Therefore, use the legacy shell scripts which kinda do the same thing: https://github.com/tomblah/auto-prompt-generator/tree/legacy
