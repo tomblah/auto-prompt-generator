@@ -124,10 +124,10 @@ all: clean fix-headers build test coverage
 Please provide a clear, beginner-friendly, step-by-step guide with exactly 5 steps. Each step should include a short explanation and any command examples enclosed in triple backticks, as follows:
 
 1. **Install Rust Toolchain:** Explain how to install Rust and Cargo from [rustup.rs](https://rustup.rs) if not already installed, including a command example.
-2. **Clone & Setup Repository:** Instruct how to clone the repository (e.g., using `git clone <repo_url>`) and perform any initial setup.
+2. **Clone & Setup Repository:** Instruct how to clone the repository (e.g., using `git clone https://github.com/tomblah/auto-prompt-generator/`) and perform any initial setup.
 3. **Build the Project:** Explain how to navigate to the project directory and run `make build` to compile the project in release mode.
 4. **Add to PATH:** Guide the user to locate the `generate_prompt` binary (typically in `target/release`) and add its directory to their PATH.
-5. **Play Around:** Instruct the user to insert a `// TODO: -` comment in a Swift file, run the prompt generator, and paste the output into their favorite AI tool. Mention that this will demonstrate how the auto prompt generator converts a TODO into a detailed prompt and how the AI turns that prompt into a helpful answer.
+5. **Play Around:** Instruct the user to insert a `// TODO: -` comment in a Swift file, run generate_prompt without any options at first (can add options later if need be), and paste the output into their favorite AI tool. Mention that this will demonstrate how the auto prompt generator converts a TODO into a detailed prompt and how the AI turns that prompt into a helpful answer.
 
 If you get stuck at any step, please ask followup questions. And if after a few questions you're still stuck, feel free to open an issue at:
 https://github.com/tomblah/auto-prompt-generator/issues
