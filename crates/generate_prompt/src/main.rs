@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use clap::{Arg, Command};
 use std::env;
 use std::process::{Command as ProcessCommand, Stdio};
+use env_logger;
 
 // Library dependencies.
 use get_git_root::get_git_root;
@@ -16,10 +17,7 @@ mod instruction_locator;
 mod prompt_generator; // New module containing the core orchestration
 
 fn main() -> Result<()> {
-    // Initialize a default logger; respect RUST_LOG env var
-    env_logger::init()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+    env_logger::init();
         
     let matches = Command::new("generate_prompt")
         .version("0.1.0")
