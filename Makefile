@@ -1,7 +1,7 @@
 SHELL = /bin/bash
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: build test tests coverage clean fix-headers mc mmc mmmc mmmmc all
+.PHONY: build test tests coverage clean fix-headers mc mmc mmmc mmmmc all check
 
 # Ensure Cargo is installed
 ifeq ($(shell command -v cargo 2> /dev/null),)
@@ -78,3 +78,8 @@ mmmmc:
 
 # Default target: clean, fix headers, build, test, and generate coverage.
 all: clean fix-headers build test coverage
+
+# Run the diff‑and‑copy check script
+check:
+	@echo "Running diff‑and‑copy check…"
+	./scripts/is-this-right.sh
