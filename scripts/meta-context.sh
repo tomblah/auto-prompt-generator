@@ -27,6 +27,10 @@ set -euo pipefail
 #         Additionally include any README files (e.g. README, README.md, README.txt)
 #         from the repository root.
 #
+#   --crate-all <crate>
+#         Include all content (sources, tests, examples, benches, build scripts, etc.)
+#         from the specified crate directory.
+#
 # Default (no option): include Rust source files in all crates’ src directories (excluding tests)
 # and all Cargo.toml files.
 ##########################################
@@ -72,6 +76,15 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             MODE="integration-js"
+            CRATE="$2"
+            shift 2
+            ;;
+        --crate-all)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --crate-all requires a crate name." >&2
+                exit 1
+            fi
+            MODE="crate-all"
             CRATE="$2"
             shift 2
             ;;
@@ -182,6 +195,18 @@ elif [[ "$MODE" == "integration-js" ]]; then
         echo "Error: No JavaScript test files found in '$CRATE/tests'." >&2
         exit 1
     fi
+
+elif [[ "$MODE" == "crate-all" ]]; then
+    echo "Including all content (sources, tests, examples, benches, etc.) for crate: $CRATE"
+    if [ ! -d "$CRATE" ]; then
+        if [ -d "crates/$CRATE" ]; then
+            CRATE="crates/$CRATE"
+        else
+            echo "Error: Crate directory '$CRATE' does not exist." >&2
+            exit 1
+        fi
+    fi
+    files=$(find "$CRATE" -type f)
 fi
 
 if [ "$INCLUDE_README" = true ]; then
@@ -192,6 +217,10 @@ if [ "$INCLUDE_README" = true ]; then
         fi
     done
 fi
+
+# Exclude macOS metadata files like .DS_Store
+files=$(printf "%s
+" $files | grep -v '\.DS_Store$' | tr '\n' ' ')
 
 echo "--------------------------------------------------"
 echo "Files to include in the meta-context prompt:"
@@ -329,7 +358,6 @@ extract_diff_with_block() {
             fi
         elif [[ $line =~ ^\+ ]]; then
             current_line=$((current_line + 1))
-            # Process the diff line.
             local diff_line="${line:1}"
             diff_line="$(echo "$diff_line" | sed 's#// TODO: -##g')"
             diff_line="$(echo "$diff_line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
@@ -338,7 +366,6 @@ extract_diff_with_block() {
                 header_diff_line="$diff_line"
                 first_diff_found=true
             fi
-            # Scan forward for an extra block.
             local block_start_line=$((current_line + 1))
             while true; do
                 local next_line
@@ -352,20 +379,16 @@ extract_diff_with_block() {
                 fi
                 block_start_line=$((block_start_line + 1))
             done
-            # Process only the first diff line.
             break
         fi
     done <<< "$diff_output"
 
-    # Only proceed if we found a diff line.
     if [ -n "$header_diff_line" ]; then
         local combined_line="${cta_prefix}${header_diff_line}"
-        # If the last character of header_diff_line is alphanumeric, append a colon.
         if [[ "$header_diff_line" =~ [[:alnum:]]$ ]]; then
             combined_line="${combined_line}:"
         fi
         echo "$combined_line" >> "$temp_context"
-        # If an extra block was found, output it with an extra newline before and after.
         if [ -n "$extra_block" ]; then
             echo "" >> "$temp_context"
             echo "$extra_block" >> "$temp_context"
