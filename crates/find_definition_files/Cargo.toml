@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 regex = { workspace = true }
 walkdir = { workspace = true }
+get_search_roots = { path = "../get_search_roots" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

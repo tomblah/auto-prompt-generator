@@ -1,16 +1,16 @@
 // crates/find_definition_files/src/lib.rs
 
 use std::collections::BTreeSet;
-use std::fs;
+use std::error::Error;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+use get_search_roots::get_search_roots;
 
-// Import our matcher module.
 mod matcher;
-use matcher::{get_matcher_for_extension};
+use matcher::get_matcher_for_extension;
 
-/// DefinitionFinder now holds the list of type names (from the provided types content)
-/// and a list of search roots.
+/// DefinitionFinder holds the list of type names and delegates package-root discovery
+/// to the shared `get_search_roots` implementation.
 pub struct DefinitionFinder {
     types: Vec<String>,
     search_roots: Vec<PathBuf>,
@@ -18,50 +18,22 @@ pub struct DefinitionFinder {
 
 impl DefinitionFinder {
     /// Creates a new DefinitionFinder from a types content string.
-    ///
-    /// # Arguments
-    ///
-    /// * `types_content` - A string slice containing newline-separated type names.
-    /// * `root` - The root directory from which to determine search roots.
-    ///
-    /// # Errors
-    ///
-    /// Previously, this returned an error if no types were found.
-    /// Now, it allows an empty types vector.
-    pub fn new_from_str(types_content: &str, root: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+    /// Delegates search-root logic to the shared crate.
+    pub fn new_from_str(
+        types_content: &str,
+        root: &Path,
+    ) -> Result<Self, Box<dyn Error>> {
         let types: Vec<String> = types_content
             .lines()
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(String::from)
             .collect();
-        let search_roots = Self::get_search_roots(root);
-        Ok(Self { types, search_roots })
-    }
 
-    /// Determines search roots similarly to the previous implementation.
-    fn get_search_roots(root: &Path) -> Vec<PathBuf> {
-        let mut roots = BTreeSet::new();
-        if root.join("Package.swift").is_file() {
-            roots.insert(root.to_path_buf());
-        } else {
-            if root.file_name().map(|s| s != ".build").unwrap_or(true) {
-                roots.insert(root.to_path_buf());
-            }
-            for entry in WalkDir::new(root)
-                .into_iter()
-                .filter_map(Result::ok)
-                .filter(|e| e.file_type().is_file() && e.file_name() == "Package.swift")
-            {
-                if entry.path().components().any(|c| c.as_os_str() == ".build") {
-                    continue;
-                }
-                if let Some(parent) = entry.path().parent() {
-                    roots.insert(parent.to_path_buf());
-                }
-            }
-        }
-        roots.into_iter().collect()
+        // Delegate to shared logic for package roots
+        let search_roots = get_search_roots(root)?;
+
+        Ok(Self { types, search_roots })
     }
 
     /// Walks the search roots and returns files whose contents match any of the types.
@@ -75,7 +47,7 @@ impl DefinitionFinder {
             {
                 let path = entry.path();
 
-                // Exclude files in directories named ".build" or "Pods".
+                // Skip .build and Pods directories
                 if path.components().any(|comp| {
                     let s = comp.as_os_str().to_string_lossy();
                     s == ".build" || s == "Pods"
@@ -83,7 +55,7 @@ impl DefinitionFinder {
                     continue;
                 }
 
-                // Determine file extension and get the corresponding matcher.
+                // Match file extension to a definition matcher
                 let ext = match path.extension().and_then(|s| s.to_str()) {
                     Some(e) => e,
                     None => continue,
@@ -93,9 +65,8 @@ impl DefinitionFinder {
                     None => continue,
                 };
 
-                // Read the file contents.
-                if let Ok(content) = fs::read_to_string(path) {
-                    // Check if any type is defined in the file.
+                // Read file and test for any matching type definitions
+                if let Ok(content) = std::fs::read_to_string(path) {
                     if self.types.iter().any(|t| matcher.matches_definition(&content, t)) {
                         found_files.insert(path.to_path_buf());
                     }
@@ -106,23 +77,12 @@ impl DefinitionFinder {
     }
 }
 
-/// Public API: given a types content string and a root directory,
-/// scans for files that contain definitions for any of the types listed in the provided string.
-///
-/// # Arguments
-///
-/// * `types_content` - A string slice containing newline-separated type names.
-/// * `root` - The root directory to begin the search.
-///
-/// # Returns
-///
-/// A `Result` containing a set of matching file paths on success.
+/// Public API: scans for files that contain definitions for any of the types.
 pub fn find_definition_files(
     types_content: &str,
     root: &Path,
-) -> Result<BTreeSet<PathBuf>, Box<dyn std::error::Error>> {
+) -> Result<BTreeSet<PathBuf>, Box<dyn Error>> {
     if types_content.trim().is_empty() {
-        // No types found is acceptable; return an empty set.
         return Ok(BTreeSet::new());
     }
     let finder = DefinitionFinder::new_from_str(types_content, root)?;
@@ -142,7 +102,7 @@ mod tests {
         let package_path = dir.path().join("Package.swift");
         fs::write(&package_path, "swift package content").unwrap();
 
-        let roots = DefinitionFinder::get_search_roots(dir.path());
+        let roots = get_search_roots(dir.path()).unwrap();
         // When the root is a Swift package, get_search_roots should return only the root.
         assert_eq!(roots.len(), 1);
         assert_eq!(roots[0], dir.path());
@@ -384,7 +344,7 @@ mod tests {
         fs::create_dir_all(&subpackage).unwrap();
         fs::write(&subpackage.join("Package.swift"), "swift package content").unwrap();
 
-        let roots = DefinitionFinder::get_search_roots(root);
+        let roots = get_search_roots(root).unwrap();
         // Should include both the root and the subpackage directory.
         assert!(roots.contains(&root.to_path_buf()));
         assert!(roots.contains(&subpackage));

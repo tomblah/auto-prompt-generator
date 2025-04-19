@@ -316,6 +316,7 @@ dependencies = [
 name = "find_definition_files"
 version = "0.1.0"
 dependencies = [
+ "get_search_roots",
  "regex",
  "tempfile",
  "walkdir",
