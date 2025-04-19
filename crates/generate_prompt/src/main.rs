@@ -1,146 +1,130 @@
-// crates/generate_prompt/src/main.rs
+//! crates/generate_prompt/src/main.rs
 
+use std::{
+    env,
+    process::{Command, Stdio},
+};
 use anyhow::{Context, Result};
-use clap::{Arg, Command};
-use std::env;
-use std::process::{Command as ProcessCommand, Stdio};
-use env_logger;
-
-// Library dependencies.
-use get_git_root::get_git_root;
+use log::{info, error};
+use env_logger::{Builder, Target};
 
 mod clipboard;
 mod search_root;
 mod file_selector;
 mod prompt_validation;
-mod instruction_locator;
-mod prompt_generator; // New module containing the core orchestration
+mod prompt_generator;
+
+use prompt_generator::generate_prompt;
 
 fn main() -> Result<()> {
-    env_logger::init();
-        
-    let matches = Command::new("generate_prompt")
-        .version("0.1.0")
-        .about("Generates an AI prompt by delegating to existing Rust libraries and binaries")
-        .arg(
-            Arg::new("singular")
-                .long("singular")
-                .help("Only include the TODO file")
-                .action(clap::ArgAction::SetTrue)
-                .default_value("false"),
-        )
-        .arg(
-            Arg::new("force_global")
-                .long("force-global")
-                .help("Force global context inclusion")
-                .action(clap::ArgAction::SetTrue)
-                .default_value("false"),
-        )
-        .arg(
-            Arg::new("include_references")
-                .long("include-references")
-                .help("Include files that reference the enclosing type")
-                .action(clap::ArgAction::SetTrue)
-                .default_value("false"),
-        )
-        .arg(
-            Arg::new("diff_with")
-                .long("diff-with")
-                .num_args(1)
-                .help("Include diff report against the specified branch"),
-        )
-        .arg(
-            Arg::new("exclude")
-                .long("exclude")
-                .action(clap::ArgAction::Append)
-                .help("Exclude file(s) whose basename match the given name"),
-        )
-        .arg(
-            Arg::new("verbose")
-                .long("verbose")
-                .help("Enable verbose logging")
-                .action(clap::ArgAction::SetTrue)
-                .default_value("false"),
-        )
-        // New flag for targeted type extraction.
-        .arg(
-            Arg::new("tgtd")
-                .long("tgtd")
-                .help("Only consider types from the enclosing block for extraction")
-                .action(clap::ArgAction::SetTrue)
-                .default_value("false"),
-        )
-        .get_matches();
+    // Initialize logger to stdout
+    Builder::from_default_env()
+        .target(Target::Stdout)
+        .init();
 
-    let singular = *matches.get_one::<bool>("singular").unwrap();
-    let force_global = *matches.get_one::<bool>("force_global").unwrap();
-    let include_references = *matches.get_one::<bool>("include_references").unwrap();
-    let excludes: Vec<String> = matches
-        .get_many::<String>("exclude")
-        .unwrap_or_default()
-        .map(|s| s.to_string())
-        .collect();
+    // --- Parse CLI flags
+    let mut singular = false;
+    let mut force_global = false;
+    let mut include_references = false;
+    let mut excludes: Vec<String> = Vec::new();
 
-    // Set the diff branch from CLI if not already set via env.
-    if env::var("DIFF_WITH_BRANCH").is_err() {
-        if let Some(diff_branch) = matches.get_one::<String>("diff_with") {
-            env::set_var("DIFF_WITH_BRANCH", diff_branch);
+    let mut args = env::args().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--singular"            => singular = true,
+            "--force-global"        => force_global = true,
+            "--include-references"  => include_references = true,
+            "--exclude"             => {
+                if let Some(pat) = args.next() {
+                    excludes.push(pat);
+                }
+            }
+            "--diff-with"           => {
+                if let Some(branch) = args.next() {
+                    env::set_var("DIFF_WITH_BRANCH", branch);
+                }
+            }
+            _ => { /* ignore */ }
         }
     }
 
-    // Set the TARGETED environment variable if the flag is enabled.
-    if *matches.get_one::<bool>("tgtd").unwrap() {
-        env::set_var("TARGETED", "1");
-    }
-
-    // 1. Save the current directory and determine the Git root.
+    // --- Log current directory
     let current_dir = env::current_dir().context("Failed to get current directory")?;
-    log::info!("--------------------------------------------------");
-    log::info!("Current directory: {}", current_dir.display());
+    info!("--------------------------------------------------");
+    info!("Current directory: {}", current_dir.display());
 
-    let git_root = if let Ok(git_root_override) = env::var("GET_GIT_ROOT") {
-        git_root_override
+    // --- Determine Git root
+    let git_root = if let Ok(override_root) = env::var("GET_GIT_ROOT") {
+        override_root
     } else {
-        get_git_root().expect("Failed to determine Git root")
+        let out = Command::new("get_git_root")
+            .stdout(Stdio::piped())
+            .output()
+            .context("Failed to run `get_git_root`")?;
+        if !out.status.success() {
+            error!("Error executing `get_git_root`");
+            std::process::exit(1);
+        }
+        String::from_utf8(out.stdout)?
+            .trim()
+            .to_string()
     };
-    log::info!("Git root: {}", git_root);
-    log::info!("--------------------------------------------------");
+    info!("Git root: {}", git_root);
+    info!("--------------------------------------------------");
 
-    // 2. If a diff branch is specified, verify it exists.
+    // cd into Git root so all helpers run in the right directory
+    env::set_current_dir(&git_root).context("Failed to change directory to Git root")?;
+
+    // --- Verify diff‑branch if requested
     if let Ok(diff_branch) = env::var("DIFF_WITH_BRANCH") {
-        let verify_status = ProcessCommand::new("git")
-            .args(&["rev-parse", "--verify", &diff_branch])
-            .current_dir(&git_root)
+        let status = Command::new("git")
+            .arg("rev-parse")
+            .arg("--verify")
+            .arg(&diff_branch)
             .stderr(Stdio::null())
             .status()
-            .unwrap_or_else(|err| {
-                log::error!("Error executing git rev-parse: {}", err);
+            .unwrap_or_else(|e| {
+                error!("Error executing `git rev-parse`: {}", e);
                 std::process::exit(1);
             });
-        if !verify_status.success() {
-            log::error!("Error: Branch '{}' does not exist.", diff_branch);
+        if !status.success() {
+            error!("Error: Branch '{}' does not exist.", diff_branch);
             std::process::exit(1);
         }
     }
 
-    // 3. Change directory to the Git root.
-    env::set_current_dir(&git_root).context("Failed to change directory to Git root")?;
+    // --- Locate instruction file
+    let instruction_file = if let Ok(path) = env::var("GET_INSTRUCTION_FILE") {
+        path
+    } else {
+        let out = Command::new("find_prompt_instruction")
+            .stdout(Stdio::piped())
+            .output()
+            .context("Failed to run `find_prompt_instruction`")?;
+        if !out.status.success() {
+            error!("Error executing `find_prompt_instruction`");
+            std::process::exit(1);
+        }
+        String::from_utf8(out.stdout)?
+            .trim()
+            .to_string()
+    };
+    info!("Found exactly one instruction in {}", instruction_file);
+    info!("--------------------------------------------------");
 
-    // 4. Locate the instruction file.
-    let file_path = instruction_locator::locate_instruction_file(&git_root)
-        .context("Failed to locate the instruction file")?;
-    log::info!("Found exactly one instruction in {}", file_path);
-    log::info!("--------------------------------------------------");
-
-    // 5. Delegate to the prompt generator module.
-    prompt_generator::generate_prompt(
+    // --- Generate the prompt (this also copies to clipboard inside)
+    generate_prompt(
         &git_root,
-        &file_path,
+        &instruction_file,
         singular,
         force_global,
         include_references,
         &excludes,
-    )?;
+    )
+    .unwrap_or_else(|e| {
+        error!("Error during prompt generation: {}", e);
+        std::process::exit(1);
+    });
 
     Ok(())
 }
