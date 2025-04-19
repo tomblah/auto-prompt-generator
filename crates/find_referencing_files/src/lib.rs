@@ -26,7 +26,7 @@ use walkdir::WalkDir;
 ///
 /// let files = find_files_referencing("MyType", "/path/to/search").unwrap();
 /// for file in files {
-///     println!("{}", file);
+///     log::info!("{}", file);
 /// }
 /// ```
 pub fn find_files_referencing(

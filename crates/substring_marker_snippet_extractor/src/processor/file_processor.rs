@@ -76,7 +76,7 @@ mod tests {
     #[test]
     fn test_default_processor_success() {
         // When there are no markers, the processor should simply return the raw content.
-        let raw_content = "fn main() {\n    println!(\"Hello, world!\");\n}\n";
+        let raw_content = "fn main() {\n    log::info!(\"Hello, world!\");\n}\n";
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "{}", raw_content).unwrap();
         let processor = DefaultFileProcessor;

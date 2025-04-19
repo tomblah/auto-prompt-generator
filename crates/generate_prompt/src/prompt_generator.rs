@@ -41,13 +41,13 @@ pub fn generate_prompt(
 
     // Check file type compatibility.
     if include_references && !file_path.ends_with(".swift") {
-        eprintln!("Error: --include-references is only supported for Swift files.");
+        log::error!("Error: --include-references is only supported for Swift files.");
         std::process::exit(1);
     }
 
     // Determine package scope.
     let base_dir = if force_global {
-        println!("Force global enabled: using Git root for context");
+        log::info!("Force global enabled: using Git root for context");
         PathBuf::from(git_root)
     } else {
         PathBuf::from(git_root)
@@ -58,13 +58,13 @@ pub fn generate_prompt(
     } else {
         search_root::determine_search_root(&base_dir, file_path)
     };
-    println!("Search root: {}", search_root_path.display());
+    log::info!("Search root: {}", search_root_path.display());
 
     // Extract the instruction content.
     let instruction_content = extract_instruction_content(file_path)
         .context("Failed to extract instruction content")?;
-    println!("Instruction content: {}", instruction_content.trim());
-    println!("--------------------------------------------------");
+    log::info!("Instruction content: {}", instruction_content.trim());
+    log::info!("--------------------------------------------------");
 
     // Determine the list of files to include.
     let found_files = file_selector::determine_files_to_include(
@@ -91,22 +91,22 @@ pub fn generate_prompt(
         instruction_content.trim(),
     )
     .unwrap_or_else(|err| {
-        eprintln!("Error during post-processing: {}", err);
+        log::error!("Error during post-processing: {}", err);
         std::process::exit(1);
     });
 
     // Validate the marker count.
     crate::prompt_validation::validate_marker_count(&final_prompt, diff_enabled)
         .unwrap_or_else(|err| {
-            eprintln!("{}", err);
+            log::error!("{}", err);
             std::process::exit(1);
         });
 
-    println!("--------------------------------------------------");
-    println!("Success:\n");
-    println!("{}", instruction_content.trim());
-    println!("--------------------------------------------------\n");
-    println!("Prompt has been copied to clipboard.");
+    log::info!("--------------------------------------------------");
+    log::info!("Success:\n");
+    log::info!("{}", instruction_content.trim());
+    log::info!("--------------------------------------------------\n");
+    log::info!("Prompt has been copied to clipboard.");
 
     // Copy the final prompt to the clipboard.
     crate::clipboard::copy_to_clipboard(&final_prompt);

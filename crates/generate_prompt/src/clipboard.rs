@@ -12,7 +12,7 @@ pub fn copy_to_clipboard(final_prompt: &str) {
             .stdin(Stdio::piped())
             .spawn()
             .unwrap_or_else(|err| {
-                eprintln!("Error running pbcopy: {}", err);
+                log::error!("Error running pbcopy: {}", err);
                 std::process::exit(1);
             });
         {
@@ -23,7 +23,7 @@ pub fn copy_to_clipboard(final_prompt: &str) {
         }
         pbcopy.wait().expect("Failed to wait on pbcopy");
     } else {
-        eprintln!("DISABLE_PBCOPY is set; skipping clipboard copy.");
+        log::error!("DISABLE_PBCOPY is set; skipping clipboard copy.");
     }
 }
 

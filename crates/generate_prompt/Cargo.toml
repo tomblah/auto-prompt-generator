@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 anyhow = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
 get_package_root = { path = "../get_package_root" }
 extract_instruction_content = { path = "../extract_instruction_content" }
 get_search_roots = { path = "../get_search_roots" }

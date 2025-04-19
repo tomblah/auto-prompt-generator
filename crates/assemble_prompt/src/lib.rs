@@ -23,7 +23,7 @@ pub fn assemble_prompt(found_files: &[String], _instruction_content: &str) -> Re
     // Process each file in the deduplicated list.
     for file_path in files {
         if !Path::new(&file_path).exists() {
-            eprintln!("Warning: file {} does not exist, skipping", file_path);
+            log::warn!("Warning: file {} does not exist, skipping", file_path);
             continue;
         }
         let basename = Path::new(&file_path)
@@ -36,7 +36,7 @@ pub fn assemble_prompt(found_files: &[String], _instruction_content: &str) -> Re
         let processed_content = match process_file_with_processor(&DefaultFileProcessor, &file_path, Some(&todo_file_basename)) {
             Ok(content) => content,
             Err(err) => {
-                eprintln!("Error processing {}: {}. Falling back to raw file contents.", file_path, err);
+                log::error!("Error processing {}: {}. Falling back to raw file contents.", file_path, err);
                 fs::read_to_string(&file_path).unwrap_or_default()
             }
         };
@@ -52,7 +52,7 @@ pub fn assemble_prompt(found_files: &[String], _instruction_content: &str) -> Re
                 Ok(Some(diff)) => diff,
                 Ok(None) => String::new(),
                 Err(err) => {
-                    eprintln!("Error running diff on {}: {}", file_path, err);
+                    log::error!("Error running diff on {}: {}", file_path, err);
                     String::new()
                 }
             };
@@ -489,7 +489,7 @@ esac
 
         for file_path in files {
             if !Path::new(&file_path).exists() {
-                eprintln!("Warning: file {} does not exist, skipping", file_path);
+                log::warn!("Warning: file {} does not exist, skipping", file_path);
                 continue;
             }
             let basename = Path::new(&file_path)
@@ -501,7 +501,7 @@ esac
             let processed_content = match process_file_with_processor(processor, &file_path, Some(&todo_file_basename)) {
                 Ok(content) => content,
                 Err(err) => {
-                    eprintln!("Error processing {}: {}. Falling back to raw file contents.", file_path, err);
+                    log::error!("Error processing {}: {}. Falling back to raw file contents.", file_path, err);
                     fs::read_to_string(&file_path).unwrap_or_default()
                 }
             };

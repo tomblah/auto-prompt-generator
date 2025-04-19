@@ -16,6 +16,11 @@ mod instruction_locator;
 mod prompt_generator; // New module containing the core orchestration
 
 fn main() -> Result<()> {
+    // Initialize a default logger; respect RUST_LOG env var
+    env_logger::init()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+        
     let matches = Command::new("generate_prompt")
         .version("0.1.0")
         .about("Generates an AI prompt by delegating to existing Rust libraries and binaries")
@@ -92,16 +97,16 @@ fn main() -> Result<()> {
 
     // 1. Save the current directory and determine the Git root.
     let current_dir = env::current_dir().context("Failed to get current directory")?;
-    println!("--------------------------------------------------");
-    println!("Current directory: {}", current_dir.display());
+    log::info!("--------------------------------------------------");
+    log::info!("Current directory: {}", current_dir.display());
 
     let git_root = if let Ok(git_root_override) = env::var("GET_GIT_ROOT") {
         git_root_override
     } else {
         get_git_root().expect("Failed to determine Git root")
     };
-    println!("Git root: {}", git_root);
-    println!("--------------------------------------------------");
+    log::info!("Git root: {}", git_root);
+    log::info!("--------------------------------------------------");
 
     // 2. If a diff branch is specified, verify it exists.
     if let Ok(diff_branch) = env::var("DIFF_WITH_BRANCH") {
@@ -111,11 +116,11 @@ fn main() -> Result<()> {
             .stderr(Stdio::null())
             .status()
             .unwrap_or_else(|err| {
-                eprintln!("Error executing git rev-parse: {}", err);
+                log::error!("Error executing git rev-parse: {}", err);
                 std::process::exit(1);
             });
         if !verify_status.success() {
-            eprintln!("Error: Branch '{}' does not exist.", diff_branch);
+            log::error!("Error: Branch '{}' does not exist.", diff_branch);
             std::process::exit(1);
         }
     }
@@ -126,8 +131,8 @@ fn main() -> Result<()> {
     // 4. Locate the instruction file.
     let file_path = instruction_locator::locate_instruction_file(&git_root)
         .context("Failed to locate the instruction file")?;
-    println!("Found exactly one instruction in {}", file_path);
-    println!("--------------------------------------------------");
+    log::info!("Found exactly one instruction in {}", file_path);
+    log::info!("--------------------------------------------------");
 
     // 5. Delegate to the prompt generator module.
     prompt_generator::generate_prompt(

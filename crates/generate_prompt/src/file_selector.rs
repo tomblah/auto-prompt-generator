@@ -35,15 +35,15 @@ pub fn determine_files_to_include(
     let mut found_files: Vec<String> = Vec::new();
 
     if singular {
-        println!("Singular mode enabled: only including the TODO file");
+        log::info!("Singular mode enabled: only including the TODO file");
         found_files.push(file_path.to_string());
     } else {
         // Extract types as a newline-separated string.
         let types_content = extract_types_from_file(file_path)
             .map_err(|e| anyhow::anyhow!("Failed to extract types: {}", e))?;
-        println!("Types found:");
-        println!("{}", types_content.trim());
-        println!("--------------------------------------------------");
+        log::info!("Types found:");
+        log::info!("{}", types_content.trim());
+        log::info!("--------------------------------------------------");
 
         // Find definition files using the extracted types.
         let def_files_set = find_definition_files(types_content.as_str(), search_root)
@@ -59,7 +59,7 @@ pub fn determine_files_to_include(
         
         // Apply exclusion filtering.
         if !excludes.is_empty() {
-            println!("Excluding files matching: {:?}", excludes);
+            log::info!("Excluding files matching: {:?}", excludes);
             found_files.retain(|line| {
                 let basename = Path::new(line)
                     .file_name()
@@ -71,17 +71,17 @@ pub fn determine_files_to_include(
     }
 
     if include_references {
-        println!("Including files that reference the enclosing type");
+        log::info!("Including files that reference the enclosing type");
         let enclosing_type = match extract_enclosing_type(file_path) {
             Ok(ty) => ty,
             Err(err) => {
-                eprintln!("Error extracting enclosing type: {}", err);
+                log::error!("Error extracting enclosing type: {}", err);
                 String::new()
             }
         };
         if !enclosing_type.is_empty() {
-            println!("Enclosing type: {}", enclosing_type);
-            println!("Searching for files referencing {}", enclosing_type);
+            log::info!("Enclosing type: {}", enclosing_type);
+            log::info!("Searching for files referencing {}", enclosing_type);
             let referencing_files = find_referencing_files::find_files_referencing(
                 &enclosing_type,
                 search_root.to_str().unwrap(),
@@ -89,11 +89,11 @@ pub fn determine_files_to_include(
             .map_err(|e| anyhow::anyhow!("Failed to find referencing files: {}", e))?;
             found_files.extend(referencing_files);
         } else {
-            println!("No enclosing type found; skipping reference search.");
+            log::info!("No enclosing type found; skipping reference search.");
         }
         // Reapply exclusion filtering.
         if !excludes.is_empty() {
-            println!("Excluding files matching: {:?}", excludes);
+            log::info!("Excluding files matching: {:?}", excludes);
             found_files.retain(|line| {
                 let basename = Path::new(line)
                     .file_name()
@@ -107,14 +107,14 @@ pub fn determine_files_to_include(
     // Sort and deduplicate.
     found_files.sort();
     found_files.dedup();
-    println!("--------------------------------------------------");
-    println!("Files (final list):");
+    log::info!("--------------------------------------------------");
+    log::info!("Files (final list):");
     for file in &found_files {
         let basename = Path::new(file)
             .file_name()
             .unwrap_or_default()
             .to_string_lossy();
-        println!("{}", basename);
+        log::info!("{}", basename);
     }
 
     Ok(found_files)
