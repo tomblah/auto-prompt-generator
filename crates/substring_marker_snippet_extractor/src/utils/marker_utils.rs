@@ -1,6 +1,5 @@
 // crates/substring_marker_snippet_extractor/src/utils/marker_utils.rs
 
-use std::fs;
 use regex::Regex;
 use once_cell::sync::Lazy;
 
@@ -166,7 +165,7 @@ pub fn extract_enclosing_block_around_todo(content: &str) -> Option<String> {
         if is_candidate_line(line) {
             candidate_index = Some(i);
             break; // Found the last candidate line before the TODO
-        } else if (line.trim_start().starts_with('-') || line.trim_start().starts_with('+')) {
+        } else if line.trim_start().starts_with('-') || line.trim_start().starts_with('+') {
              // Special handling for ObjC method declarations that might be split over two lines (selector on one, { on next)
             if i + 1 < todo_idx && lines[i + 1].contains('{') {
                 candidate_index = Some(i);

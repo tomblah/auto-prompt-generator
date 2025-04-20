@@ -1,12 +1,11 @@
 // crates/substring_marker_snippet_extractor/src/processor/file_processor.rs
 
 use std::path::Path;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use std::fs;
 
 // Import necessary items from the sibling marker_utils module
 use crate::utils::marker_utils::{
-    TODO_MARKER, // Although not directly used here, good to know it's available
     file_uses_markers, // Keep this helper
     filter_substring_markers, // Keep this helper
     extract_enclosing_block_around_todo, // Use the new consolidated helper

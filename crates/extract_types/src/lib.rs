@@ -14,7 +14,6 @@ use substring_marker_snippet_extractor::utils::marker_utils::{
     extract_enclosing_block_around_todo, // Use the new consolidated helper
     extract_inner_block_from_content, // Keep this helper (used for targeted mode)
 };
-use once_cell::sync::Lazy;
 
 // Updated regex to match Swift function declarations that may include "async".
 // These regexes are now used internally by the consolidated helper, but keeping

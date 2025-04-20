@@ -278,6 +278,7 @@ name = "extract_instruction_content"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "substring_marker_snippet_extractor",
  "tempfile",
 ]
 
@@ -327,6 +328,7 @@ name = "find_prompt_instruction"
 version = "0.1.0"
 dependencies = [
  "filetime",
+ "substring_marker_snippet_extractor",
  "tempfile",
  "walkdir",
 ]
@@ -561,6 +563,9 @@ checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 [[package]]
 name = "post_processing"
 version = "0.1.0"
+dependencies = [
+ "substring_marker_snippet_extractor",
+]
 
 [[package]]
 name = "ppv-lite86"
