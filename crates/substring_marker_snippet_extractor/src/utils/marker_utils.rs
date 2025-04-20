@@ -4,6 +4,9 @@ use std::fs;
 use regex::Regex;
 use once_cell::sync::Lazy;
 
+/// The standard marker used to indicate the primary TODO instruction.
+pub const TODO_MARKER: &str = "// TODO: - ";
+
 /// Filters the file’s content by returning only the text between substring markers.
 /// Instead of always using "// ...", the caller can supply a custom placeholder.
 ///
@@ -50,6 +53,7 @@ pub fn filter_substring_markers(content: &str, placeholder: &str) -> String {
         }
     }
 
+    // Handle case where content ends in an omitted block
     if state == "omitted" && (omitted_line_count > 0 || last_was_closing) {
         output.push_str("\n\n");
         output.push_str(placeholder);
@@ -65,13 +69,18 @@ pub fn file_uses_markers(content: &str) -> bool {
     has_open && has_close
 }
 
-/// Returns the index (zero-based) of the first line that contains "// TODO: - ".
+/// Returns the index (zero-based) of the first line that contains the TODO marker.
 pub fn todo_index(content: &str) -> Option<usize> {
-    content.lines().position(|line| line.contains("// TODO: - "))
+    content.lines().position(|line| line.contains(TODO_MARKER))
 }
 
 /// Determines whether the TODO is already inside a marker block by counting marker boundaries
 /// from the start of the file up to the TODO line.
+///
+/// # Arguments
+///
+/// * `content` - The file content.
+/// * `todo_idx` - The line index of the TODO marker.
 pub fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
     let lines: Vec<&str> = content.lines().collect();
     let mut marker_depth = 0;
@@ -91,10 +100,13 @@ pub fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
     marker_depth > 0
 }
 
-/// Static, precompiled regexes for candidate line detection.
-static SWIFT_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+(?:<[^>]+>)?\s*\([^)]*\)\s*(?:->\s*\S+)?\s*\{"#)
-        .unwrap()
+/// Static, precompiled regexes for candidate line detection for enclosing blocks.
+/// Includes Swift functions, classes, structs, enums, JS functions/assignments,
+/// Parse Cloud functions, and Objective-C methods.
+static CANDIDATE_LINE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?(?:func|class|struct|enum)\s+\w+(?:<[^>]+>)?.*\{"# // Swift
+        ).unwrap()
 });
 static JS_ASSIGNMENT_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#).unwrap()
@@ -114,61 +126,135 @@ static OBJC_METHOD_RE: Lazy<Regex> = Lazy::new(|| {
         .unwrap()
 });
 
+
+/// Checks if a line is a candidate for the start of an enclosing code block.
 fn is_candidate_line(line: &str) -> bool {
-    SWIFT_FUNCTION_RE.is_match(line)
+    CANDIDATE_LINE_RE.is_match(line)
         || JS_ASSIGNMENT_RE.is_match(line)
         || JS_FUNCTION_RE.is_match(line)
         || PARSE_CLOUD_RE.is_match(line)
         || OBJC_METHOD_RE.is_match(line)
 }
 
-/// Extracts the enclosing block (such as a function) that should contain the TODO marker.
-/// It does so by scanning upward from the TODO marker for the last candidate declaration,
-/// then using a simple brace counting heuristic to extract from that line until the block closes.
-pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
-    let content = fs::read_to_string(file_path).ok()?;
-    if !file_uses_markers(&content) {
-        return None;
+
+/// Extracts the enclosing block (such as a function, class, struct, or enum)
+/// that contains the first occurrence of the TODO marker.
+///
+/// It scans upward from the TODO marker for the last candidate declaration line,
+/// then uses a simple brace counting heuristic to extract the block from that line
+/// until the matching closing brace.
+///
+/// Returns `None` if the TODO marker is not found, is inside `// v` / `// ^` markers,
+/// no candidate line is found before the TODO, or the block structure is unexpected.
+///
+/// # Arguments
+///
+/// * `content` - The file content as a string slice.
+pub fn extract_enclosing_block_around_todo(content: &str) -> Option<String> {
+    let todo_idx = todo_index(content)?; // Find the line index of the TODO marker
+
+    if is_todo_inside_markers(content, todo_idx) {
+        return None; // Don't extract if TODO is already inside markers
     }
-    let todo_idx = content.lines().position(|line| line.contains("// TODO: - "))?;
-    if is_todo_inside_markers(&content, todo_idx) {
-        return None;
-    }
+
     let lines: Vec<&str> = content.lines().collect();
     let mut candidate_index = None;
-    for i in 0..todo_idx {
+
+    // Scan upwards from the line before the TODO for the last candidate line
+    for i in (0..todo_idx).rev() {
         let line = lines[i];
         if is_candidate_line(line) {
             candidate_index = Some(i);
-        } else if line.trim_start().starts_with('-') || line.trim_start().starts_with('+') {
-            // If the next line exists and contains '{', consider this a candidate.
+            break; // Found the last candidate line before the TODO
+        } else if (line.trim_start().starts_with('-') || line.trim_start().starts_with('+')) {
+             // Special handling for ObjC method declarations that might be split over two lines (selector on one, { on next)
             if i + 1 < todo_idx && lines[i + 1].contains('{') {
                 candidate_index = Some(i);
+                break; // Found the last candidate line before the TODO
             }
         }
     }
-    let start_index = candidate_index?;
+
+    let start_index = candidate_index?; // If no candidate found, return None
+
+    // Now, perform brace counting starting from the candidate line
     let mut brace_count = 0;
     let mut found_open = false;
     let mut extracted_lines = Vec::new();
+
     for line in &lines[start_index..] {
+        extracted_lines.push(*line); // Always include lines from candidate start
+
         if !found_open {
             if line.contains('{') {
                 found_open = true;
                 brace_count += line.matches('{').count();
                 brace_count = brace_count.saturating_sub(line.matches('}').count());
             }
-            extracted_lines.push(*line);
         } else {
-            extracted_lines.push(*line);
             brace_count += line.matches('{').count();
             brace_count = brace_count.saturating_sub(line.matches('}').count());
             if brace_count == 0 {
+                // Found matching closing brace
                 break;
             }
         }
     }
-    Some(extracted_lines.join("\n"))
+
+    // Return the extracted lines joined by newlines, but only if a block was properly found and closed
+    if found_open && brace_count == 0 {
+         Some(extracted_lines.join("\n"))
+    } else {
+         None // Block structure was not as expected (e.g., never found an opening brace, or brace count didn't return to zero)
+    }
+}
+
+
+/// Extracts the inner block—that is, the content inside the braces that immediately enclose
+/// the first occurrence of the TODO marker. This is done using a stack-based approach
+/// to correctly identify the innermost unclosed '{'.
+///
+/// This function is distinct from `extract_enclosing_block_around_todo` as it finds the
+/// *immediate* enclosing block, not the nearest containing declaration.
+///
+/// # Arguments
+///
+/// * `content` - The file content as a string slice.
+pub fn extract_inner_block_from_content(content: &str) -> Option<String> {
+    let pos = content.find(TODO_MARKER)?; // Find byte position of the TODO marker
+    let mut stack = Vec::new();
+
+    // Process characters up to the TODO marker to find the innermost unclosed '{'.
+    for (i, ch) in content[..pos].char_indices() {
+        if ch == '{' {
+            stack.push(i);
+        } else if ch == '}' {
+            stack.pop(); // Pop the last '{' if a '}' is found
+        }
+    }
+
+    let open_brace = stack.pop()?; // The last '{' on the stack is the immediate enclosing one
+
+    // Now find the matching closing brace starting from the character after the opening brace.
+    let mut brace_count = 1; // Start with 1 for the initial open_brace
+    let mut index = open_brace + 1;
+    let bytes = content.as_bytes();
+
+    while index < content.len() && brace_count > 0 {
+        match bytes[index] {
+            b'{' => brace_count += 1,
+            b'}' => brace_count -= 1,
+            _ => {}
+        }
+        index += 1;
+    }
+
+    // If brace_count is zero, we found the matching closing brace at `index - 1`.
+    if brace_count == 0 {
+        Some(content[open_brace + 1..index - 1].to_string())
+    } else {
+        None // Matching closing brace not found
+    }
 }
 
 #[cfg(test)]

@@ -4,6 +4,8 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use anyhow::{Context, Result};
+// Import the TODO_MARKER constant from the shared utility crate
+use substring_marker_snippet_extractor::utils::marker_utils::TODO_MARKER;
 
 /// Reads the given Swift file and returns the first line that contains the TODO marker.
 /// The returned string is trimmed of any leading whitespace.
@@ -20,7 +22,8 @@ pub fn extract_instruction_content<P: AsRef<Path>>(file_path: P) -> Result<Strin
     let file = File::open(file_path_ref)
         .with_context(|| format!("Error opening file {}", file_path_ref.display()))?;
     let reader = BufReader::new(file);
-    let marker = "// TODO: - ";
+    // Use the imported constant instead of a hardcoded string
+    let marker = TODO_MARKER;
 
     for line in reader.lines() {
         let line = line.with_context(|| format!("Error reading file {}", file_path_ref.display()))?;

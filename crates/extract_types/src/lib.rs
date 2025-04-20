@@ -6,48 +6,57 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
+// Import necessary items from the shared utility crate
 use substring_marker_snippet_extractor::utils::marker_utils::{
-    file_uses_markers, filter_substring_markers, is_todo_inside_markers,
+    TODO_MARKER, // Use the constant
+    file_uses_markers, // Keep this helper
+    filter_substring_markers, // Keep this helper
+    extract_enclosing_block_around_todo, // Use the new consolidated helper
+    extract_inner_block_from_content, // Keep this helper (used for targeted mode)
 };
 use once_cell::sync::Lazy;
 
 // Updated regex to match Swift function declarations that may include "async".
+// These regexes are now used internally by the consolidated helper, but keeping
+// them here for TypeExtractor's potential needs or if the helper's regexes
+// were not fully comprehensive and needed to be passed in.
+// For this refactor, we will rely on the regexes inside extract_enclosing_block_around_todo.
+/*
 static SWIFT_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+(?:<[^>]+>)?\s*\([^)]*\)\s*(?:->\s*\S+)?(?:\s+async)?\s*\{"#
+        r"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+(?:<[^>]+>)?\s*\([^)]*\)\s*(?:->\s*\S+)?(?:\s+async)?\s*\{"
     ).unwrap()
 });
 // Existing regexes for JS and Objective-C.
 static JS_ASSIGNMENT_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#).unwrap()
+    Regex::new(r"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{").unwrap()
 });
 static JS_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"^\s*(?:async\s+)?function\s+\w+\s*\([^)]*\)\s*\{"#).unwrap()
+    Regex::new(r"^\s*(?:async\s+)?function\s+\w+\s*\([^)]*\)\s*\{").unwrap()
 });
 static PARSE_CLOUD_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r#"^\s*Parse\.Cloud\.(?:define|beforeSave|afterSave)\s*\(\s*(?:"[^"]+"|[A-Za-z][A-Za-z0-9_.]*)\s*,\s*(?:async\s+)?\([^)]*\)\s*=>\s*\{"#
-    ).unwrap()
+        r"^\s*Parse\.Cloud\.(?:define|beforeSave|afterSave)\s*\(\s*(?:"[^"]+"|[A-Za-z][A-Za-z0-9_.]*)\s*,\s*(?:async\s+)?\([^)]*\)\s*=>\s*\{"
+    )
+    .unwrap()
 });
 static OBJC_METHOD_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"^\s*[-+]\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*(?::\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*)*\s*\{"#).unwrap()
+    Regex::new(r"^\s*[-+]\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*(?::\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*)*\s*\{").unwrap()
 });
 // New regex to match Swift class declarations.
 static SWIFT_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"^\s*class\s+\w+.*\{"#).unwrap()
+    Regex::new(r"^\s*class\s+\w+.*\{").unwrap()
 });
 // New regex to match Swift enum declarations.
 static SWIFT_ENUM_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"^\s*enum\s+\w+.*\{"#).unwrap()
+    Regex::new(r"^\s*enum\s+\w+.*\{").unwrap()
 });
+*/
 
 /// Updated helper function to determine if a line is a candidate declaration.
-/// It now returns true for:
-/// - Swift function declarations (including those with async),
-/// - JavaScript functions and assignments,
-/// - Objective‑C method declarations,
-/// - Swift class declarations,
-/// - Swift enum declarations.
+/// This function is no longer needed here as the logic is consolidated
+/// in `extract_enclosing_block_around_todo`.
+/*
 fn is_candidate_line(line: &str) -> bool {
     SWIFT_FUNCTION_RE.is_match(line)
         || JS_ASSIGNMENT_RE.is_match(line)
@@ -57,6 +66,7 @@ fn is_candidate_line(line: &str) -> bool {
         || SWIFT_CLASS_RE.is_match(line)
         || SWIFT_ENUM_RE.is_match(line)
 }
+*/
 
 /// A helper struct to encapsulate type extraction logic.
 struct TypeExtractor {
@@ -83,12 +93,14 @@ impl TypeExtractor {
             || trimmed.starts_with("import ")
             || trimmed.starts_with("#import")
             || trimmed.starts_with("#include")
-            || (trimmed.starts_with("//") && !trimmed.starts_with("// TODO: -"))
+            // Use the imported constant for the TODO check
+            || (trimmed.starts_with("//") && !trimmed.starts_with(TODO_MARKER))
         {
             return None;
         }
-        let content = if trimmed.starts_with("// TODO: -") {
-            trimmed.trim_start_matches("// TODO: -").trim_start()
+        // Use the imported constant for the TODO check
+        let content = if trimmed.starts_with(TODO_MARKER) {
+            trimmed.trim_start_matches(TODO_MARKER).trim_start()
         } else {
             trimmed
         };
@@ -123,8 +135,10 @@ impl TypeExtractor {
     }
 }
 
-/// Reads a Swift file, extracts potential type names using two regexes,
+/// Reads a Swift file, extracts potential type names,
 /// and returns the sorted unique type names as a newline-separated String.
+/// The extraction logic depends on the `TARGETED` environment variable and
+/// the presence of substring markers (`// v`, `// ^`).
 ///
 /// # Parameters
 /// * `swift_file` - The file to process.
@@ -135,22 +149,28 @@ pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> 
     let targeted = std::env::var("TARGETED").is_ok();
 
     let content_to_process = if targeted {
-        if let Some(inner_block) = extract_inner_block_from_content(&full_content) {
-            inner_block
+        // Targeted mode: Extract types from the inner block immediately enclosing the TODO,
+        // or the full content if no inner block is found.
+        extract_inner_block_from_content(&full_content).unwrap_or_else(|| full_content.clone())
+    } else {
+        // Non-targeted mode:
+        // Start with either filtered content (if markers used) or full content.
+        let mut base_content = if file_uses_markers(&full_content) {
+            filter_substring_markers(&full_content, "")
         } else {
             full_content.clone()
+        };
+
+        // Attempt to find and append the enclosing code block around the TODO marker.
+        // This helper internally checks if the TODO is inside markers.
+        if let Some(enclosing) = extract_enclosing_block_around_todo(&full_content) {
+            // If an enclosing block is found, append it to the content being processed.
+            base_content.push_str("\n"); // Add a separator
+            base_content.push_str(&enclosing);
         }
-    } else if file_uses_markers(&full_content) {
-        let mut filtered = filter_substring_markers(&full_content, "");
-        if !filtered.contains("// TODO: -") {
-            if let Some(enclosing) = extract_enclosing_block_from_content(&full_content) {
-                filtered.push_str("\n");
-                filtered.push_str(&enclosing);
-            }
-        }
-        filtered
-    } else {
-        full_content.clone()
+        // The final content to process is the base content (filtered or full)
+        // plus the enclosing block if found.
+        base_content
     };
 
     let reader = BufReader::new(content_to_process.as_bytes());
@@ -164,9 +184,11 @@ pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> 
 /// Extracts the enclosing block (such as a function) from the provided content,
 /// starting from the candidate line for a declaration up to the matching closing brace.
 /// This block is expected to contain the TODO marker.
-/// (This is the original helper used when not in targeted mode.)
+/// This is the original helper used when not in targeted mode, now replaced
+/// by the consolidated `extract_enclosing_block_around_todo`.
+/*
 fn extract_enclosing_block_from_content(content: &str) -> Option<String> {
-    let todo_idx = content.lines().position(|line| line.contains("// TODO: - "))?;
+    let todo_idx = content.lines().position(|line| line.contains(TODO_MARKER))?; // Use constant
     if is_todo_inside_markers(content, todo_idx) {
         return None;
     }
@@ -205,12 +227,15 @@ fn extract_enclosing_block_from_content(content: &str) -> Option<String> {
     }
     Some(extracted_lines.join("\n"))
 }
+*/
 
 /// Extracts the inner block—that is, the content inside the braces that immediately enclose
 /// the first occurrence of the TODO marker. This is done using a stack-based approach
 /// to correctly identify the innermost unclosed '{'.
+/// (This function is kept as it performs a different task than extracting the *enclosing* declaration block).
+/*
 fn extract_inner_block_from_content(content: &str) -> Option<String> {
-    let todo_marker = "// TODO: - ";
+    let todo_marker = TODO_MARKER; // Use constant
     let pos = content.find(todo_marker)?;
     let mut stack = Vec::new();
     // Process characters up to the TODO marker.
@@ -240,6 +265,7 @@ fn extract_inner_block_from_content(content: &str) -> Option<String> {
         None
     }
 }
+*/
 
 #[cfg(test)]
 mod tests {

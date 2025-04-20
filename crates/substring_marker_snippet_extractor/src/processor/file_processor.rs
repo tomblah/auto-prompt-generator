@@ -4,7 +4,13 @@ use std::path::Path;
 use anyhow::{Result, anyhow};
 use std::fs;
 
-use crate::utils::marker_utils::{filter_substring_markers, file_uses_markers, extract_enclosing_block};
+// Import necessary items from the sibling marker_utils module
+use crate::utils::marker_utils::{
+    TODO_MARKER, // Although not directly used here, good to know it's available
+    file_uses_markers, // Keep this helper
+    filter_substring_markers, // Keep this helper
+    extract_enclosing_block_around_todo, // Use the new consolidated helper
+};
 
 /// Trait that abstracts file processing.
 pub trait FileProcessor {
@@ -13,15 +19,20 @@ pub trait FileProcessor {
 }
 
 /// Default implementation of the `FileProcessor` trait.
+/// Uses marker utilities to filter content and extract enclosing blocks.
 pub struct DefaultFileProcessor;
 
 impl FileProcessor for DefaultFileProcessor {
     fn process_file(&self, file_path: &Path, todo_file_basename: Option<&str>) -> Result<String> {
-        let file_path_str = file_path.to_str().ok_or_else(|| anyhow!("Invalid file path"))?;
+        // The file_path_str conversion was only used for the old extract_enclosing_block,
+        // which now takes content, so this line is no longer strictly necessary here.
+        // let file_path_str = file_path.to_str().ok_or_else(|| anyhow!("Invalid file path"))?;
+
         let file_content = fs::read_to_string(file_path)?;
-        
+
         // Use marker filtering if markers are present.
-        let processed_content = if file_content.lines().any(|line| line.trim() == "// v") {
+        // The check for "// v" is equivalent to file_uses_markers, so use the helper.
+        let mut processed_content = if file_uses_markers(&file_content) {
             filter_substring_markers(&file_content, "// ...")
         } else {
             file_content.clone()
@@ -31,21 +42,21 @@ impl FileProcessor for DefaultFileProcessor {
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("");
-        let mut combined_content = processed_content;
 
-        // Append the enclosing context if markers are used and the basename matches.
-        if file_uses_markers(&file_content) {
-            if let Some(expected_basename) = todo_file_basename {
-                if file_basename == expected_basename {
-                    if let Some(context) = extract_enclosing_block(file_path_str) {
-                        combined_content.push_str("\n\n// Enclosing function context:\n");
-                        combined_content.push_str(&context);
-                    }
+        // Append the enclosing context if the basename matches the expected TODO file basename
+        // AND the new consolidated helper finds an enclosing block around the TODO.
+        // The helper internally checks if the TODO is inside markers.
+        if let Some(expected_basename) = todo_file_basename {
+            if file_basename == expected_basename {
+                // Call the new consolidated helper function from marker_utils
+                if let Some(context) = extract_enclosing_block_around_todo(&file_content) {
+                    processed_content.push_str("\n\n// Enclosing context:\n"); // Use a generic label
+                    processed_content.push_str(&context);
                 }
             }
         }
-        
-        Ok(combined_content)
+
+        Ok(processed_content)
     }
 }
 

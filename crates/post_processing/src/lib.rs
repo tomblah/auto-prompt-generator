@@ -1,11 +1,14 @@
 // crates/post_processing/src/lib.rs
 
+// Import the TODO_MARKER constant from the shared utility crate
+use substring_marker_snippet_extractor::utils::marker_utils::TODO_MARKER;
+
 /// Scrubs extra TODO markers from the given prompt if diff mode is not enabled.
 ///
 /// This function takes a `primary_marker` parameter that must exactly match one of the lines in the prompt.
 /// It removes all extra marker lines except:
-///   - The first occurrence of a line exactly matching the supplied primary marker (if present), and
-///   - The very last line that contains the marker substring.
+///   - The first occurrence of a line exactly matching the supplied primary marker (if present), and
+///   - The very last line that contains the marker substring.
 /// If the primary marker isn’t found, an error is returned.
 ///
 /// # Arguments
@@ -24,7 +27,8 @@ pub fn scrub_extra_todo_markers(prompt: &str, diff_enabled: bool, primary_marker
         return Ok(prompt.to_string());
     }
 
-    let marker = "// TODO: -";
+    // Use the imported constant
+    let marker_substring = TODO_MARKER;
     let lines: Vec<&str> = prompt.lines().collect();
 
     // Ensure that the primary marker exists in the prompt.
@@ -37,7 +41,8 @@ pub fn scrub_extra_todo_markers(prompt: &str, diff_enabled: bool, primary_marker
     let last_marker_index = lines
         .iter()
         .enumerate()
-        .filter(|(_, line)| line.contains(marker))
+        // Use the imported constant for the contains check
+        .filter(|(_, line)| line.contains(marker_substring))
         .map(|(i, _)| i)
         .last()
         .ok_or_else(|| "No marker lines found in prompt".to_string())?;
@@ -46,7 +51,8 @@ pub fn scrub_extra_todo_markers(prompt: &str, diff_enabled: bool, primary_marker
     let mut primary_marker_included = false;
 
     for (i, line) in lines.iter().enumerate() {
-        if line.contains(marker) {
+        // Use the imported constant for the contains check
+        if line.contains(marker_substring) {
             if i == last_marker_index {
                 // Always include the last marker line.
                 output_lines.push(*line);

@@ -5,6 +5,8 @@ use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use walkdir::WalkDir;
+// Import the TODO_MARKER constant from the shared utility crate
+use substring_marker_snippet_extractor::utils::marker_utils::TODO_MARKER;
 
 /// Searches the given directory (and its subdirectories) for files with allowed extensions
 /// that contain the TODO marker. If multiple files are found, returns the one with the most
@@ -24,6 +26,7 @@ struct PromptInstructionFinder<'a> {
     search_dir: &'a str,
     verbose: bool,
     allowed_extensions: &'static [&'static str],
+    // Use the imported constant
     todo_marker: &'static str,
 }
 
@@ -33,7 +36,8 @@ impl<'a> PromptInstructionFinder<'a> {
             search_dir,
             verbose,
             allowed_extensions: &["swift", "h", "m", "js"],
-            todo_marker: "// TODO: - ",
+            // Use the imported constant
+            todo_marker: TODO_MARKER,
         }
     }
 
@@ -55,6 +59,7 @@ impl<'a> PromptInstructionFinder<'a> {
                 // Open the file and check if any line contains the TODO marker.
                 if let Ok(file) = fs::File::open(path) {
                     let reader = io::BufReader::new(file);
+                    // Use the imported constant in the contains check
                     reader.lines().filter_map(Result::ok).any(|line| line.contains(self.todo_marker))
                 } else {
                     false
@@ -65,6 +70,7 @@ impl<'a> PromptInstructionFinder<'a> {
         if matching_files.is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
+                // Use the imported constant in the error message
                 format!("No files found containing '{}'", self.todo_marker),
             ));
         }
@@ -88,6 +94,7 @@ impl<'a> PromptInstructionFinder<'a> {
         let content = fs::read_to_string(&chosen_file)?;
         let marker_lines: Vec<String> = content
             .lines()
+            // Use the imported constant in the contains check
             .filter(|line| line.contains(self.todo_marker))
             .map(|line| line.trim().to_string())
             .collect();
@@ -113,6 +120,7 @@ impl<'a> PromptInstructionFinder<'a> {
                         .file_name()
                         .and_then(|s| s.to_str())
                         .unwrap_or("<unknown>");
+                    // Use the imported constant when calling the helper
                     let todo_line = extract_first_todo_line(file, self.todo_marker)
                         .unwrap_or_else(|| "<no TODO line found>".to_string());
                     eprintln!("  - {}: {}", basename, todo_line.trim());
