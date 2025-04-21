@@ -289,6 +289,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "lang_support",
  "once_cell",
  "predicates 2.1.5",
  "regex",

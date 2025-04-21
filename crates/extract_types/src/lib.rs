@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
+use lang_support::for_extension;
 
 use substring_marker_snippet_extractor::utils::marker_utils::{
     file_uses_markers, filter_substring_markers, is_todo_inside_markers,
@@ -133,6 +134,17 @@ impl TypeExtractor {
 pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> {
     let full_content = fs::read_to_string(&swift_file)
         .with_context(|| format!("Failed to open file {}", swift_file.as_ref().display()))?;
+        
+    let path_ref = swift_file.as_ref();
+    if let Some(ext) = path_ref.extension().and_then(|s| s.to_str()) {
+        if let Some(lang) = for_extension(ext) {
+            let idents: BTreeSet<String> =
+                lang.extract_identifiers(&full_content).into_iter().collect();
+            if !idents.is_empty() {
+                return Ok(idents.into_iter().collect::<Vec<_>>().join("\n"));
+            }
+        }
+    }
 
     let targeted = std::env::var("TARGETED").is_ok();
 
