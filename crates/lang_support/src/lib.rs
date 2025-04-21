@@ -1,4 +1,5 @@
-//! `lang_support` — per‑language helpers that keep the rest of the
+// crates/lang_support/src/lib.rs
+
 //! workspace free of giant `match ext { … }` chains.
 //!
 //!  * **Zero business‑logic deps** – the crate only knows about source
@@ -15,43 +16,33 @@ use std::path::{Path, PathBuf};
 /// specific helper.
 pub trait LanguageSupport: Sync + Send {
     /// Extracts *candidate* identifiers from a chunk of source code.
-    ///
-    /// Implementations should be cheap – a few regex scans is fine – we do
-    /// not need a full parser here.
     fn extract_identifiers(&self, source: &str) -> Vec<String>;
 
-    /// Returns `true` if `file_content` contains a *definition* for **any** of
-    /// the supplied identifiers.
+    /// Returns `true` if `file_content` defines **any** of the identifiers.
     fn file_defines_any(&self, file_content: &str, idents: &[String]) -> bool;
 
-    /// Best‑effort extraction of an import / include path from one line of
-    /// source.  If the line does not contain a dependency path understood by
-    /// the language, return `None`.
+    /// Best‑effort extraction of a dependency path from a source line.
     fn resolve_dependency_path(&self, _line: &str, _current_dir: &Path) -> Option<PathBuf> {
         None
     }
 }
 
-/// Returns the [`LanguageSupport`] implementation matching the file extension
-/// (e.g. "swift" → Swift support).  Extensions are matched case‑insensitively.
+/// Returns the language helper for a given file extension.
 pub fn for_extension(ext: &str) -> Option<&'static dyn LanguageSupport> {
     match ext.to_lowercase().as_str() {
         "swift" => Some(&swift::SWIFT),
-        // .js, .jsx, .mjs, .cjs all share the JavaScript rules
         "js" | "jsx" | "mjs" | "cjs" => Some(&javascript::JS),
-        // Objective‑C headers and impl files share one matcher
         "h" | "m" => Some(&objc::OBJC),
         _ => None,
     }
 }
 
 // ---------------------------------------------------------------------------
-//  Sub‑modules (one per language)
+//  One sub‑module per language
 // ---------------------------------------------------------------------------
-
 mod swift;
 mod javascript;
 mod objc;
 
-// Re‑export the trait so call‑sites can `use lang_support::LanguageSupport;`
-pub use self::LanguageSupport as _; // underscores to suppress the unused‑import lint
+// Re‑export the trait so callers can `use lang_support::LanguageSupport;`
+pub use self::LanguageSupport as _;

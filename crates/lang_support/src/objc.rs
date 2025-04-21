@@ -1,4 +1,5 @@
-//! Objective‑C implementation of the `LanguageSupport` trait.
+// crates/lang_support/src/objc.rs
+
 //!
 //! Placeholder only: returns empty results so the workspace builds. We’ll
 //! migrate the real Obj‑C definition/identifier logic here later.
@@ -26,4 +27,3 @@ impl LanguageSupport for ObjCSupport {
         None
     }
 }
-

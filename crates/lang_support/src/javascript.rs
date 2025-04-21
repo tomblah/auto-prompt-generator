@@ -1,4 +1,5 @@
-//! JavaScript implementation of `LanguageSupport`.
+// crates/lang_support/src/javascript.rs
+
 //!
 //! The goals mirror the Swift support you just ported:
 //! * **extract_identifiers** – pull out function call‑sites *and* class names

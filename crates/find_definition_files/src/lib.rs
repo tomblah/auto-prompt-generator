@@ -3,11 +3,10 @@
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::path::{Path, PathBuf};
-
 use walkdir::WalkDir;
 
 use get_search_roots::get_search_roots;
-use lang_support::for_extension;           // ✨ new import
+use lang_support::for_extension;          // new crate‑wide helper
 
 mod matcher;
 use matcher::get_matcher_for_extension;
@@ -15,16 +14,13 @@ use matcher::get_matcher_for_extension;
 /// ---------------------------------------------------------------------------
 ///  DefinitionFinder
 /// ---------------------------------------------------------------------------
-
-/// Holds the type names we’re searching for and the set of package roots.
 pub struct DefinitionFinder {
     types: Vec<String>,
     search_roots: Vec<PathBuf>,
 }
 
 impl DefinitionFinder {
-    /// Creates a new finder, delegating package‑root discovery to
-    /// the shared `get_search_roots` crate.
+    /// Build from the newline‑separated `types_content`
     pub fn new_from_str(
         types_content: &str,
         root: &Path,
@@ -40,8 +36,7 @@ impl DefinitionFinder {
         Ok(Self { types, search_roots })
     }
 
-    /// Walks every search root and returns files that define **any** of the
-    /// desired identifiers.
+    /// Walk every search‑root and collect files that define any wanted type.
     pub fn find_files(&self) -> BTreeSet<PathBuf> {
         let mut found_files = BTreeSet::new();
 
@@ -53,7 +48,7 @@ impl DefinitionFinder {
             {
                 let path = entry.path();
 
-                // Skip `.build` and `Pods` dirs early.
+                // Skip .build and Pods directories early.
                 if path.components().any(|c| {
                     let s = c.as_os_str().to_string_lossy();
                     s == ".build" || s == "Pods"
@@ -61,23 +56,18 @@ impl DefinitionFinder {
                     continue;
                 }
 
-                // File‑extension helpers --------------------------------------------------
                 let ext = match path.extension().and_then(|s| s.to_str()) {
                     Some(e) => e,
                     None => continue,
                 };
 
-                // Legacy regex matcher (Swift / JS / Obj‑C)
                 let matcher = match get_matcher_for_extension(ext) {
                     Some(m) => m,
                     None => continue,
                 };
 
-                // -----------------------------------------------------------------------
-                //  Read file once, test via lang_support first, then fallback matcher
-                // -----------------------------------------------------------------------
                 if let Ok(content) = std::fs::read_to_string(path) {
-                    // Fast path: let lang_support decide if it knows this ext.
+                    // ---------- fast path via lang_support ----------
                     if let Some(lang) = for_extension(ext) {
                         if lang.file_defines_any(&content, &self.types) {
                             found_files.insert(path.to_path_buf());
@@ -85,7 +75,7 @@ impl DefinitionFinder {
                         }
                     }
 
-                    // Fallback to language‑specific regex matcher
+                    // ---------- legacy regex matcher ----------
                     if self
                         .types
                         .iter()
@@ -101,7 +91,7 @@ impl DefinitionFinder {
     }
 }
 
-/// Public API: returns every file that defines any of the supplied type names.
+/// Public API
 pub fn find_definition_files(
     types_content: &str,
     root: &Path,

@@ -1,4 +1,5 @@
-//! Swift implementation of `LanguageSupport`.
+// crates/lang_support/src/swift.rs
+
 //!
 //! * `extract_identifiers` – very similar to the old `TypeExtractor`: grabs
 //!   capitalised type names **and** unqualified function calls so that helper
