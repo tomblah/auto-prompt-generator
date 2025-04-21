@@ -18,6 +18,7 @@ find_referencing_files = { path = "../find_referencing_files" }
 assemble_prompt = { path = "../assemble_prompt" }
 find_definition_files = { path = "../find_definition_files" }
 post_processing = { path = "../post_processing" }
+todo_marker = { path = "../todo_marker" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

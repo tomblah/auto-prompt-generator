@@ -1,5 +1,7 @@
 // crates/post_processing/src/lib.rs
 
+use todo_marker::TODO_MARKER;
+
 /// Scrubs extra TODO markers from the given prompt if diff mode is not enabled.
 ///
 /// This function takes a `primary_marker` parameter that must exactly match one of the lines in the prompt.
@@ -10,21 +12,26 @@
 ///
 /// # Arguments
 ///
-/// * `prompt` - The full prompt string to be processed.
-/// * `diff_enabled` - Whether diff mode is active (in which case no scrubbing is done).
-/// * `primary_marker` - The exact text of the primary TODO marker to preserve.
+/// * `prompt`         – The full prompt string to be processed.
+/// * `diff_enabled`   – Whether diff mode is active (in which case no scrubbing is done).
+/// * `primary_marker` – The exact text of the primary TODO marker to preserve.
 ///
 /// # Returns
 ///
-/// A `Result` with the processed prompt as a `String` on success, or an error message if
-/// the primary marker is not found.
-pub fn scrub_extra_todo_markers(prompt: &str, diff_enabled: bool, primary_marker: &str) -> Result<String, String> {
+/// A `Result` with the processed prompt as a `String` on success,
+/// or an error message if the primary marker is not found.
+pub fn scrub_extra_todo_markers(
+    prompt: &str,
+    diff_enabled: bool,
+    primary_marker: &str,
+) -> Result<String, String> {
     // If diff mode is enabled, do nothing.
     if diff_enabled {
         return Ok(prompt.to_string());
     }
 
-    let marker = "// TODO: -";
+    // Use the workspace‑wide constant instead of a hard‑coded literal.
+    let marker = TODO_MARKER;
     let lines: Vec<&str> = prompt.lines().collect();
 
     // Ensure that the primary marker exists in the prompt.
@@ -57,6 +64,7 @@ pub fn scrub_extra_todo_markers(prompt: &str, diff_enabled: bool, primary_marker
             }
             // Otherwise, skip this marker line.
         } else {
+            // Non‑marker line → keep as‑is.
             output_lines.push(*line);
         }
     }
