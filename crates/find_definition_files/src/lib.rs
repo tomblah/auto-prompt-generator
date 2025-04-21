@@ -3,22 +3,28 @@
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::path::{Path, PathBuf};
+
 use walkdir::WalkDir;
+
 use get_search_roots::get_search_roots;
+use lang_support::for_extension;           // ✨ new import
 
 mod matcher;
 use matcher::get_matcher_for_extension;
 
-/// DefinitionFinder holds the list of type names and delegates package-root discovery
-/// to the shared `get_search_roots` implementation.
+/// ---------------------------------------------------------------------------
+///  DefinitionFinder
+/// ---------------------------------------------------------------------------
+
+/// Holds the type names we’re searching for and the set of package roots.
 pub struct DefinitionFinder {
     types: Vec<String>,
     search_roots: Vec<PathBuf>,
 }
 
 impl DefinitionFinder {
-    /// Creates a new DefinitionFinder from a types content string.
-    /// Delegates search-root logic to the shared crate.
+    /// Creates a new finder, delegating package‑root discovery to
+    /// the shared `get_search_roots` crate.
     pub fn new_from_str(
         types_content: &str,
         root: &Path,
@@ -30,15 +36,15 @@ impl DefinitionFinder {
             .map(String::from)
             .collect();
 
-        // Delegate to shared logic for package roots
         let search_roots = get_search_roots(root)?;
-
         Ok(Self { types, search_roots })
     }
 
-    /// Walks the search roots and returns files whose contents match any of the types.
+    /// Walks every search root and returns files that define **any** of the
+    /// desired identifiers.
     pub fn find_files(&self) -> BTreeSet<PathBuf> {
         let mut found_files = BTreeSet::new();
+
         for sr in &self.search_roots {
             for entry in WalkDir::new(sr)
                 .into_iter()
@@ -47,37 +53,55 @@ impl DefinitionFinder {
             {
                 let path = entry.path();
 
-                // Skip .build and Pods directories
-                if path.components().any(|comp| {
-                    let s = comp.as_os_str().to_string_lossy();
+                // Skip `.build` and `Pods` dirs early.
+                if path.components().any(|c| {
+                    let s = c.as_os_str().to_string_lossy();
                     s == ".build" || s == "Pods"
                 }) {
                     continue;
                 }
 
-                // Match file extension to a definition matcher
+                // File‑extension helpers --------------------------------------------------
                 let ext = match path.extension().and_then(|s| s.to_str()) {
                     Some(e) => e,
                     None => continue,
                 };
+
+                // Legacy regex matcher (Swift / JS / Obj‑C)
                 let matcher = match get_matcher_for_extension(ext) {
                     Some(m) => m,
                     None => continue,
                 };
 
-                // Read file and test for any matching type definitions
+                // -----------------------------------------------------------------------
+                //  Read file once, test via lang_support first, then fallback matcher
+                // -----------------------------------------------------------------------
                 if let Ok(content) = std::fs::read_to_string(path) {
-                    if self.types.iter().any(|t| matcher.matches_definition(&content, t)) {
+                    // Fast path: let lang_support decide if it knows this ext.
+                    if let Some(lang) = for_extension(ext) {
+                        if lang.file_defines_any(&content, &self.types) {
+                            found_files.insert(path.to_path_buf());
+                            continue; // skip legacy matcher
+                        }
+                    }
+
+                    // Fallback to language‑specific regex matcher
+                    if self
+                        .types
+                        .iter()
+                        .any(|t| matcher.matches_definition(&content, t))
+                    {
                         found_files.insert(path.to_path_buf());
                     }
                 }
             }
         }
+
         found_files
     }
 }
 
-/// Public API: scans for files that contain definitions for any of the types.
+/// Public API: returns every file that defines any of the supplied type names.
 pub fn find_definition_files(
     types_content: &str,
     root: &Path,

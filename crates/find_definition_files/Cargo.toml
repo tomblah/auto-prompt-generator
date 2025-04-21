@@ -7,6 +7,7 @@ edition = "2021"
 regex = { workspace = true }
 walkdir = { workspace = true }
 get_search_roots = { path = "../get_search_roots" }
+lang_support = { path = "../lang_support" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
