@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-clap = { version = "4.5", features = ["derive"] }
+clap = { workspace = true, features = ["derive"] } 
 anyhow = { workspace = true }
 get_package_root = { path = "../get_package_root" }
 extract_instruction_content = { path = "../extract_instruction_content" }
