@@ -1,47 +1,52 @@
 // crates/extract_enclosing_type/src/lib.rs
 
+//
+// Finds the type (class/struct/enum) that encloses the shared TODO marker in a
+// Swift source file.  Uses a tree‑sitter pass first, then falls back to a regex
+// scan if the parser is unavailable or fails.
+
 use regex::Regex;
 use std::fs;
-use std::path::Path;
 use std::mem;
+use std::path::Path;
 use tree_sitter::{Node, Parser};
 use tree_sitter_swift;
 
-/// ---
-/// # Production Code: Using a Parser Abstraction
-/// ---
+use todo_marker::{TODO_MARKER, TODO_MARKER_WS};
 
-/// The trait that abstracts Swift parsing functionality.
+/// ---------------------------------------------------------------------------
+///  Parser abstraction
+/// ---------------------------------------------------------------------------
+
+/// Something that can parse Swift source and give back a simplified tree.
 pub trait SwiftParser {
-    /// Parses the given content and returns a SwiftParseTree on success.
     fn parse_content(&mut self, content: &str) -> Option<SwiftParseTree>;
 }
 
-/// A simplified parse tree.
+/// Minimal tree wrapper.
 #[derive(Clone)]
 pub struct SwiftParseTree {
     pub root: SwiftNode,
 }
 
-/// A simplified node extracted from the parse tree.
+/// Minimal node wrapper.
 #[derive(Clone)]
 pub struct SwiftNode {
     pub kind: String,
     pub start_byte: usize,
     pub children: Vec<SwiftNode>,
-    /// The text of the node’s “name” child (if any). In production this is filled by
-    /// examining the tree‑sitter node’s child by field “name”.
     pub name: Option<String>,
 }
 
 impl SwiftNode {
-    /// Convert a tree_sitter::Node into our simplified SwiftNode.
     fn from_tree_sitter_node(node: Node, content: &str) -> Self {
         let kind = node.kind().to_string();
         let start_byte = node.start_byte();
-        let name = node.child_by_field_name("name")
+        let name = node
+            .child_by_field_name("name")
             .and_then(|n| n.utf8_text(content.as_bytes()).ok())
             .map(|s| s.to_string());
+
         let mut children = Vec::new();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -49,11 +54,16 @@ impl SwiftNode {
                 children.push(SwiftNode::from_tree_sitter_node(child, content));
             }
         }
-        SwiftNode { kind, start_byte, children, name }
+        SwiftNode {
+            kind,
+            start_byte,
+            children,
+            name,
+        }
     }
 }
 
-/// A real implementation of SwiftParser that uses tree-sitter.
+/// Real parser backed by tree‑sitter‑swift.
 pub struct RealSwiftParser {
     parser: Parser,
 }
@@ -61,7 +71,7 @@ pub struct RealSwiftParser {
 impl RealSwiftParser {
     pub fn new() -> Option<Self> {
         let mut parser = Parser::new();
-        // SAFETY: transmute tree_sitter_swift::LANGUAGE into tree_sitter::Language.
+        // SAFETY: tree_sitter_swift::LANGUAGE matches the ABI expected by tree‑sitter.
         let lang: tree_sitter::Language = unsafe { mem::transmute(tree_sitter_swift::LANGUAGE) };
         parser.set_language(&lang).ok()?;
         Some(Self { parser })
@@ -71,104 +81,91 @@ impl RealSwiftParser {
 impl SwiftParser for RealSwiftParser {
     fn parse_content(&mut self, content: &str) -> Option<SwiftParseTree> {
         let tree = self.parser.parse(content, None)?;
-        let root = SwiftNode::from_tree_sitter_node(tree.root_node(), content);
-        Some(SwiftParseTree { root })
+        Some(SwiftParseTree {
+            root: SwiftNode::from_tree_sitter_node(tree.root_node(), content),
+        })
     }
 }
 
-/// Given a parse tree (via our SwiftParser abstraction), traverse the tree to find
-/// the last type declaration ("class_declaration", "struct_declaration", or "enum_declaration")
-/// whose start_byte is at or before the TODO marker. Returns the name if available.
+/// ---------------------------------------------------------------------------
+///  Tree walk helpers
+/// ---------------------------------------------------------------------------
+
 fn find_last_type_declaration(node: &SwiftNode, todo_offset: usize) -> Option<String> {
     let mut candidate = None;
-    if (node.kind == "class_declaration" || node.kind == "struct_declaration" || node.kind == "enum_declaration")
-        && node.start_byte <= todo_offset
+
+    if matches!(
+        node.kind.as_str(),
+        "class_declaration" | "struct_declaration" | "enum_declaration"
+    ) && node.start_byte <= todo_offset
     {
         candidate = node.name.clone();
     }
+
     for child in &node.children {
-        if let Some(child_candidate) = find_last_type_declaration(child, todo_offset) {
-            candidate = Some(child_candidate);
+        if let Some(found) = find_last_type_declaration(child, todo_offset) {
+            candidate = Some(found);
         }
     }
     candidate
 }
 
-/// A helper function that uses any SwiftParser to extract the enclosing type name.
 pub fn extract_enclosing_type_with_parser(
     content: &str,
     todo_offset: usize,
     parser: &mut impl SwiftParser,
 ) -> Option<String> {
-    let parse_tree = parser.parse_content(content)?;
-    find_last_type_declaration(&parse_tree.root, todo_offset)
+    let tree = parser.parse_content(content)?;
+    find_last_type_declaration(&tree.root, todo_offset)
 }
 
-/// ---
-/// # Public API
-/// ---
+/// ---------------------------------------------------------------------------
+///  Public API – fall back to regex if parser fails
+/// ---------------------------------------------------------------------------
 
-/// Extracts the enclosing type (class, struct, or enum) from a Swift file.
-/// Scans until a line containing "// TODO: - " is encountered (or the end of the file if none is found).
-/// Returns the last type declaration encountered before the cutoff. If none is found,
-/// falls back to returning the file’s basename (without extension).
+/// Returns the enclosing type’s name, or (as a last resort) the file’s stem.
 pub fn extract_enclosing_type(file_path: &str) -> Result<String, String> {
-    // Read file content.
     let content = fs::read_to_string(file_path)
-        .map_err(|err| format!("Error reading file {}: {}", file_path, err))?;
-    
-    // Determine the cutoff (TODO marker position).
-    let todo_offset = content.find("// TODO: - ").unwrap_or(content.len());
+        .map_err(|e| format!("Error reading file {}: {}", file_path, e))?;
 
-    // First, try to extract using our SwiftParser abstraction.
+    // Where in the buffer is the TODO marker?
+    let todo_offset = content.find(TODO_MARKER_WS).unwrap_or(content.len());
+
+    // 1️⃣  Try the tree‑sitter path first.
     if let Some(mut parser) = RealSwiftParser::new() {
         if let Some(ty) = extract_enclosing_type_with_parser(&content, todo_offset, &mut parser) {
             return Ok(ty);
         }
     }
-    
-    // Fallback: use a regex-based scan over lines until the TODO marker.
+
+    // 2️⃣  Regex fallback – scan line by line up to the marker.
     let re = Regex::new(r"(class|struct|enum)\s+(\w+)")
-        .map_err(|err| format!("Regex error: {}", err))?;
+        .map_err(|e| format!("Regex error: {}", e))?;
+
     let mut last_type: Option<String> = None;
     for line in content.lines() {
-        if line.contains("// TODO: -") {
+        if line.contains(TODO_MARKER) {
             break;
         }
         if let Some(caps) = re.captures(line) {
-            if let Some(type_name) = caps.get(2) {
-                last_type = Some(type_name.as_str().to_string());
+            if let Some(name) = caps.get(2) {
+                last_type = Some(name.as_str().to_string());
             }
         }
     }
-    
-    if let Some(found_type) = last_type {
-        Ok(found_type)
+
+    // 3️⃣  Fallback to file name if nothing found.
+    if let Some(found) = last_type {
+        Ok(found)
     } else {
-        // Fallback to the file's basename (without extension).
-        let path = Path::new(file_path);
-        let fallback = path
+        Path::new(file_path)
             .file_stem()
             .and_then(|s| s.to_str())
-            .unwrap_or("Unknown")
-            .to_string();
-        Ok(fallback)
+            .map(|s| s.to_string())
+            .ok_or_else(|| "Unknown".to_string())
     }
 }
 
-/// ---
-/// # Legacy Functions (No Longer Used)
-/// ---
-
-/*
-fn extract_enclosing_type_tree_sitter(content: &str, todo_offset: usize) -> Option<String> { ... }
-
-fn get_named_descendants<'a>(node: Node<'a>) -> Vec<Node<'a>> { ... }
-*/
-
-/// ---
-/// # Tests
-/// ---
 
 #[cfg(test)]
 mod tests {

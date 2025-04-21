@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+todo_marker = { path = "../todo_marker" }
 walkdir = { workspace = true }
 
 [dev-dependencies]

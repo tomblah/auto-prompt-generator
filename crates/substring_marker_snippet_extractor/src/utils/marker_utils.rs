@@ -1,16 +1,22 @@
 // crates/substring_marker_snippet_extractor/src/utils/marker_utils.rs
 
-use std::fs;
-use regex::Regex;
-use once_cell::sync::Lazy;
+//! Helper utilities for working with **substring markers** (`// v` / `// ^`)
+//! *and* the single shared “TODO marker” that drives the prompt‑generation
+//! pipeline.
 
-/// Filters the file’s content by returning only the text between substring markers.
-/// Instead of always using "// ...", the caller can supply a custom placeholder.
-///
-/// # Arguments
-///
-/// * `content` - The file content.
-/// * `placeholder` - The string to use as a placeholder for omitted code.
+use once_cell::sync::Lazy;
+use regex::Regex;
+use std::fs;
+
+use todo_marker::TODO_MARKER_WS;
+
+/// ---------------------------------------------------------------------------
+///  Public API – marker filtering
+/// ---------------------------------------------------------------------------
+
+/// Returns only the text between `// v` … `// ^` blocks.  Everything else is
+/// replaced by `placeholder`.  Multiple blocks are concatenated with a blank
+/// line between them.
 pub fn filter_substring_markers(content: &str, placeholder: &str) -> String {
     let mut output = String::new();
     let mut state = "omitted";
@@ -19,34 +25,34 @@ pub fn filter_substring_markers(content: &str, placeholder: &str) -> String {
 
     for line in content.lines() {
         let trimmed = line.trim();
-        if trimmed == "// v" {
-            if omitted_line_count > 0 {
-                output.push_str("\n\n");
-                output.push_str(placeholder);
-                output.push_str("\n\n");
-            }
-            omitted_line_count = 0;
-            state = "included";
-            last_was_closing = false;
-            continue;
-        } else if trimmed == "// ^" {
-            state = "omitted";
-            omitted_line_count = 0;
-            last_was_closing = true;
-            continue;
-        }
-
-        match state {
-            "included" => {
-                output.push_str(line);
-                output.push('\n');
+        match trimmed {
+            "// v" => {
+                if omitted_line_count > 0 {
+                    output.push_str("\n\n");
+                    output.push_str(placeholder);
+                    output.push_str("\n\n");
+                }
+                omitted_line_count = 0;
+                state = "included";
                 last_was_closing = false;
             }
-            "omitted" => {
-                omitted_line_count += 1;
-                last_was_closing = false;
+            "// ^" => {
+                state = "omitted";
+                omitted_line_count = 0;
+                last_was_closing = true;
             }
-            _ => unreachable!(),
+            _ => match state {
+                "included" => {
+                    output.push_str(line);
+                    output.push('\n');
+                    last_was_closing = false;
+                }
+                "omitted" => {
+                    omitted_line_count += 1;
+                    last_was_closing = false;
+                }
+                _ => unreachable!(),
+            },
         }
     }
 
@@ -58,20 +64,23 @@ pub fn filter_substring_markers(content: &str, placeholder: &str) -> String {
     output
 }
 
-/// Checks if the file uses both markers ("// v" and "// ^").
+/// `true` if the file uses both `// v` *and* `// ^`.
 pub fn file_uses_markers(content: &str) -> bool {
     let has_open = content.lines().any(|line| line.trim() == "// v");
     let has_close = content.lines().any(|line| line.trim() == "// ^");
     has_open && has_close
 }
 
-/// Returns the index (zero-based) of the first line that contains "// TODO: - ".
+/// Zero‑based index of the first line that contains the *workspace‑wide*
+/// TODO marker (`// TODO: - `).  `None` if not present.
 pub fn todo_index(content: &str) -> Option<usize> {
-    content.lines().position(|line| line.contains("// TODO: - "))
+    content
+        .lines()
+        .position(|line| line.contains(TODO_MARKER_WS))
 }
 
-/// Determines whether the TODO is already inside a marker block by counting marker boundaries
-/// from the start of the file up to the TODO line.
+/// Returns `true` if the TODO marker already lives *inside* an active
+/// substring‑marker block.
 pub fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
     let lines: Vec<&str> = content.lines().collect();
     let mut marker_depth = 0;
@@ -91,10 +100,14 @@ pub fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
     marker_depth > 0
 }
 
-/// Static, precompiled regexes for candidate line detection.
+/// ---------------------------------------------------------------------------
+///  Candidate‑line regexes (same set used elsewhere)
+/// ---------------------------------------------------------------------------
 static SWIFT_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+(?:<[^>]+>)?\s*\([^)]*\)\s*(?:->\s*\S+)?\s*\{"#)
-        .unwrap()
+    Regex::new(
+        r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+(?:<[^>]+>)?\s*\([^)]*\)\s*(?:->\s*\S+)?\s*\{"#,
+    )
+    .unwrap()
 });
 static JS_ASSIGNMENT_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#).unwrap()
@@ -104,14 +117,12 @@ static JS_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
 });
 static PARSE_CLOUD_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r#"^\s*Parse\.Cloud\.(?:define|beforeSave|afterSave)\s*\(\s*(?:"[^"]+"|[A-Za-z][A-Za-z0-9_.]*)\s*,\s*(?:async\s+)?\([^)]*\)\s*=>\s*\{"#
+        r#"^\s*Parse\.Cloud\.(?:define|beforeSave|afterSave)\s*\(\s*(?:"[^"]+"|[A-Za-z][A-Za-z0-9_.]*)\s*,\s*(?:async\s+)?\([^)]*\)\s*=>\s*\{"#,
     )
     .unwrap()
 });
 static OBJC_METHOD_RE: Lazy<Regex> = Lazy::new(|| {
-    // Matches Objective‑C method declarations.
-    Regex::new(r"^\s*[-+]\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*(?::\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*)*\s*\{")
-        .unwrap()
+    Regex::new(r#"^\s*[-+]\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*(?::\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*)*\s*\{"#).unwrap()
 });
 
 fn is_candidate_line(line: &str) -> bool {
@@ -122,18 +133,21 @@ fn is_candidate_line(line: &str) -> bool {
         || OBJC_METHOD_RE.is_match(line)
 }
 
-/// Extracts the enclosing block (such as a function) that should contain the TODO marker.
-/// It does so by scanning upward from the TODO marker for the last candidate declaration,
-/// then using a simple brace counting heuristic to extract from that line until the block closes.
+/// ---------------------------------------------------------------------------
+///  Extract the enclosing block around the TODO marker
+/// ---------------------------------------------------------------------------
+
 pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
     let content = fs::read_to_string(file_path).ok()?;
     if !file_uses_markers(&content) {
         return None;
     }
-    let todo_idx = content.lines().position(|line| line.contains("// TODO: - "))?;
+
+    let todo_idx = todo_index(&content)?;
     if is_todo_inside_markers(&content, todo_idx) {
         return None;
     }
+
     let lines: Vec<&str> = content.lines().collect();
     let mut candidate_index = None;
     for i in 0..todo_idx {
@@ -141,16 +155,17 @@ pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
         if is_candidate_line(line) {
             candidate_index = Some(i);
         } else if line.trim_start().starts_with('-') || line.trim_start().starts_with('+') {
-            // If the next line exists and contains '{', consider this a candidate.
             if i + 1 < todo_idx && lines[i + 1].contains('{') {
                 candidate_index = Some(i);
             }
         }
     }
+
     let start_index = candidate_index?;
     let mut brace_count = 0;
     let mut found_open = false;
     let mut extracted_lines = Vec::new();
+
     for line in &lines[start_index..] {
         if !found_open {
             if line.contains('{') {
@@ -168,6 +183,7 @@ pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
             }
         }
     }
+
     Some(extracted_lines.join("\n"))
 }
 

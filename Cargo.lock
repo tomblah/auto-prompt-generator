@@ -269,6 +269,7 @@ version = "0.1.0"
 dependencies = [
  "regex",
  "tempfile",
+ "todo_marker",
  "tree-sitter",
  "tree-sitter-swift",
 ]
@@ -279,6 +280,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "tempfile",
+ "todo_marker",
 ]
 
 [[package]]
@@ -292,6 +294,7 @@ dependencies = [
  "regex",
  "substring_marker_snippet_extractor",
  "tempfile",
+ "todo_marker",
 ]
 
 [[package]]
@@ -328,6 +331,7 @@ version = "0.1.0"
 dependencies = [
  "filetime",
  "tempfile",
+ "todo_marker",
  "walkdir",
 ]
 
@@ -371,6 +375,7 @@ dependencies = [
  "post_processing",
  "predicates 2.1.5",
  "tempfile",
+ "todo_marker",
  "unescape_newlines",
 ]
 
@@ -561,6 +566,9 @@ checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 [[package]]
 name = "post_processing"
 version = "0.1.0"
+dependencies = [
+ "todo_marker",
+]
 
 [[package]]
 name = "ppv-lite86"
@@ -792,6 +800,7 @@ dependencies = [
  "rand",
  "regex",
  "tempfile",
+ "todo_marker",
 ]
 
 [[package]]
@@ -823,6 +832,10 @@ name = "termtree"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
+
+[[package]]
+name = "todo_marker"
+version = "0.1.0"
 
 [[package]]
 name = "tree-sitter"

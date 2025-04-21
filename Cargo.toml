@@ -14,7 +14,8 @@ members = [
     "crates/substring_marker_snippet_extractor",
     "crates/assemble_prompt",
     "crates/post_processing",
-    "crates/generate_prompt"
+    "crates/generate_prompt",
+    "crates/todo_marker"
     ]
 resolver = "2"
 
