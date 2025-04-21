@@ -15,7 +15,8 @@ members = [
     "crates/assemble_prompt",
     "crates/post_processing",
     "crates/generate_prompt",
-    "crates/todo_marker"
+    "crates/todo_marker",
+    "crates/lang_support"
     ]
 resolver = "2"
 
