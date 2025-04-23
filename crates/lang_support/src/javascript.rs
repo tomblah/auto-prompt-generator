@@ -1,14 +1,19 @@
 // crates/lang_support/src/javascript.rs
-
 //!
-//! The goals mirror the Swift support you just ported:
-//! * **extract_identifiers** – pull out function call‑sites *and* class names
-//!   so that helpers referenced by the TODO file are included.
-//! * **file_defines_any**   – true if the file contains a matching declaration
-//!   (`function foo`, `class Bar`, `exports.foo = …`, etc.).
-//! * **resolve_dependency_path** – best‑effort: when we encounter an
-//!   `import` or `require` line, resolve the relative path so the caller
-//!   can include that file immediately.
+//! JavaScript language helper for the prompt-generation tool-chain.
+//!
+//! Responsibilities
+//! ----------------
+//! * **extract_identifiers** – pull out unqualified function-call identifiers
+//!   and class names so that helpers referenced by the TODO file are included.
+//! * **file_defines_any**   – tell the caller whether a file *defines* any of
+//!   those identifiers (function declarations, CommonJS / ES module exports,
+//!   class declarations …).
+//! * **walk_dependencies**  – follow `import … from "./foo.js"` and
+//!   `require("./foo")` statements so the prompt also contains *foo.js*.
+//!
+//! The helper is completely regex-based; we avoid spawning a JS parser to keep
+//! the dependency footprint tiny.
 
 use super::LanguageSupport;
 use once_cell::sync::Lazy;
@@ -47,6 +52,7 @@ fn is_reserved(w: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 impl LanguageSupport for JavaScriptSupport {
+    // 1️⃣  Identifier extraction ------------------------------------------------
     fn extract_identifiers(&self, src: &str) -> Vec<String> {
         let mut out = Vec::new();
 
@@ -71,15 +77,16 @@ impl LanguageSupport for JavaScriptSupport {
         out
     }
 
+    // 2️⃣  Declaration detection -----------------------------------------------
     fn file_defines_any(&self, content: &str, idents: &[String]) -> bool {
         for ident in idents {
-            // 1. Traditional function declaration
+            // (a) Traditional function declaration
             let fn_decl = format!(r"\bfunction\s+{}\b", regex::escape(ident));
             if Regex::new(&fn_decl).unwrap().is_match(content) {
                 return true;
             }
 
-            // 2. const/let/var foo = function | async function | () =>
+            // (b) const/let/var foo = function | async function | () =>
             let assign = format!(
                 r"\b(?:const|let|var)\s+{}\s*=\s*(?:async\s+)?(?:function\b|\()",
                 regex::escape(ident)
@@ -88,7 +95,7 @@ impl LanguageSupport for JavaScriptSupport {
                 return true;
             }
 
-            // 3. ES module export
+            // (c) ES module export
             let es_export_fn =
                 format!(r"\bexport\s+(?:async\s+)?function\s+{}\b", regex::escape(ident));
             if Regex::new(&es_export_fn).unwrap().is_match(content) {
@@ -100,21 +107,18 @@ impl LanguageSupport for JavaScriptSupport {
                 return true;
             }
 
-            // 4. CommonJS exports
-            let cjs_default =
-                format!(r"\bmodule\.exports\s*=\s*{}\b", regex::escape(ident));
+            // (d) CommonJS exports
+            let cjs_default = format!(r"\bmodule\.exports\s*=\s*{}\b", regex::escape(ident));
             if Regex::new(&cjs_default).unwrap().is_match(content) {
                 return true;
             }
-            let cjs_named =
-                format!(r"\bexports\.{}\s*=", regex::escape(ident));
+            let cjs_named = format!(r"\bexports\.{}\s*=", regex::escape(ident));
             if Regex::new(&cjs_named).unwrap().is_match(content) {
                 return true;
             }
 
-            // 5. Class declaration
-            let class_decl =
-                format!(r"\bclass\s+{}\b", regex::escape(ident));
+            // (e) Class declaration
+            let class_decl = format!(r"\bclass\s+{}\b", regex::escape(ident));
             if Regex::new(&class_decl).unwrap().is_match(content) {
                 return true;
             }
@@ -122,6 +126,7 @@ impl LanguageSupport for JavaScriptSupport {
         false
     }
 
+    // 3️⃣  Dependency-path sniffing --------------------------------------------
     fn resolve_dependency_path(
         &self,
         line: &str,
@@ -144,5 +149,32 @@ impl LanguageSupport for JavaScriptSupport {
         }
 
         None
+    }
+
+    // 4️⃣  Dependency walk ------------------------------------------------------
+    fn walk_dependencies(
+        &self,
+        file_path: &Path,
+        search_root: &Path,
+    ) -> Vec<PathBuf> {
+        let content = std::fs::read_to_string(file_path).unwrap_or_default();
+        let dir     = file_path.parent().unwrap_or(search_root);
+        let mut deps = Vec::new();
+
+        for line in content.lines() {
+            if let Some(raw) = self.resolve_dependency_path(line, dir) {
+                // Normalise extension if omitted
+                let mut p = raw.clone();
+                if p.extension().is_none() {
+                    p.set_extension("js");
+                }
+
+                // Keep only files inside the declared search root
+                if p.starts_with(search_root) && p.is_file() {
+                    deps.push(p);
+                }
+            }
+        }
+        deps
     }
 }
