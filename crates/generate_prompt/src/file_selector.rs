@@ -1,30 +1,24 @@
 // crates/generate_prompt/src/file_selector.rs
 
 use std::path::Path;
+
 use anyhow::Result;
+use extract_enclosing_type::extract_enclosing_type;
 use extract_types::extract_types_from_file;
 use find_definition_files::find_definition_files;
-use extract_enclosing_type::extract_enclosing_type;
 use find_referencing_files;
+use lang_support::for_extension;
 
 /// Determines the list of files to include in the prompt based on the given parameters.
 ///
-/// - If `singular` is true, only the instruction file (TODO file) is included.
-/// - Otherwise, it extracts types from the instruction file, uses those to find definition files,
-///   appends the instruction file, and applies exclusion filtering.
-/// - If `include_references` is enabled, it also searches for files referencing the enclosing type.
-///
-/// # Arguments
-///
-/// * `file_path` - The path to the instruction (TODO) file.
-/// * `singular` - Whether to operate in singular mode.
-/// * `search_root` - The search root directory for definition file lookup.
-/// * `excludes` - A slice of file basename strings to exclude.
-/// * `include_references` - Whether to search for and include referencing files.
-///
-/// # Returns
-///
-/// A vector of file paths (as Strings) that should be included in the final prompt.
+/// * If `singular` is **true**, only the instruction file (TODO file) is included.
+/// * Otherwise we:
+///   1. Extract types from the TODO file.
+///   2. Locate definition files for those types.
+///   3. Optionally walk direct dependencies (per-language).
+///   4. Optionally locate files referencing the enclosing type.
+///   5. Apply the `excludes` filter.
+/// * The resulting list is sorted and deduplicated before returning.
 pub fn determine_files_to_include(
     file_path: &str,
     singular: bool,
@@ -34,30 +28,35 @@ pub fn determine_files_to_include(
 ) -> Result<Vec<String>> {
     let mut found_files: Vec<String> = Vec::new();
 
+    // ──────────────────────────────────────────────────────────────────────────
+    //  1. Singular mode: nothing but the TODO file
+    // ──────────────────────────────────────────────────────────────────────────
     if singular {
         println!("Singular mode enabled: only including the TODO file");
         found_files.push(file_path.to_string());
     } else {
-        // Extract types as a newline-separated string.
+        // ──────────────────────────────────────────────────────────────────────
+        //  2. Extract type names and locate their definition files
+        // ──────────────────────────────────────────────────────────────────────
         let types_content = extract_types_from_file(file_path)
             .map_err(|e| anyhow::anyhow!("Failed to extract types: {}", e))?;
         println!("Types found:");
         println!("{}", types_content.trim());
         println!("--------------------------------------------------");
 
-        // Find definition files using the extracted types.
         let def_files_set = find_definition_files(types_content.as_str(), search_root)
             .map_err(|err| anyhow::anyhow!("Failed to find definition files: {}", err))?;
-        
-        // Add definition files to the in-memory list.
+
         for path in def_files_set {
             found_files.push(path.to_string_lossy().into_owned());
         }
-        
-        // Append the instruction file.
+
+        // Always include the TODO file itself.
         found_files.push(file_path.to_string());
-        
-        // Apply exclusion filtering.
+
+        // ──────────────────────────────────────────────────────────────────────
+        //  3. Exclusion filter (initial pass)
+        // ──────────────────────────────────────────────────────────────────────
         if !excludes.is_empty() {
             println!("Excluding files matching: {:?}", excludes);
             found_files.retain(|line| {
@@ -70,6 +69,26 @@ pub fn determine_files_to_include(
         }
     }
 
+    // ──────────────────────────────────────────────────────────────────────────
+    //  4. Language-specific dependency walk (NEW)
+    // ──────────────────────────────────────────────────────────────────────────
+    let mut extra_deps = Vec::new();
+    for file in &found_files {
+        if let Some(ext) = Path::new(file).extension().and_then(|s| s.to_str()) {
+            if let Some(lang) = for_extension(ext) {
+                extra_deps.extend(
+                    lang.walk_dependencies(Path::new(file), search_root)
+                        .into_iter()
+                        .map(|p| p.display().to_string()),
+                );
+            }
+        }
+    }
+    found_files.extend(extra_deps);
+
+    // ──────────────────────────────────────────────────────────────────────────
+    //  5. Include files that reference the enclosing type (optional)
+    // ──────────────────────────────────────────────────────────────────────────
     if include_references {
         println!("Including files that reference the enclosing type");
         let enclosing_type = match extract_enclosing_type(file_path) {
@@ -91,7 +110,8 @@ pub fn determine_files_to_include(
         } else {
             println!("No enclosing type found; skipping reference search.");
         }
-        // Reapply exclusion filtering.
+
+        // Re-apply the exclusion filter.
         if !excludes.is_empty() {
             println!("Excluding files matching: {:?}", excludes);
             found_files.retain(|line| {
@@ -104,9 +124,12 @@ pub fn determine_files_to_include(
         }
     }
 
-    // Sort and deduplicate.
+    // ──────────────────────────────────────────────────────────────────────────
+    //  6. Sort, deduplicate, log
+    // ──────────────────────────────────────────────────────────────────────────
     found_files.sort();
     found_files.dedup();
+
     println!("--------------------------------------------------");
     println!("Files (final list):");
     for file in &found_files {
