@@ -12,13 +12,13 @@ use lang_support::for_extension;
 /// Determines the list of files to include in the prompt.
 ///
 /// Workflow (non-singular):
-///  1. extract identifiers,
-///  2. find definition files,
-///  3. walk language-specific dependencies,
-///  4. optionally include referencing files,
-///  5. apply the `excludes` filter,
-///  6. canonicalise every path (fixes `/var` ↔ `/private/var` on macOS),
-///  7. sort + dedup.
+///  1. Extract identifiers,
+///  2. Find definition files,
+///  3. Walk language-specific dependencies,
+///  4. Optionally include referencing files,
+///  5. Apply the `excludes` filter,
+///  6. Canonicalise every path (fixes `/var` ↔ `/private/var` on macOS),
+///  7. Sort + dedup.
 pub fn determine_files_to_include(
     file_path: &str,
     singular: bool,
@@ -35,7 +35,7 @@ pub fn determine_files_to_include(
         println!("Singular mode enabled: only including the TODO file");
         found_files.push(file_path.to_string());
     } else {
-        // 2. Extract identifiers & locate their definition files
+        // 2. Extract identifiers and locate definition files
         let types_content =
             extract_types_from_file(file_path).map_err(|e| anyhow::anyhow!("{}", e))?;
         println!("Types found:\n{}", types_content.trim());
@@ -130,10 +130,11 @@ pub fn determine_files_to_include(
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // 5. Canonicalise paths to kill `/var` → `/private/var` discrepancies
+    // 5. Canonicalise paths (fixes /var ↔ /private/var, removes “./” segments)
     // ──────────────────────────────────────────────────────────────────────────
     for path in &mut found_files {
-        if let Ok(canon) = std::fs::canonicalize(path) {
+        // Borrow immutably so the String is not moved
+        if let Ok(canon) = std::fs::canonicalize(&*path) {
             *path = canon.display().to_string();
         }
     }
