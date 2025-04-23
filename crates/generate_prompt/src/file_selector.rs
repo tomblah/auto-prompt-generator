@@ -296,4 +296,91 @@ mod tests {
         // Total count should be 2.
         assert_eq!(files.len(), 2);
     }
+    
+    /// JS dependency walk: import "./utils.js" should pull utils.js in.
+    #[test]
+    fn test_js_dependency_walk_single_hop() {
+        let temp_dir = tempdir().unwrap();
+        let search_root = temp_dir.path().to_path_buf();
+
+        // ① main.js with TODO and an ES-module import
+        let main_path = temp_dir.path().join("main.js");
+        {
+            let mut f = File::create(&main_path).unwrap();
+            writeln!(f, "// TODO: - Refactor helper").unwrap();
+            writeln!(f, "import {{ helper }} from \"./utils.js\";").unwrap();
+        }
+
+        // ② utils.js actually exists
+        let utils_path = temp_dir.path().join("utils.js");
+        {
+            let mut f = File::create(&utils_path).unwrap();
+            writeln!(f, "export function helper() {{}}").unwrap();
+        }
+
+        let files = determine_files_to_include(
+            main_path.to_str().unwrap(),
+            false,          // non-singular
+            &search_root,
+            &[],            // no excludes
+            false,          // no reference search
+        ).expect("JS dependency walk failed");
+
+        assert!(files.contains(&main_path.to_str().unwrap().to_string()));
+        assert!(files.contains(&utils_path.to_str().unwrap().to_string()));
+        assert_eq!(files.len(), 2);
+    }
+
+    #[test]
+    fn test_js_dependency_walk_two_hops() {
+        let temp_dir = tempdir().unwrap();
+        let search_root = temp_dir.path();
+
+        // main.js
+        let main = search_root.join("main.js");
+        let utils = search_root.join("utils.js");
+        let helper = search_root.join("helper.js");
+
+        std::fs::write(&main,   "// TODO: - X\nimport { foo } from './utils.js';").unwrap();
+        std::fs::write(&utils,  "import bar from './helper.js';\nexport const foo = () => bar();").unwrap();
+        std::fs::write(&helper, "export default () => {};").unwrap();
+
+        let files = determine_files_to_include(
+            main.to_str().unwrap(),
+            false,
+            search_root,
+            &[],
+            false,
+        ).unwrap();
+
+        assert!(files.contains(&main.to_string_lossy().into_owned()));
+        assert!(files.contains(&utils.to_string_lossy().into_owned()));
+        assert!(files.contains(&helper.to_string_lossy().into_owned()));
+        assert_eq!(files.len(), 3);
+    }
+    
+    #[test]
+    fn test_js_dependency_walk_excluded() {
+        let temp_dir = tempdir().unwrap();
+        let search_root = temp_dir.path().to_path_buf();
+
+        let main_path  = temp_dir.path().join("main.js");
+        let utils_path = temp_dir.path().join("utils.js");
+
+        std::fs::write(&main_path,  "// TODO: - X\nrequire('./utils');").unwrap();
+        std::fs::write(&utils_path, "module.exports = {};").unwrap();
+
+        let files = determine_files_to_include(
+            main_path.to_str().unwrap(),
+            false,
+            &search_root,
+            &["utils.js".to_string()],   // exclude
+            false,
+        ).unwrap();
+
+        assert!(files.contains(&main_path.to_str().unwrap().to_string()));
+        assert!(!files.contains(&utils_path.to_str().unwrap().to_string()));
+        assert_eq!(files.len(), 1);
+    }
+
 }
