@@ -163,14 +163,15 @@ impl LanguageSupport for JavaScriptSupport {
 
         for line in content.lines() {
             if let Some(raw) = self.resolve_dependency_path(line, dir) {
-                // Normalise extension if omitted
+                // Add `.js` if the extension was omitted (covers *both* import and require cases)
                 let mut p = raw.clone();
                 if p.extension().is_none() {
                     p.set_extension("js");
                 }
 
-                // Canonicalise to kill “./”
+                // 🔹 NEW: canonicalise once – works for paths from import *and* require
                 let canon = std::fs::canonicalize(&p).unwrap_or(p);
+
                 if canon.starts_with(search_root) && canon.is_file() {
                     deps.push(canon);
                 }
