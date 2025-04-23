@@ -169,9 +169,10 @@ impl LanguageSupport for JavaScriptSupport {
                     p.set_extension("js");
                 }
 
-                // Keep only files inside the declared search root
-                if p.starts_with(search_root) && p.is_file() {
-                    deps.push(p);
+                // Canonicalise to kill “./”
+                let canon = std::fs::canonicalize(&p).unwrap_or(p);
+                if canon.starts_with(search_root) && canon.is_file() {
+                    deps.push(canon);
                 }
             }
         }

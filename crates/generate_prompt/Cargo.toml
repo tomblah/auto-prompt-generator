@@ -19,6 +19,7 @@ assemble_prompt = { path = "../assemble_prompt" }
 find_definition_files = { path = "../find_definition_files" }
 post_processing = { path = "../post_processing" }
 todo_marker = { path = "../todo_marker" }
+lang_support = { path = "../lang_support" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
