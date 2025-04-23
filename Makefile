@@ -27,6 +27,9 @@ coverage:
 	@echo "Generating code coverage reports with cargo tarpaulin..."
 	cargo tarpaulin --workspace --out Html
 
+coverage-compare:
+	./scripts/coverage-compare.sh
+	
 # Fix file headers.
 fix-headers:
 	@echo "Fixing headers..."
