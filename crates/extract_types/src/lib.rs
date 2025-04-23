@@ -8,23 +8,23 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
+use lang_support::for_extension;
 use substring_marker_snippet_extractor::utils::marker_utils::{
-    file_uses_markers, filter_substring_markers, is_todo_inside_markers,
+    file_uses_markers,
+    filter_substring_markers,
+    is_todo_inside_markers,
 };
 use todo_marker::{TODO_MARKER, TODO_MARKER_WS};
 
 /// ---------------------------------------------------------------------------
-///  Regexes that spot candidate declarations
+///  Regexes that spot candidate declarations (legacy rules)
 /// ---------------------------------------------------------------------------
-
-// Updated regex to match Swift function declarations that may include "async".
 static SWIFT_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+(?:<[^>]+>)?\s*\([^)]*\)\s*(?:->\s*\S+)?(?:\s+async)?\s*\{"#,
     )
     .unwrap()
 });
-// Existing regexes for JS and Objective‑C
 static JS_ASSIGNMENT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#).unwrap());
 static JS_FUNCTION_RE: Lazy<Regex> =
@@ -38,13 +38,11 @@ static PARSE_CLOUD_RE: Lazy<Regex> = Lazy::new(|| {
 static OBJC_METHOD_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^\s*[-+]\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*(?::\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*)*\s*\{"#).unwrap()
 });
-// Swift class / enum
 static SWIFT_CLASS_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"^\s*class\s+\w+.*\{"#).unwrap());
 static SWIFT_ENUM_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"^\s*enum\s+\w+.*\{"#).unwrap());
 
-/// Returns `true` if the line is a language construct we care about.
 fn is_candidate_line(line: &str) -> bool {
     SWIFT_FUNCTION_RE.is_match(line)
         || JS_ASSIGNMENT_RE.is_match(line)
@@ -56,9 +54,8 @@ fn is_candidate_line(line: &str) -> bool {
 }
 
 /// ---------------------------------------------------------------------------
-///  Token extraction helper
+///  Token extraction helper (legacy logic)
 /// ---------------------------------------------------------------------------
-
 struct TypeExtractor {
     re_simple: Regex,
     re_bracket: Regex,
@@ -84,11 +81,8 @@ impl TypeExtractor {
             return None;
         }
 
-        // Remove the leading marker, preserving the payload.
         let content = if trimmed.starts_with(TODO_MARKER) {
-            trimmed
-                .trim_start_matches(TODO_MARKER)
-                .trim_start() // eat the single space that follows the marker
+            trimmed.trim_start_matches(TODO_MARKER).trim_start()
         } else {
             trimmed
         };
@@ -127,19 +121,15 @@ impl TypeExtractor {
 /// ---------------------------------------------------------------------------
 ///  Public API
 /// ---------------------------------------------------------------------------
-
-/// Reads a Swift/ObjC/JS file, extracts potential type names, and returns them
-/// as a newline‑separated, deduplicated list.
 pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> {
     let full_content = fs::read_to_string(&swift_file)
         .with_context(|| format!("Failed to open file {}", swift_file.as_ref().display()))?;
 
-    let targeted = std::env::var("TARGETED").is_ok();
-
     // Decide which slice of the file to analyse
-    let content_to_process = if targeted {
-        if let Some(inner_block) = extract_inner_block_from_content(&full_content) {
-            inner_block
+    let targeted = std::env::var("TARGETED").is_ok();
+    let content_slice = if targeted {
+        if let Some(inner) = extract_inner_block_from_content(&full_content) {
+            inner
         } else {
             full_content.clone()
         }
@@ -156,21 +146,29 @@ pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> 
         full_content.clone()
     };
 
-    let reader = BufReader::new(content_to_process.as_bytes());
+    // 1️⃣  Legacy TypeExtractor on the slice
+    let reader = BufReader::new(content_slice.as_bytes());
     let extractor = TypeExtractor::new()?;
-    let types = extractor.extract_types(reader.lines().filter_map(Result::ok));
+    let mut all_types: BTreeSet<String> =
+        extractor.extract_types(reader.lines().filter_map(Result::ok));
 
-    // Note the fix: join with &str, not char
-    Ok(types.into_iter().collect::<Vec<String>>().join("\n"))
+    // 2️⃣  Language‑specific extraction on the SAME slice
+    if let Some(ext) = swift_file.as_ref().extension().and_then(|s| s.to_str()) {
+        if let Some(lang) = for_extension(ext) {
+            for ident in lang.extract_identifiers(&content_slice) {
+                all_types.insert(ident);
+            }
+        }
+    }
+
+    Ok(all_types.into_iter().collect::<Vec<_>>().join("\n"))
 }
 
 /// ---------------------------------------------------------------------------
-///  Helper: extract enclosing block (non‑targeted mode)
+///  Helper: extract enclosing block (unchanged)
 /// ---------------------------------------------------------------------------
 fn extract_enclosing_block_from_content(content: &str) -> Option<String> {
-    let todo_idx = content
-        .lines()
-        .position(|line| line.contains(TODO_MARKER_WS))?;
+    let todo_idx = content.lines().position(|line| line.contains(TODO_MARKER_WS))?;
     if is_todo_inside_markers(content, todo_idx) {
         return None;
     }
@@ -212,13 +210,12 @@ fn extract_enclosing_block_from_content(content: &str) -> Option<String> {
 }
 
 /// ---------------------------------------------------------------------------
-///  Helper: extract inner block (targeted mode)
+///  Helper: extract inner block (targeted mode, unchanged)
 /// ---------------------------------------------------------------------------
 fn extract_inner_block_from_content(content: &str) -> Option<String> {
     let pos = content.find(TODO_MARKER_WS)?;
     let mut stack = Vec::new();
 
-    // Walk up to the TODO marker to find the innermost opening brace
     for (i, ch) in content[..pos].char_indices() {
         if ch == '{' {
             stack.push(i);
@@ -228,7 +225,6 @@ fn extract_inner_block_from_content(content: &str) -> Option<String> {
     }
     let open_brace = stack.pop()?;
 
-    // Find the matching closing brace
     let mut brace_count = 1;
     let mut index = open_brace + 1;
     let bytes = content.as_bytes();

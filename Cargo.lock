@@ -289,6 +289,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "lang_support",
  "once_cell",
  "predicates 2.1.5",
  "regex",
@@ -320,6 +321,7 @@ name = "find_definition_files"
 version = "0.1.0"
 dependencies = [
  "get_search_roots",
+ "lang_support",
  "regex",
  "tempfile",
  "walkdir",
@@ -506,6 +508,15 @@ name = "itoa"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
+
+[[package]]
+name = "lang_support"
+version = "0.1.0"
+dependencies = [
+ "once_cell",
+ "regex",
+ "tempfile",
+]
 
 [[package]]
 name = "libc"
