@@ -9,16 +9,16 @@ use find_definition_files::find_definition_files;
 use find_referencing_files;
 use lang_support::for_extension;
 
-/// Determines the list of files to include in the prompt based on the given parameters.
+/// Determines the list of files to include in the prompt.
 ///
-/// * If `singular` is **true**, only the instruction file (TODO file) is included.
-/// * Otherwise we:
-///   1. Extract types from the TODO file.
-///   2. Locate definition files for those types.
-///   3. Optionally walk direct dependencies (per-language).
-///   4. Optionally locate files referencing the enclosing type.
-///   5. Apply the `excludes` filter.
-/// * The resulting list is sorted and deduplicated before returning.
+/// Workflow (non-singular):
+///  1. extract identifiers,
+///  2. find definition files,
+///  3. walk language-specific dependencies,
+///  4. optionally include referencing files,
+///  5. apply the `excludes` filter,
+///  6. canonicalise every path (fixes `/var` ↔ `/private/var` on macOS),
+///  7. sort + dedup.
 pub fn determine_files_to_include(
     file_path: &str,
     singular: bool,
@@ -29,48 +29,45 @@ pub fn determine_files_to_include(
     let mut found_files: Vec<String> = Vec::new();
 
     // ──────────────────────────────────────────────────────────────────────────
-    //  1. Singular mode: nothing but the TODO file
+    // 1. Singular mode
     // ──────────────────────────────────────────────────────────────────────────
     if singular {
         println!("Singular mode enabled: only including the TODO file");
         found_files.push(file_path.to_string());
     } else {
-        // ──────────────────────────────────────────────────────────────────────
-        //  2. Extract type names and locate their definition files
-        // ──────────────────────────────────────────────────────────────────────
-        let types_content = extract_types_from_file(file_path)
-            .map_err(|e| anyhow::anyhow!("Failed to extract types: {}", e))?;
-        println!("Types found:");
-        println!("{}", types_content.trim());
+        // 2. Extract identifiers & locate their definition files
+        let types_content =
+            extract_types_from_file(file_path).map_err(|e| anyhow::anyhow!("{}", e))?;
+        println!("Types found:\n{}", types_content.trim());
         println!("--------------------------------------------------");
 
-        let def_files_set = find_definition_files(types_content.as_str(), search_root)
-            .map_err(|err| anyhow::anyhow!("Failed to find definition files: {}", err))?;
-
-        for path in def_files_set {
-            found_files.push(path.to_string_lossy().into_owned());
+        let def_files =
+            find_definition_files(types_content.as_str(), search_root).map_err(|e| {
+                anyhow::anyhow!("Failed to find definition files: {}", e)
+            })?;
+        for p in def_files {
+            found_files.push(p.display().to_string());
         }
 
-        // Always include the TODO file itself.
         found_files.push(file_path.to_string());
 
-        // ──────────────────────────────────────────────────────────────────────
-        //  3. Exclusion filter (initial pass)
-        // ──────────────────────────────────────────────────────────────────────
+        // Initial exclusion
         if !excludes.is_empty() {
             println!("Excluding files matching: {:?}", excludes);
-            found_files.retain(|line| {
-                let basename = Path::new(line)
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy();
-                !excludes.contains(&basename.to_string())
+            found_files.retain(|f| {
+                !excludes.contains(
+                    &Path::new(f)
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string(),
+                )
             });
         }
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    //  4. Language-specific dependency walk (NEW)
+    // 3. Dependency walk (language-specific)
     // ──────────────────────────────────────────────────────────────────────────
     let mut extra_deps = Vec::new();
     for file in &found_files {
@@ -86,58 +83,77 @@ pub fn determine_files_to_include(
     }
     found_files.extend(extra_deps);
 
+    // Re-apply exclusion after dependency walk
+    if !excludes.is_empty() {
+        println!("Excluding files matching: {:?}", excludes);
+        found_files.retain(|f| {
+            !excludes.contains(
+                &Path::new(f)
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
+            )
+        });
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
-    //  5. Include files that reference the enclosing type (optional)
+    // 4. Reference search (optional)
     // ──────────────────────────────────────────────────────────────────────────
     if include_references {
         println!("Including files that reference the enclosing type");
-        let enclosing_type = match extract_enclosing_type(file_path) {
-            Ok(ty) => ty,
-            Err(err) => {
-                eprintln!("Error extracting enclosing type: {}", err);
-                String::new()
+        if let Ok(enclosing) = extract_enclosing_type(file_path) {
+            if !enclosing.is_empty() {
+                println!("Enclosing type: {}", enclosing);
+                let refs = find_referencing_files::find_files_referencing(
+                    &enclosing,
+                    search_root.to_str().unwrap(),
+                )
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+                found_files.extend(refs);
             }
-        };
-        if !enclosing_type.is_empty() {
-            println!("Enclosing type: {}", enclosing_type);
-            println!("Searching for files referencing {}", enclosing_type);
-            let referencing_files = find_referencing_files::find_files_referencing(
-                &enclosing_type,
-                search_root.to_str().unwrap(),
-            )
-            .map_err(|e| anyhow::anyhow!("Failed to find referencing files: {}", e))?;
-            found_files.extend(referencing_files);
-        } else {
-            println!("No enclosing type found; skipping reference search.");
         }
 
-        // Re-apply the exclusion filter.
+        // Exclusion once more (reference walk may have added new files)
         if !excludes.is_empty() {
             println!("Excluding files matching: {:?}", excludes);
-            found_files.retain(|line| {
-                let basename = Path::new(line)
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy();
-                !excludes.contains(&basename.to_string())
+            found_files.retain(|f| {
+                !excludes.contains(
+                    &Path::new(f)
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string(),
+                )
             });
         }
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    //  6. Sort, deduplicate, log
+    // 5. Canonicalise paths to kill `/var` → `/private/var` discrepancies
+    // ──────────────────────────────────────────────────────────────────────────
+    for path in &mut found_files {
+        if let Ok(canon) = std::fs::canonicalize(path) {
+            *path = canon.display().to_string();
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 6. Sort, dedup, log
     // ──────────────────────────────────────────────────────────────────────────
     found_files.sort();
     found_files.dedup();
 
     println!("--------------------------------------------------");
     println!("Files (final list):");
-    for file in &found_files {
-        let basename = Path::new(file)
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy();
-        println!("{}", basename);
+    for f in &found_files {
+        println!(
+            "{}",
+            Path::new(f)
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+        );
     }
 
     Ok(found_files)
