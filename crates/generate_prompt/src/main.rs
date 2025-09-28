@@ -1,5 +1,7 @@
 // crates/generate_prompt/src/main.rs
 
+mod config;
+
 use anyhow::{Context, Result};
 use clap::{Arg, Command};
 use std::env;
@@ -127,6 +129,29 @@ fn main() -> Result<()> {
     let file_path = instruction_locator::locate_instruction_file(&git_root)
         .context("Failed to locate the instruction file")?;
     println!("Found exactly one instruction in {}", file_path);
+    // Build AppConfig (no behavior change; just logging if verbose)
+    let verbose = *matches.get_one::<bool>("verbose").unwrap();
+    let todo_file_basename = std::path::Path::new(&file_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+    let app_config = crate::config::AppConfig {
+        git_root: git_root.clone(),
+        instruction_file: file_path.clone(),
+        singular,
+        force_global,
+        include_references,
+        excludes: excludes.clone(),
+        diff_branch: std::env::var("DIFF_WITH_BRANCH").ok(),
+        targeted: std::env::var("TARGETED").is_ok(),
+        disable_pbcopy: std::env::var("DISABLE_PBCOPY").is_ok(),
+        todo_file_basename,
+        verbose,
+    };
+    if app_config.verbose {
+        eprintln!("[VERBOSE] AppConfig = {:?}", app_config);
+    }
     println!("--------------------------------------------------");
 
     // 5. Delegate to the prompt generator module.
