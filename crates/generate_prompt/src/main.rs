@@ -1,6 +1,7 @@
 // crates/generate_prompt/src/main.rs
 
 mod config;
+mod services;
 
 use anyhow::{Context, Result};
 use clap::{Arg, Command};
