@@ -152,6 +152,19 @@ fn main() -> Result<()> {
     };
     if app_config.verbose {
         eprintln!("[VERBOSE] AppConfig = {:?}", app_config);
+    // Prepare side-effect services (not yet wired; no behavior change).
+    // Leading underscores silence -D warnings until we actually use them.
+    let _clipboard = crate::services::MacClipboard;
+    let _diff_provider = std::env::var("DIFF_WITH_BRANCH")
+        .ok()
+        .map(|branch| crate::services::GitDiffProvider { branch });
+
+    if verbose {
+        match &_diff_provider {
+            Some(dp) => eprintln!("[VERBOSE] Services ready: clipboard=MacClipboard, diff_provider=GitDiffProvider(branch={})", dp.branch),
+            None => eprintln!("[VERBOSE] Services ready: clipboard=MacClipboard, diff_provider=None"),
+        }
+    }
     }
     println!("--------------------------------------------------");
 
