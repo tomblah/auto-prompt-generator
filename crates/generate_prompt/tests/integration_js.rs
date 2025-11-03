@@ -77,7 +77,7 @@ Parse.Cloud.define("someCloudCodeFunction", async (request) => {
         env::remove_var("DISABLE_PBCOPY");
 
         // Run the generate_prompt binary in singular mode.
-        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
         cmd.arg("--singular");
         cmd.assert().success();
 
@@ -169,7 +169,7 @@ someFunction = function(someParameter) {
         env::remove_var("DISABLE_PBCOPY");
 
         // Run the generate_prompt binary in singular mode.
-        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
         cmd.arg("--singular");
         cmd.assert().success();
 
@@ -255,7 +255,7 @@ async function someFunction(someParameter) {
         env::remove_var("DISABLE_PBCOPY");
 
         // Run the generate_prompt binary in singular mode.
-        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
         cmd.arg("--singular");
         cmd.assert().success();
 
@@ -358,7 +358,7 @@ async function someFunction(someParameter) {
         env::remove_var("DISABLE_PBCOPY");
 
         // Run the generate_prompt binary in singular mode.
-        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
         cmd.arg("--singular");
         cmd.assert().success();
 
@@ -466,7 +466,7 @@ async function someFunction(someParameter) {
         env::remove_var("DISABLE_PBCOPY");
 
         // Run the generate_prompt binary in singular mode.
-        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
         cmd.arg("--singular");
         cmd.assert().success();
 

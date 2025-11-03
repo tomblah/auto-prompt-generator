@@ -2,7 +2,6 @@
 
 #[cfg(test)]
 mod integration_tests {
-    use assert_cmd::Command;
     use std::env;
     use std::fs;
     use std::path::PathBuf;
@@ -144,7 +143,7 @@ mod integration_tests {
         let original_path = env::var("PATH").unwrap();
         env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
 
-        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
         cmd.assert().success();
 
         let clipboard_content = fs::read_to_string(&clipboard_file)
@@ -212,7 +211,7 @@ mod integration_tests {
         let original_path = env::var("PATH").unwrap();
         env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
 
-        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
         cmd.arg("--singular");
         cmd.assert().success();
 
@@ -273,7 +272,7 @@ mod integration_tests {
         let original_path = env::var("PATH").unwrap();
         env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
 
-        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
         cmd.arg("--include-references");
         cmd.assert().success();
 
@@ -332,7 +331,7 @@ mod integration_tests {
         env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
 
         // Run generate_prompt with the exclusion flag for "Definition1.swift"
-        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
         cmd.arg("--exclude").arg("Definition1.swift");
         cmd.assert().success();
 
@@ -377,7 +376,7 @@ mod integration_tests {
         let original_path = env::var("PATH").unwrap();
         env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
 
-        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
         cmd.arg("--force-global");
         cmd.assert().success();
 
@@ -412,7 +411,7 @@ mod integration_tests {
         env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
 
         // Run generate_prompt (normal mode).
-        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
         cmd.assert().success();
 
         let clipboard_content = fs::read_to_string(&clipboard_file)
@@ -446,7 +445,7 @@ mod integration_tests {
         env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
 
         // Run generate_prompt (normal mode).
-        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
         cmd.assert().success();
 
         let clipboard_content = fs::read_to_string(&clipboard_file)
@@ -466,7 +465,6 @@ mod integration_tests {
 
 #[cfg(test)]
 mod integration_tests_substring_markers {
-    use assert_cmd::Command;
     use std::env;
     use std::fs;
     use tempfile::TempDir;
@@ -553,7 +551,7 @@ public func enclosingFunction<V: Equatable, W: Codable>(input: V) -> W? {
         env::remove_var("DISABLE_PBCOPY");
 
         // Run the generate_prompt binary in singular mode.
-        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
         cmd.arg("--singular");
         cmd.assert().success();
 

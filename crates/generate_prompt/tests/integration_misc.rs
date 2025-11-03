@@ -1,6 +1,5 @@
 // crates/generate_prompt/tests/integration_misc.rs
 
-use assert_cmd::Command;
 use predicates::prelude::*;
 use std::env;
 use std::fs;
@@ -50,7 +49,7 @@ fn test_generate_prompt_singular_mode() {
     env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
     env::set_var("DISABLE_PBCOPY", "1");
 
-    let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+    let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
     cmd.arg("--singular");
 
     cmd.assert()
@@ -94,7 +93,7 @@ fn test_generate_prompt_include_references_error_for_non_swift() {
     env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
     env::set_var("DISABLE_PBCOPY", "1");
 
-    let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+    let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
     cmd.arg("--include-references");
 
     cmd.assert()
@@ -141,7 +140,7 @@ fn test_generate_prompt_normal_mode() {
     env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
     env::set_var("DISABLE_PBCOPY", "1");
 
-    let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+    let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Found exactly one instruction in"))
@@ -184,7 +183,7 @@ fn test_generate_prompt_include_references_for_swift() {
     env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
     env::set_var("DISABLE_PBCOPY", "1");
 
-    let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+    let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
     cmd.arg("--include-references");
 
     cmd.assert()
@@ -227,7 +226,7 @@ fn test_generate_prompt_force_global() {
     env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
     env::set_var("DISABLE_PBCOPY", "1");
 
-    let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+    let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
     cmd.arg("--force-global");
 
     cmd.assert()
@@ -268,7 +267,7 @@ fn test_generate_prompt_exclude() {
     env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
     env::set_var("DISABLE_PBCOPY", "1");
 
-    let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+    let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
     cmd.args(&["--exclude", "ExcludePattern", "--exclude", "AnotherPattern"]);
 
     cmd.assert()
@@ -316,7 +315,7 @@ fn test_generate_prompt_multiple_markers() {
     env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
     env::remove_var("DISABLE_PBCOPY");
 
-    let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+    let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
     cmd.assert().success();
 
     let clipboard_content = fs::read_to_string(&clipboard_file)
@@ -386,7 +385,7 @@ esac
     let original_path = env::var("PATH").unwrap();
     env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
 
-    let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+    let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
     cmd.args(&["--diff-with", "main"]);
     cmd.assert().success();
 
@@ -450,7 +449,7 @@ esac
     env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
     env::remove_var("DISABLE_PBCOPY");
 
-    let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+    let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
     cmd.args(&["--diff-with", "nonexistent"]);
 
     cmd.assert()
@@ -497,7 +496,7 @@ The contents of Definition1.swift is as follows:\n\nclass TypeFixBug {}\n\n-----
     env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
     env::remove_var("DISABLE_PBCOPY");
 
-    let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+    let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
     cmd.assert().success();
 
     let clipboard_content = fs::read_to_string(&clipboard_file)
@@ -557,7 +556,7 @@ fn test_final_prompt_formatting_with_multiple_files() {
     env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
     env::remove_var("DISABLE_PBCOPY");
 
-    let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+    let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
     cmd.assert().success();
 
     let clipboard_content = fs::read_to_string(&clipboard_file)
@@ -601,7 +600,7 @@ The contents of Definition.swift is as follows:\n\nclass DummyType {}\n\n-------
     env::set_var("PATH", format!("{}:{}", temp_dir.path().to_str().unwrap(), original_path));
     env::remove_var("DISABLE_PBCOPY");
 
-    let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+    let mut cmd = assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"));
     cmd.assert().success();
 
     let clipboard_content = fs::read_to_string(&clipboard_file)

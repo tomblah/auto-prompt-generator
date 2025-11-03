@@ -1,7 +1,6 @@
 // crates/generate_prompt/tests/integration_objc.rs
 
 mod strict_end_to_end_tests {
-    use assert_cmd::Command;           // for running your binary via cargo_bin
     use std::env;                      // for env::set_var etc.
     use assert_fs::prelude::*;         // for methods like child(), which requires the PathChild trait
     use assert_fs::fixture::PathChild; // explicitly bring the PathChild trait into scope
@@ -52,7 +51,7 @@ mod strict_end_to_end_tests {
             .success();
 
         // Run the generate_prompt binary from the temporary directory.
-        Command::cargo_bin("generate_prompt")
+        assert_cmd::Command::from_std(assert_cmd::cargo::cargo_bin_cmd!("generate_prompt"))
             .unwrap()
             .current_dir(temp.path())
             .assert()
