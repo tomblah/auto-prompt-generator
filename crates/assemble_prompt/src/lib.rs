@@ -520,6 +520,14 @@ esac
         }
     }
 
+    struct TodoBasenameEchoProcessor;
+
+    impl FileProcessor for TodoBasenameEchoProcessor {
+        fn process_file(&self, _file_path: &Path, todo_file_basename: Option<&str>) -> anyhow::Result<String> {
+            Ok(format!("todo basename: {}", todo_file_basename.unwrap_or("<none>")))
+        }
+    }
+
     struct FailingMockProcessor;
 
     impl FileProcessor for FailingMockProcessor {
@@ -540,6 +548,39 @@ esac
         let output = assemble_prompt_with_processor(&found_files, &mock_processor)
             .expect("assemble_prompt_with_processor failed with mock processor");
         assert!(output.contains("mock processed content"), "Output should include the mock content");
+    }
+
+    #[test]
+    fn test_env_todo_file_basename_is_passed_to_processor() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "raw content").unwrap();
+        let file_path = file.path().to_str().unwrap().to_string();
+        let found_files = vec![file_path];
+
+        env::set_var("TODO_FILE_BASENAME", "Instruction.swift");
+
+        let output = assemble_prompt_with_processor(&found_files, &TodoBasenameEchoProcessor)
+            .expect("assemble_prompt_with_processor failed with echo processor");
+
+        assert!(output.contains("todo basename: Instruction.swift"));
+
+        env::remove_var("TODO_FILE_BASENAME");
+    }
+
+    #[test]
+    fn test_diff_output_requires_diff_with_branch_env() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "class NoDiff {{}}").unwrap();
+        let file_path = file.path().to_str().unwrap().to_string();
+        let found_files = vec![file_path];
+
+        env::remove_var("DIFF_WITH_BRANCH");
+
+        let output = assemble_prompt(&found_files, "ignored")
+            .expect("assemble_prompt failed");
+
+        assert!(!output.contains("The diff for"));
+        assert!(!output.contains("against branch"));
     }
 
     #[test]
