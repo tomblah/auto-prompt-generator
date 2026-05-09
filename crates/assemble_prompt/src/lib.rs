@@ -4,13 +4,22 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use anyhow::{Result};
-use substring_marker_snippet_extractor::processor::file_processor::{DefaultFileProcessor, process_file_with_processor};
+use substring_marker_snippet_extractor::processor::file_processor::{DefaultFileProcessor, FileProcessor, process_file_with_processor};
 use unescape_newlines::unescape_newlines;
 use diff_with_branch::run_diff;
+
+const FIXED_INSTRUCTION: &str = "Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen";
 
 /// Public API: assembles the final prompt from the found files (provided as an in‑memory slice)
 /// and instruction content. The prompt is returned as a String.
 pub fn assemble_prompt(found_files: &[String], _instruction_content: &str) -> Result<String> {
+    assemble_prompt_with_processor(found_files, &DefaultFileProcessor)
+}
+
+fn assemble_prompt_with_processor<P: FileProcessor>(
+    found_files: &[String],
+    processor: &P,
+) -> Result<String> {
     // Sort and deduplicate the list.
     let mut files = found_files.to_vec();
     files.sort();
@@ -32,8 +41,7 @@ pub fn assemble_prompt(found_files: &[String], _instruction_content: &str) -> Re
             .unwrap_or(&file_path)
             .to_string();
 
-        // Process the file using the DefaultFileProcessor.
-        let processed_content = match process_file_with_processor(&DefaultFileProcessor, &file_path, Some(&todo_file_basename)) {
+        let processed_content = match process_file_with_processor(processor, &file_path, Some(&todo_file_basename)) {
             Ok(content) => content,
             Err(err) => {
                 eprintln!("Error processing {}: {}. Falling back to raw file contents.", file_path, err);
@@ -68,8 +76,7 @@ pub fn assemble_prompt(found_files: &[String], _instruction_content: &str) -> Re
     }
 
     // Append the fixed instruction.
-    let fixed_instruction = "Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen";
-    final_prompt.push_str(&format!("\n\n{}", fixed_instruction));
+    final_prompt.push_str(&format!("\n\n{}", FIXED_INSTRUCTION));
 
     // Unescape literal "\n" sequences.
     let final_prompt = unescape_newlines(&final_prompt);
@@ -85,12 +92,7 @@ mod tests {
     use std::io::{Write};
     use std::path::Path;
     // Import from the file_processor submodule.
-    use substring_marker_snippet_extractor::processor::file_processor::{process_file_with_processor, FileProcessor};
-    use unescape_newlines::unescape_newlines;
-
-    fn fixed_instruction() -> &'static str {
-        "Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen"
-    }
+    use substring_marker_snippet_extractor::processor::file_processor::FileProcessor;
 
     #[test]
     fn test_fixed_instruction_appended() {
@@ -109,7 +111,7 @@ mod tests {
 
         // Verify that the output contains the file header and the fixed instruction.
         assert!(output.contains("The contents of"));
-        assert!(output.trim().ends_with(fixed_instruction()));
+        assert!(output.trim().ends_with(FIXED_INSTRUCTION));
     }
 
     #[test]
@@ -149,7 +151,7 @@ mod tests {
         // Verify that file contents and the fixed instruction are included.
         assert!(output.contains("class MyClass {"));
         assert!(output.contains("struct MyStruct {}"));
-        assert!(output.contains(fixed_instruction()));
+        assert!(output.contains(FIXED_INSTRUCTION));
     }
 
     #[test]
@@ -280,7 +282,7 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
 
         // Since the file doesn't exist, its header should not be included.
         assert!(!output.contains("file.swift"));
-        assert!(output.contains(fixed_instruction()));
+        assert!(output.contains(FIXED_INSTRUCTION));
     }
 
     #[test]
@@ -291,7 +293,7 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
             .expect("assemble_prompt failed");
 
         // With an empty list, the prompt should consist only of the fixed instruction.
-        assert!(output.trim().ends_with(fixed_instruction()));
+        assert!(output.trim().ends_with(FIXED_INSTRUCTION));
     }
 
     #[test]
@@ -508,51 +510,7 @@ esac
         env::set_var("PATH", original_path);
     }
 
-    // --- New tests using dependency injection and mocks ---
-
-    pub fn assemble_prompt_with_processor<P: FileProcessor>(
-        found_files: &[String],
-        _instruction_content: &str,
-        processor: &P,
-    ) -> anyhow::Result<String> {
-        // Mimic behavior by sorting and deduplicating the in-memory list.
-        let mut files: Vec<String> = found_files.to_vec();
-        files.sort();
-        files.dedup();
-        let mut final_prompt = String::new();
-        let todo_file_basename = env::var("TODO_FILE_BASENAME").unwrap_or_default();
-
-        for file_path in files {
-            if !Path::new(&file_path).exists() {
-                eprintln!("Warning: file {} does not exist, skipping", file_path);
-                continue;
-            }
-            let basename = Path::new(&file_path)
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or(&file_path)
-                .to_string();
-
-            let processed_content = match process_file_with_processor(processor, &file_path, Some(&todo_file_basename)) {
-                Ok(content) => content,
-                Err(err) => {
-                    eprintln!("Error processing {}: {}. Falling back to raw file contents.", file_path, err);
-                    fs::read_to_string(&file_path).unwrap_or_default()
-                }
-            };
-
-            final_prompt.push_str(&format!(
-                "\nThe contents of {} is as follows:\n\n{}\n\n",
-                basename, processed_content
-            ));
-
-            final_prompt.push_str("\n--------------------------------------------------\n");
-        }
-
-        final_prompt.push_str(&format!("\n\n{}", fixed_instruction()));
-        let final_prompt = unescape_newlines(&final_prompt);
-        Ok(final_prompt)
-    }
+    // --- Tests using dependency injection and mocks ---
 
     struct MockFileProcessor {
         return_value: String,
@@ -581,7 +539,7 @@ esac
 
         let mock_processor = MockFileProcessor { return_value: "mock processed content".to_string() };
 
-        let output = assemble_prompt_with_processor(&found_files, "ignored", &mock_processor)
+        let output = assemble_prompt_with_processor(&found_files, &mock_processor)
             .expect("assemble_prompt_with_processor failed with mock processor");
         assert!(output.contains("mock processed content"), "Output should include the mock content");
     }
@@ -595,7 +553,7 @@ esac
 
         let failing_processor = FailingMockProcessor;
 
-        let output = assemble_prompt_with_processor(&found_files, "ignored", &failing_processor)
+        let output = assemble_prompt_with_processor(&found_files, &failing_processor)
             .expect("assemble_prompt_with_processor failed with failing processor");
         // Since processing fails, it should fall back to reading the raw file content.
         assert!(output.contains("fallback content"), "Output should fallback to raw file content");
