@@ -9,7 +9,7 @@ description: Find low-hanging code smells and create a test-first cleanup plan. 
 
 Use this skill to create a plan for a small, reviewable cleanup branch. The skill is for planning only: do not implement the cleanup unless the user separately accepts the plan and asks to execute it.
 
-The plan must include a full regression-safety workflow before and after the cleanup, and it must end with committing the cleanup branch. Do not include merging into `main` or pushing unless the user explicitly asks for that later.
+The plan must include a full regression-safety workflow before and after the cleanup. It must commit test-strengthening work separately from the cleanup implementation, and it must end with committing the cleanup branch. Do not include merging into `main` or pushing unless the user explicitly asks for that later.
 
 ## Workflow
 
@@ -34,10 +34,11 @@ The plan must include a full regression-safety workflow before and after the cle
    - Add pre-work integration and/or unit tests if the current regression coverage is weak.
    - Run those new or existing focused tests before the refactor where practical.
    - Run the project validation gate and confirm it is green before changing production behavior.
+   - Commit the pre-work test-strengthening changes separately before starting the production cleanup.
    - Fix the smell with the smallest scoped code change.
    - Add extra unit tests for new failure paths or coverage gaps created by the refactor.
    - Run the focused tests and the entire test suite; fix any issues.
-   - Commit the completed branch, but do not merge or push.
+   - Commit the cleanup implementation separately, but do not merge or push.
 
 5. Include validation details in the plan.
    - Name the exact commands to run, such as `cargo test -p <package> -- --test-threads=1` or `make all`.
@@ -46,8 +47,9 @@ The plan must include a full regression-safety workflow before and after the cle
 
 6. Include commit guidance.
    - Commit only intended files.
+   - Use at least two commits when pre-work tests are added: one commit for regression-safety tests, then one commit for the cleanup implementation and any implementation-specific coverage.
    - Exclude broad formatting, generated reports, coverage artifacts, or validation side effects unless they are the actual goal.
-   - Stop after the commit and report the branch, commit hash, tests run, and any residual risk.
+   - Stop after the final cleanup commit and report the branch, commit hashes, tests run, and any residual risk.
 
 ## Plan Template
 
@@ -76,6 +78,7 @@ Branch setup:
 1. Add or confirm focused unit/integration coverage before refactoring.
 2. Run the focused tests.
 3. Run the project validation gate and sanity-check coverage if available.
+4. Commit the test-strengthening changes before changing production code.
 
 ## Cleanup Steps
 
@@ -83,7 +86,7 @@ Branch setup:
 2. Add extra unit tests for new failure paths or coverage gaps.
 3. Run focused tests and the full suite.
 4. Clean up unrelated validation side effects.
-5. Commit the branch.
+5. Commit the cleanup implementation separately from the pre-work tests.
 
 ## Out Of Scope
 
