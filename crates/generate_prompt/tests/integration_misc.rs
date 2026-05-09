@@ -460,6 +460,30 @@ esac
     env::remove_var("GET_GIT_ROOT");
 }
 
+/// --- Test: Diff With Git Execution Error ---
+/// When git cannot be executed while verifying DIFF_WITH_BRANCH, the program should fail.
+#[test]
+#[cfg(unix)]
+fn test_generate_prompt_diff_with_git_execution_error() {
+    let temp_dir = TempDir::new().unwrap();
+    let fake_git_root = TempDir::new().unwrap();
+    let fake_git_root_path = fake_git_root.path().to_str().unwrap();
+    env::set_var("GET_GIT_ROOT", fake_git_root_path);
+
+    let original_path = env::var("PATH").unwrap();
+    env::set_var("PATH", temp_dir.path().to_str().unwrap());
+
+    let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+    cmd.args(&["--diff-with", "main"]);
+
+    cmd.assert()
+       .failure()
+       .stderr(predicate::str::contains("Error executing git rev-parse"));
+
+    env::set_var("PATH", original_path);
+    env::remove_var("GET_GIT_ROOT");
+}
+
 /// --- Test: Final Prompt Copied to Clipboard ---
 /// Ensure that when the program runs, the final prompt is actually copied to the clipboard.
 #[test]

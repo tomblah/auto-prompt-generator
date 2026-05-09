@@ -112,13 +112,9 @@ fn main() -> Result<()> {
             .current_dir(&git_root)
             .stderr(Stdio::null())
             .status()
-            .unwrap_or_else(|err| {
-                eprintln!("Error executing git rev-parse: {}", err);
-                std::process::exit(1);
-            });
+            .with_context(|| "Error executing git rev-parse")?;
         if !verify_status.success() {
-            eprintln!("Error: Branch '{}' does not exist.", diff_branch);
-            std::process::exit(1);
+            return Err(anyhow!("Error: Branch '{}' does not exist.", diff_branch));
         }
     }
 
