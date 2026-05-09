@@ -85,8 +85,13 @@ impl<'a> PromptInstructionFinder<'a> {
                     .unwrap_or(SystemTime::UNIX_EPOCH);
                 mod_a.cmp(&mod_b)
             })
-            .expect("At least one file exists")
-            .clone();
+            .cloned()
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("No files found containing '{}'", self.todo_marker),
+                )
+            })?;
 
         // Check the chosen file: if it has more than one marker, exit with an error.
         let content = fs::read_to_string(&chosen_file)?;
