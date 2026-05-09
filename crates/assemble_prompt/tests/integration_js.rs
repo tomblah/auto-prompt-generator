@@ -44,11 +44,7 @@ mod integration_js {
 
         // Bind the file name to an owned String.
         let binding = PathBuf::from(&js_path);
-        let file_name = binding
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .into_owned();
+        let file_name = binding.file_name().unwrap().to_string_lossy().into_owned();
 
         // Check that the output contains the file header, the JS content, and the fixed instruction.
         assert!(
@@ -189,8 +185,8 @@ mod integration_js {
         // Use an empty in-memory found_files list.
         let found_files: Vec<String> = Vec::new();
 
-        let output = assemble_prompt(&found_files, "ignored instruction")
-            .expect("assemble_prompt failed");
+        let output =
+            assemble_prompt(&found_files, "ignored instruction").expect("assemble_prompt failed");
 
         let trimmed_output = output.trim();
         assert!(

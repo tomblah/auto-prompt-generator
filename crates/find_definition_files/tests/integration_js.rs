@@ -1,10 +1,10 @@
 // crates/find_definition_files/tests/integration_js.rs
 
+use find_definition_files::find_definition_files;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::tempdir;
-use find_definition_files::find_definition_files;
 
 mod integration_javascript {
     use super::*;
@@ -41,7 +41,8 @@ mod integration_javascript {
     }
 
     #[test]
-    fn test_find_definition_files_with_subdirectories_js() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_find_definition_files_with_subdirectories_js() -> Result<(), Box<dyn std::error::Error>>
+    {
         // Create a temporary directory with nested subdirectories.
         let dir = tempdir()?;
         let types_path = dir.path().join("types.txt");
@@ -114,7 +115,10 @@ mod integration_javascript {
         // Calling find_definition_files should return an empty set.
         let result = find_definition_files(types_content.as_str(), dir.path())
             .expect("Should succeed with empty set for empty types file");
-        assert!(result.is_empty(), "Expected an empty set when types file is empty");
+        assert!(
+            result.is_empty(),
+            "Expected an empty set when types file is empty"
+        );
     }
 
     #[test]

@@ -10,9 +10,7 @@ pub fn get_git_root() -> Result<String, String> {
         .output()
         .map_err(|e| format!("Failed to execute git: {}", e))?;
     if output.status.success() {
-        let git_root = String::from_utf8_lossy(&output.stdout)
-            .trim()
-            .to_string();
+        let git_root = String::from_utf8_lossy(&output.stdout).trim().to_string();
         Ok(git_root)
     } else {
         Err("Error: Not a git repository.".to_string())

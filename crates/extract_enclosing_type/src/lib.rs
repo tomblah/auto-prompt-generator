@@ -139,8 +139,8 @@ pub fn extract_enclosing_type(file_path: &str) -> Result<String, String> {
     }
 
     // 2️⃣  Regex fallback – scan line by line up to the marker.
-    let re = Regex::new(r"(class|struct|enum)\s+(\w+)")
-        .map_err(|e| format!("Regex error: {}", e))?;
+    let re =
+        Regex::new(r"(class|struct|enum)\s+(\w+)").map_err(|e| format!("Regex error: {}", e))?;
 
     let mut last_type: Option<String> = None;
     for line in content.lines() {
@@ -165,7 +165,6 @@ pub fn extract_enclosing_type(file_path: &str) -> Result<String, String> {
             .ok_or_else(|| "Unknown".to_string())
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -281,7 +280,7 @@ enum ThirdEnum {
         let err_msg = result.err().unwrap();
         assert!(err_msg.contains("Error reading file"));
     }
-    
+
     #[test]
     fn test_regex_fallback_with_invalid_swift() {
         let content = "\
@@ -296,7 +295,7 @@ enum ThirdEnum {
         let extracted = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
         assert_eq!(extracted, "ShouldNotBeFound");
     }
-    
+
     #[test]
     fn test_no_type_declaration() {
         let content = r#"
@@ -306,12 +305,12 @@ enum ThirdEnum {
         let tmp_dir = tempfile::tempdir().unwrap();
         let file_path = tmp_dir.path().join("NoType.swift");
         fs::write(&file_path, content).unwrap();
-        
+
         let result = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
         // Since no type is found, we expect it to fall back to the file stem ("NoType").
         assert_eq!(result, "NoType");
     }
-    
+
     #[test]
     fn test_regex_fallback_with_invalid_swift_variant() {
         let content = "\
@@ -326,7 +325,7 @@ enum ThirdEnum {
         let result = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
         assert_eq!(result, "ShouldNotBeFound");
     }
-    
+
     #[test]
     fn test_treesitter_finds_class_struct() {
         let content = r#"
@@ -524,7 +523,8 @@ enum ThirdEnum {
 
     #[test]
     fn test_skip_type_after_todo_offset() {
-        let content = "class EarlyClass {} // ...no TODO in content, but let's pretend it's earlier";
+        let content =
+            "class EarlyClass {} // ...no TODO in content, but let's pretend it's earlier";
         let todo_offset = 100;
         let mut parser = MockParserSkipType;
         let result = extract_enclosing_type_with_parser(content, todo_offset, &mut parser);

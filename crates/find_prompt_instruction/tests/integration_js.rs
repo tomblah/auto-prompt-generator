@@ -2,10 +2,10 @@
 
 #[cfg(test)]
 mod integration_js {
-    use std::fs;
-    use tempfile::tempdir;
     use filetime::{set_file_mtime, FileTime};
     use find_prompt_instruction::find_prompt_instruction_in_dir;
+    use std::fs;
+    use tempfile::tempdir;
 
     /// Test that when there is exactly one JavaScript file containing the TODO marker,
     /// the function returns that file.
@@ -13,7 +13,8 @@ mod integration_js {
     fn test_find_prompt_instruction_single_file_js() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("instruction.js");
-        let content = "function example() {}\n// TODO: - Fix the bug in JS code\nconsole.log('Hello');";
+        let content =
+            "function example() {}\n// TODO: - Fix the bug in JS code\nconsole.log('Hello');";
         fs::write(&file_path, content).unwrap();
 
         let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false)
@@ -54,7 +55,10 @@ mod integration_js {
         fs::write(&file_path, content).unwrap();
 
         let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false);
-        assert!(result.is_err(), "Expected an error when no JS file contains the TODO marker");
+        assert!(
+            result.is_err(),
+            "Expected an error when no JS file contains the TODO marker"
+        );
     }
 
     /// Test that files with disallowed extensions (e.g. .txt) are ignored even if they contain the marker.
@@ -66,7 +70,10 @@ mod integration_js {
         fs::write(&file_path, content).unwrap();
 
         let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false);
-        assert!(result.is_err(), "Expected error because files with disallowed extensions should be ignored");
+        assert!(
+            result.is_err(),
+            "Expected error because files with disallowed extensions should be ignored"
+        );
     }
 
     /// Test that enabling verbose mode does not change the returned file.

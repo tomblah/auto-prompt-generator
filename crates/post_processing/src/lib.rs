@@ -37,7 +37,10 @@ pub fn scrub_extra_todo_markers(
     // Ensure that the primary marker exists in the prompt.
     let primary_found = lines.iter().any(|line| line.trim() == primary_marker);
     if !primary_found {
-        return Err(format!("Primary marker '{}' not found in prompt", primary_marker));
+        return Err(format!(
+            "Primary marker '{}' not found in prompt",
+            primary_marker
+        ));
     }
 
     // Find the index of the last line that contains the marker substring.

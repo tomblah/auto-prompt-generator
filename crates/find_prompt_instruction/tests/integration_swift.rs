@@ -2,9 +2,9 @@
 
 #[cfg(test)]
 mod integration_swift {
+    use filetime::{set_file_mtime, FileTime};
     use std::fs;
     use tempfile::tempdir;
-    use filetime::{set_file_mtime, FileTime};
     // Import the public API from the find_prompt_instruction crate.
     use find_prompt_instruction::find_prompt_instruction_in_dir;
 
@@ -55,7 +55,10 @@ mod integration_swift {
         fs::write(&file_path, content).unwrap();
 
         let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false);
-        assert!(result.is_err(), "Expected an error when no file contains the TODO marker");
+        assert!(
+            result.is_err(),
+            "Expected an error when no file contains the TODO marker"
+        );
     }
 
     /// Test that files with disallowed extensions (e.g. .txt) are ignored.
@@ -68,7 +71,10 @@ mod integration_swift {
         fs::write(&file_path, content).unwrap();
 
         let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false);
-        assert!(result.is_err(), "Expected error because files with disallowed extensions are ignored");
+        assert!(
+            result.is_err(),
+            "Expected error because files with disallowed extensions are ignored"
+        );
     }
 
     /// Test that enabling verbose mode does not change the returned file.
@@ -83,7 +89,7 @@ mod integration_swift {
             .expect("Expected to find a file even with verbose enabled");
         assert_eq!(result, file_path);
     }
-    
+
     /// Test that if the most recent file contains multiple TODO markers,
     /// the function returns an error and the error message includes the trimmed marker lines.
     #[test]
@@ -115,13 +121,25 @@ Extra text";
         set_file_mtime(&ambiguous_file, newer_time).unwrap();
 
         let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false);
-        assert!(result.is_err(), "Expected error due to multiple markers in most recent file");
+        assert!(
+            result.is_err(),
+            "Expected error due to multiple markers in most recent file"
+        );
 
         if let Err(e) = result {
             let err_msg = e.to_string();
-            assert!(err_msg.to_lowercase().contains("ambiguous"), "Error message should indicate ambiguity");
-            assert!(err_msg.contains("// TODO: - First marker"), "Error message should include the first marker");
-            assert!(err_msg.contains("// TODO: - Second marker"), "Error message should include the second marker");
+            assert!(
+                err_msg.to_lowercase().contains("ambiguous"),
+                "Error message should indicate ambiguity"
+            );
+            assert!(
+                err_msg.contains("// TODO: - First marker"),
+                "Error message should include the first marker"
+            );
+            assert!(
+                err_msg.contains("// TODO: - Second marker"),
+                "Error message should include the second marker"
+            );
         }
     }
 
@@ -157,6 +175,9 @@ Extra text";
 
         let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false)
             .expect("Expected to select the most recent unambiguous file");
-        assert_eq!(result, unambiguous_file, "Expected the unambiguous file to be selected");
+        assert_eq!(
+            result, unambiguous_file,
+            "Expected the unambiguous file to be selected"
+        );
     }
 }

@@ -19,11 +19,7 @@ impl LanguageSupport for ObjCSupport {
         false
     }
 
-    fn resolve_dependency_path(
-        &self,
-        _line: &str,
-        _current_dir: &Path,
-    ) -> Option<PathBuf> {
+    fn resolve_dependency_path(&self, _line: &str, _current_dir: &Path) -> Option<PathBuf> {
         None
     }
 }

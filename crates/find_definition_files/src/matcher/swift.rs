@@ -1,7 +1,7 @@
 // crates/find_definition_files/src/matcher/swift.rs
 
-use regex::Regex;
 use crate::matcher::DefinitionMatcher;
+use regex::Regex;
 
 pub struct SwiftMatcher;
 

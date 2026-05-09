@@ -1,10 +1,10 @@
 // crates/find_definition_files/tests/integration_objc.rs
 
+use find_definition_files::find_definition_files;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::tempdir;
-use find_definition_files::find_definition_files;
 
 mod integration_objc {
     use super::*;
@@ -42,7 +42,8 @@ mod integration_objc {
     }
 
     #[test]
-    fn test_find_definition_files_with_subdirectories_objc() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_find_definition_files_with_subdirectories_objc(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempdir()?;
         let types_path = dir.path().join("types.txt");
         fs::write(&types_path, "MyType\n")?;
@@ -76,7 +77,8 @@ mod integration_objc {
     }
 
     #[test]
-    fn test_find_definition_files_non_objc_files_ignored() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_find_definition_files_non_objc_files_ignored() -> Result<(), Box<dyn std::error::Error>>
+    {
         let dir = tempdir()?;
         // Create a types file searching for "MyType".
         let types_path = dir.path().join("types.txt");

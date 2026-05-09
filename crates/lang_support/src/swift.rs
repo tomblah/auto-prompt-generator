@@ -20,15 +20,11 @@ pub(super) const SWIFT: SwiftSupport = SwiftSupport;
 
 // Matches `class Foo`, `struct Bar`, `enum Baz`, `protocol Qux`, `typealias Zap`
 static DECL_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r"\b(?:class|struct|enum|protocol|typealias)\s+([A-Z][A-Za-z0-9_]*)",
-    )
-    .unwrap()
+    Regex::new(r"\b(?:class|struct|enum|protocol|typealias)\s+([A-Z][A-Za-z0-9_]*)").unwrap()
 });
 
 // Matches a *call‑site* that looks like `identifier(`
-static CALL_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(").unwrap());
+static CALL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(").unwrap());
 
 // Reserved words & common keywords we don’t want as identifiers
 static RESERVED: &[&str] = &[
@@ -59,7 +55,12 @@ impl LanguageSupport for SwiftSupport {
         // 2️⃣  Function calls – this is what lets us pull helper files in
         for cap in CALL_RE.captures_iter(src) {
             let ident = &cap[1];
-            if !is_reserved(ident) && ident.chars().next().map(|c| c.is_ascii_lowercase()).unwrap_or(false)
+            if !is_reserved(ident)
+                && ident
+                    .chars()
+                    .next()
+                    .map(|c| c.is_ascii_lowercase())
+                    .unwrap_or(false)
             {
                 if !out.contains(&ident.to_string()) {
                     out.push(ident.to_string());

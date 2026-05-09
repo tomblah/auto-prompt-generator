@@ -1,9 +1,9 @@
 // crates/extract_types/tests/integration_js.rs
 
+use anyhow::Result;
 use extract_types::extract_types_from_file;
 use std::io::Write;
 use tempfile::NamedTempFile;
-use anyhow::Result;
 
 #[test]
 #[ignore] // Ignored until full JavaScript support is implemented.

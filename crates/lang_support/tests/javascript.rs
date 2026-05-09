@@ -51,7 +51,7 @@ fn file_defines_any_matches_various_forms() {
 fn for_extension_dispatches() {
     assert!(for_extension("JSx").is_some());
     assert!(for_extension("swift").is_some());
-    assert!(for_extension("h").is_some());   // Obj‑C
+    assert!(for_extension("h").is_some()); // Obj‑C
     assert!(for_extension("unknown").is_none());
 }
 
@@ -61,7 +61,7 @@ fn resolve_dependency_path_handles_import_and_require() {
 
     // temp dir to act as "current_dir"
     let dir = tempfile::TempDir::new().unwrap();
-    let cur   = dir.path();
+    let cur = dir.path();
 
     // 1️⃣  ES-module import ------------------------------------------
     let line_import = r#"import Foo from './foo.js';"#;

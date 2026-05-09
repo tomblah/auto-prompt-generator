@@ -2,8 +2,10 @@
 
 use std::fs;
 use std::path::PathBuf;
-use substring_marker_snippet_extractor::{filter_substring_markers};
-use substring_marker_snippet_extractor::processor::{DefaultFileProcessor, process_file_with_processor};
+use substring_marker_snippet_extractor::filter_substring_markers;
+use substring_marker_snippet_extractor::processor::{
+    process_file_with_processor, DefaultFileProcessor,
+};
 
 /// Helper function to create a temporary file with the given content.
 /// Returns the full path to the temporary file.
@@ -71,12 +73,15 @@ function myFunction() {
 
     // Compute the filtered content portion.
     let filtered = filter_substring_markers(content, "// ...");
-    
+
     // Verify that the result:
     // 1. Starts with the filtered marker content.
     // 2. Contains the header indicating that an enclosing context was appended.
     // 3. Contains some content from the extracted enclosing block (e.g. the function declaration).
-    assert!(result.starts_with(&filtered), "Result should start with the filtered content");
+    assert!(
+        result.starts_with(&filtered),
+        "Result should start with the filtered content"
+    );
     assert!(
         result.contains("// Enclosing function context:"),
         "Result should contain the enclosing context header"
@@ -85,7 +90,7 @@ function myFunction() {
         result.contains("function myFunction()"),
         "Result should contain the extracted function context"
     );
-    
+
     fs::remove_file(&path).expect("Failed to remove temporary file");
 }
 
@@ -93,8 +98,12 @@ function myFunction() {
 fn test_file_not_found() {
     // process_file should return an error when the file does not exist.
     let path = PathBuf::from("non_existent_file.js");
-    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some("non_existent_file.js"));
-    assert!(result.is_err(), "process_file should error for a non-existent file");
+    let result =
+        process_file_with_processor(&DefaultFileProcessor, &path, Some("non_existent_file.js"));
+    assert!(
+        result.is_err(),
+        "process_file should error for a non-existent file"
+    );
 }
 
 #[test]
@@ -118,12 +127,12 @@ line c
     let file_name = path.file_name().unwrap().to_str().unwrap();
     let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
         .expect("process_file should succeed for file with multiple marker blocks");
-    
+
     // In this scenario, since there is no TODO marker at all,
     // the output should be solely the filtered content.
     let expected = filter_substring_markers(content, "// ...");
     assert_eq!(result, expected);
-    
+
     fs::remove_file(&path).expect("Failed to remove temporary file");
 }
 
@@ -146,7 +155,7 @@ fn test_parse_cloud_after_save_quoted() {
     let path = create_temp_file_with_content(content);
     let file_name = path.file_name().unwrap().to_str().unwrap();
     let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
-       .expect("process_file should succeed for Parse.Cloud.afterSave with quoted argument");
+        .expect("process_file should succeed for Parse.Cloud.afterSave with quoted argument");
     assert!(result.contains("Parse.Cloud.afterSave(\"Message\", async (request) => {"));
     assert!(result.contains("// TODO: - Handle after save logic"));
     assert!(result.contains("console.log(\"AfterSave Teardown\");"));
@@ -171,7 +180,7 @@ fn test_parse_cloud_before_save_parse_user() {
     let path = create_temp_file_with_content(content);
     let file_name = path.file_name().unwrap().to_str().unwrap();
     let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
-       .expect("process_file should succeed for Parse.Cloud.beforeSave with Parse.User");
+        .expect("process_file should succeed for Parse.Cloud.beforeSave with Parse.User");
     assert!(result.contains("Parse.Cloud.beforeSave(Parse.User, async (request) => {"));
     assert!(result.contains("// TODO: - Process user before save"));
     assert!(result.contains("console.log(\"BeforeSave Complete\");"));
@@ -196,7 +205,7 @@ fn test_parse_cloud_after_save_parse_user() {
     let path = create_temp_file_with_content(content);
     let file_name = path.file_name().unwrap().to_str().unwrap();
     let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
-       .expect("process_file should succeed for Parse.Cloud.afterSave with Parse.User");
+        .expect("process_file should succeed for Parse.Cloud.afterSave with Parse.User");
     assert!(result.contains("Parse.Cloud.afterSave(Parse.User, async (request) => {"));
     assert!(result.contains("// TODO: - Process user after save"));
     assert!(result.contains("console.log(\"AfterSave End\");"));

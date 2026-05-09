@@ -1,14 +1,14 @@
 // crates/find_definition_files/tests/integration_swift.rs
 
+use find_definition_files::find_definition_files;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::tempdir;
-use find_definition_files::find_definition_files;
 
 mod integration_swift {
     use super::*;
-    
+
     #[test]
     fn test_find_definition_files_basic() -> Result<(), Box<dyn std::error::Error>> {
         // Create a temporary directory for the test.
@@ -89,7 +89,8 @@ mod integration_swift {
     }
 
     #[test]
-    fn test_find_definition_files_non_swift_files_ignored() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_find_definition_files_non_swift_files_ignored() -> Result<(), Box<dyn std::error::Error>>
+    {
         // Create a temporary directory.
         let dir = tempdir()?;
         // Create a types file that looks for "MyType".
@@ -129,7 +130,10 @@ mod integration_swift {
         // Calling find_definition_files should return an empty set.
         let result = find_definition_files(types_content.as_str(), dir.path())
             .expect("Should succeed with empty set for empty types file");
-        assert!(result.is_empty(), "Expected an empty set when types file is empty");
+        assert!(
+            result.is_empty(),
+            "Expected an empty set when types file is empty"
+        );
     }
 
     #[test]
