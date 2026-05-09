@@ -155,6 +155,27 @@ fn integration_extract_types_targeted_mode() -> Result<()> {
 }
 
 #[test]
+fn integration_extract_types_without_targeted_env_processes_full_content() -> Result<()> {
+    env::remove_var("TARGETED");
+
+    let swift_content = r#"
+        class OuterType {}
+        func testFunction() {
+            class InnerType {}
+            // TODO: - Perform action
+        }
+    "#;
+    let mut temp_file = NamedTempFile::new()?;
+    write!(temp_file, "{}", swift_content)?;
+
+    let result = extract_types_from_file(temp_file.path())?;
+    let expected = "InnerType\nOuterType\nPerform";
+    assert_eq!(result.trim(), expected);
+
+    Ok(())
+}
+
+#[test]
 fn integration_extract_types_targeted_mode_no_enclosing_block() -> Result<()> {
     // Set TARGETED so that only the enclosing block is processed.
     env::set_var("TARGETED", "1");
