@@ -1,0 +1,16 @@
+---
+description: Commit message format for this project
+alwaysApply: true
+---
+
+# Commit Messages
+
+Use Conventional Commits for non-merge commit subjects:
+
+```text
+<type>[optional scope]: <description>
+```
+
+Keep subjects concise and imperative. Use a body only when the reason is not obvious from the diff.
+
+Use the standard Conventional Commit types when they fit, and allow `cleanup:` as a repo-local type for small behavior-preserving smell fixes.
