@@ -9,7 +9,7 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use lang_support::for_extension;
-use substring_marker_snippet_extractor::utils::marker_utils::{
+use substring_marker_snippet_extractor::{
     file_uses_markers,
     filter_substring_markers,
     is_todo_inside_markers,
