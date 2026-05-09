@@ -85,8 +85,13 @@ impl<'a> PromptInstructionFinder<'a> {
                     .unwrap_or(SystemTime::UNIX_EPOCH);
                 mod_a.cmp(&mod_b)
             })
-            .expect("At least one file exists")
-            .clone();
+            .cloned()
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("No files found containing '{}'", self.todo_marker),
+                )
+            })?;
 
         // Check the chosen file: if it has more than one marker, exit with an error.
         let content = fs::read_to_string(&chosen_file)?;
@@ -163,7 +168,9 @@ mod tests {
         fs::write(&file_path, "Some random content without marker").unwrap();
 
         let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false);
-        assert!(result.is_err());
+        let err = result.expect_err("expected missing TODO marker to return an error");
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
+        assert!(err.to_string().contains(TODO_MARKER_WS));
     }
 
     #[test]
