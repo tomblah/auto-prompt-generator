@@ -1,0 +1,14 @@
+---
+description: Protect strict quality gates from being weakened
+alwaysApply: true
+---
+
+# Strict Quality Gates
+
+Do not weaken, bypass, remove, or make optional the project strictness gates unless Thomas explicitly directs it in the current conversation.
+
+Preserve warnings-as-errors behavior, including `.cargo/config.toml` Rust flags and Clippy `-D warnings` invocations.
+
+Preserve Git hook gates for formatting and linting. The repo-managed pre-commit hook must keep running read-only formatting checks and strict lint checks.
+
+Preserve `make all` as a strict gate that includes read-only formatting and linting checks before build, test, or coverage work.
