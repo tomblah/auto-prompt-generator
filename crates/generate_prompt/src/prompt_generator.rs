@@ -31,13 +31,12 @@ pub fn generate_prompt(
     include_references: bool,
     excludes: &[String],
 ) -> Result<()> {
-    // Set the environment variable for the TODO file's basename.
     let todo_file_basename = Path::new(file_path)
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or("")
         .to_string();
-    env::set_var("TODO_FILE_BASENAME", &todo_file_basename);
+    let diff_branch = env::var("DIFF_WITH_BRANCH").ok();
 
     // Check file type compatibility.
     if include_references && !file_path.ends_with(".swift") {
@@ -77,11 +76,18 @@ pub fn generate_prompt(
     )?;
 
     // Assemble the final prompt.
-    let assembled_prompt =
-        assemble_prompt::assemble_prompt(&found_files, instruction_content.trim())
-            .context("Failed to assemble prompt")?;
+    let assembly_options = assemble_prompt::AssemblyOptions {
+        todo_file_basename: Some(todo_file_basename),
+        diff_branch: diff_branch.clone(),
+    };
+    let assembled_prompt = assemble_prompt::assemble_prompt_with_options(
+        &found_files,
+        instruction_content.trim(),
+        &assembly_options,
+    )
+    .context("Failed to assemble prompt")?;
 
-    let diff_enabled = env::var("DIFF_WITH_BRANCH").is_ok();
+    let diff_enabled = diff_branch.is_some();
 
     // Post-process the prompt.
     let final_prompt = post_processing::scrub_extra_todo_markers(

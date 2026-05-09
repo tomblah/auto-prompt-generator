@@ -12,13 +12,23 @@ use std::process::{Command, Stdio};
 ///
 /// Returns an Err with an error message if any Git command fails.
 pub fn run_diff(file_path: &str) -> Result<Option<String>, String> {
+    // Read the branch name from the environment variable, default to "main".
+    let branch = env::var("DIFF_WITH_BRANCH").unwrap_or_else(|_| "main".to_string());
+    run_diff_against(file_path, &branch)
+}
+
+/// Returns the diff for the given file (if any), comparing the current working copy
+/// against the provided branch. If the file is not tracked by Git or there is no diff,
+/// returns Ok(None).
+///
+/// # Errors
+///
+/// Returns an Err with an error message if any Git command fails.
+pub fn run_diff_against(file_path: &str, branch: &str) -> Result<Option<String>, String> {
     let file_path_obj = Path::new(file_path);
     let file_dir = file_path_obj
         .parent()
         .ok_or_else(|| "Failed to determine file directory".to_string())?;
-    
-    // Read the branch name from the environment variable, default to "main".
-    let branch = env::var("DIFF_WITH_BRANCH").unwrap_or_else(|_| "main".to_string());
 
     // Check if the file is tracked by Git.
     let ls_files_status = Command::new("git")
@@ -35,7 +45,7 @@ pub fn run_diff(file_path: &str) -> Result<Option<String>, String> {
 
     // Get the diff between the current branch and the specified branch.
     let diff_output = Command::new("git")
-        .args(&["diff", &branch, "--", file_path])
+        .args(&["diff", branch, "--", file_path])
         .current_dir(file_dir)
         .stderr(Stdio::null())
         .output()
@@ -156,7 +166,7 @@ mod tests {
             writeln!(file, "Modified content").expect("Failed to write modification");
         }
 
-        let result = run_diff(file_path.to_str().unwrap());
+        let result = run_diff_against(file_path.to_str().unwrap(), "HEAD");
         assert!(result.is_ok());
         let diff = result.unwrap();
         assert!(diff.is_some(), "Expected diff but got None");
