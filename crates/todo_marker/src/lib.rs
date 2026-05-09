@@ -8,3 +8,14 @@ pub const TODO_MARKER: &str = "// TODO: -";
 /// Exact form **with** a trailing space (the version most
 /// parsers look for when scanning file content).
 pub const TODO_MARKER_WS: &str = "// TODO: - ";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_todo_marker_constants_match_expected_strings() {
+        assert_eq!(TODO_MARKER, "// TODO: -");
+        assert_eq!(TODO_MARKER_WS, "// TODO: - ");
+    }
+}

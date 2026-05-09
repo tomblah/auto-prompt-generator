@@ -4,6 +4,7 @@ use std::fs;
 use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
+use todo_marker::TODO_MARKER_WS;
 use walkdir::WalkDir;
 
 /// Searches the given directory (and its subdirectories) for files with allowed extensions
@@ -11,7 +12,7 @@ use walkdir::WalkDir;
 /// recent modification time. If verbose is true, logs extra details.
 ///
 /// Allowed extensions are: `swift`, `h`, `m`, and `js`.
-/// The marker searched for is: "// TODO: - "
+/// The marker searched for is `todo_marker::TODO_MARKER_WS`.
 pub fn find_prompt_instruction_in_dir(search_dir: &str, verbose: bool) -> io::Result<PathBuf> {
     // Internally use the finder struct.
     let finder = PromptInstructionFinder::new(search_dir, verbose);
@@ -33,7 +34,7 @@ impl<'a> PromptInstructionFinder<'a> {
             search_dir,
             verbose,
             allowed_extensions: &["swift", "h", "m", "js"],
-            todo_marker: "// TODO: - ",
+            todo_marker: TODO_MARKER_WS,
         }
     }
 
@@ -163,6 +164,14 @@ mod tests {
 
         let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_finder_uses_shared_todo_marker() {
+        let dir = tempdir().unwrap();
+        let finder = PromptInstructionFinder::new(dir.path().to_str().unwrap(), false);
+
+        assert_eq!(finder.todo_marker, todo_marker::TODO_MARKER_WS);
     }
 
     #[test]
