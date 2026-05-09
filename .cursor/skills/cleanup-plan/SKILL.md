@@ -16,7 +16,9 @@ The plan must include a full regression-safety workflow before and after the cle
 1. Confirm the repository state.
    - Check the current branch and working tree.
    - If there are unrelated changes, account for them in the plan and do not propose overwriting them.
-   - If the user asked to create a branch immediately, include the branch creation as the first execution step.
+   - Plan cleanup work from an up-to-date `main`: fetch `origin`, check out `main`, and pull with `--ff-only` before creating the cleanup branch.
+   - Create the cleanup branch from the updated `main`, not from an arbitrary feature branch.
+   - If the user asked to create a branch immediately, include refreshing `main` and creating the branch as the first execution steps.
 
 2. Look for low-hanging smell candidates.
    - Prefer small, high-confidence issues: duplicated constants, direct process exits in `Result`-returning code, silent fallbacks, production `unwrap`/`expect`, duplicated test helpers, dead code, or inconsistent error handling.
@@ -61,6 +63,13 @@ Use this structure for the final plan:
 ## Proposed Branch
 
 `<branch-name>`
+
+Branch setup:
+
+1. `git fetch origin`
+2. `git checkout main`
+3. `git pull --ff-only origin main`
+4. `git checkout -b <branch-name>`
 
 ## Regression Safety First
 
