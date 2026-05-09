@@ -163,7 +163,9 @@ mod tests {
         fs::write(&file_path, "Some random content without marker").unwrap();
 
         let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false);
-        assert!(result.is_err());
+        let err = result.expect_err("expected missing TODO marker to return an error");
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
+        assert!(err.to_string().contains(TODO_MARKER_WS));
     }
 
     #[test]
