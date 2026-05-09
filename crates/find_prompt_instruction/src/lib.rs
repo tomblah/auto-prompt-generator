@@ -273,16 +273,16 @@ mod tests {
         fs::write(&unreadable, "Some text\n// TODO: - Unreadable todo\nMore text").unwrap();
         fs::write(&readable, "Valid content\n// TODO: - Readable todo\nFooter").unwrap();
 
-        // Make the unreadable file have no read permissions.
-        let mut perms = fs::metadata(&unreadable).unwrap().permissions();
-        perms.set_mode(0o000);
-        fs::set_permissions(&unreadable, perms).unwrap();
-
         // Set modification times so that the readable file is more recent.
         let older_time = FileTime::from_unix_time(1000, 0);
         let newer_time = FileTime::from_unix_time(2000, 0);
         set_file_mtime(&unreadable, older_time).unwrap();
         set_file_mtime(&readable, newer_time).unwrap();
+
+        // Make the unreadable file have no read permissions after setting its mtime.
+        let mut perms = fs::metadata(&unreadable).unwrap().permissions();
+        perms.set_mode(0o000);
+        fs::set_permissions(&unreadable, perms).unwrap();
 
         let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false).unwrap();
         // The unreadable file should be skipped, so the returned file should be the readable one.
@@ -381,16 +381,16 @@ mod internal_tests {
         fs::write(&unreadable, "Content\n// TODO: - Unreadable todo\nMore").unwrap();
         fs::write(&readable, "Valid content\n// TODO: - Readable todo\nFooter").unwrap();
 
-        // Remove read permissions for the unreadable file.
-        let mut perms = fs::metadata(&unreadable).unwrap().permissions();
-        perms.set_mode(0o000);
-        fs::set_permissions(&unreadable, perms).unwrap();
-
         // Set modification times so the readable file is more recent.
         let ft_unreadable = FileTime::from_unix_time(1000, 0);
         let ft_readable = FileTime::from_unix_time(2000, 0);
         set_file_mtime(&unreadable, ft_unreadable).unwrap();
         set_file_mtime(&readable, ft_readable).unwrap();
+
+        // Remove read permissions for the unreadable file after setting its mtime.
+        let mut perms = fs::metadata(&unreadable).unwrap().permissions();
+        perms.set_mode(0o000);
+        fs::set_permissions(&unreadable, perms).unwrap();
 
         let finder = PromptInstructionFinder::new(dir.path().to_str().unwrap(), false);
         let chosen_file = finder.find().expect("Expected to pick a valid file");
