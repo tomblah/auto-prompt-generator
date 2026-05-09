@@ -45,7 +45,8 @@ The plan must include a full regression-safety workflow before and after the arc
 
 5. Include validation details in the plan.
    - Name exact commands to run, such as `cargo test -p <package> -- --test-threads=1`, targeted integration tests, `make test`, or `make all`.
-   - If `make all` includes coverage in the repo, call that out and plan a quick coverage sanity check.
+   - If `make all` includes coverage in the repo, call that out and record the baseline coverage before changing architecture.
+   - Add a coverage gate: after the whole update, final coverage must be equal to or greater than the recorded baseline coverage. If final coverage drops, fix the gap before committing the architecture implementation.
    - If tests are known to require serial execution, writable temp directories, git, network, or non-sandboxed permissions, document that in the plan.
 
 6. Include commit guidance.
@@ -114,7 +115,7 @@ Branch setup:
 
 1. Add or confirm characterization, unit, and integration coverage around the boundary before changing architecture.
 2. Run the focused tests.
-3. Run the project validation gate and sanity-check coverage if available.
+3. Run the project validation gate and record baseline coverage if available.
 4. Commit characterization and test-strengthening changes before changing production architecture using a Conventional Commits-style subject, usually `test:`.
 
 ## Architecture Steps
@@ -123,8 +124,9 @@ Branch setup:
 2. Update call sites and integration tests only for intentional contract changes.
 3. Add extra tests for new failure paths, migration behavior, or coverage gaps.
 4. Run focused tests and the full suite.
-5. Clean up unrelated validation side effects.
-6. Commit the architecture implementation separately from the pre-work tests using a Conventional Commits-style subject, usually `refactor:`, `cleanup:`, or `feat:`.
+5. Confirm final coverage is equal to or greater than the baseline coverage recorded before the architecture change.
+6. Clean up unrelated validation side effects.
+7. Commit the architecture implementation separately from the pre-work tests using a Conventional Commits-style subject, usually `refactor:`, `cleanup:`, or `feat:`.
 
 ## Out Of Scope
 
