@@ -22,4 +22,9 @@ encourages a clear separation of concerns.
 pub mod utils;
 pub mod processor;
 
-pub use utils::marker_utils::filter_substring_markers;
+pub use processor::{DefaultFileProcessor, FileProcessor, process_file_with_processor};
+pub use utils::marker_utils::{
+    file_uses_markers,
+    filter_substring_markers,
+    is_todo_inside_markers,
+};

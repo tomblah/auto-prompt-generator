@@ -4,7 +4,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use anyhow::{Result};
-use substring_marker_snippet_extractor::processor::file_processor::{DefaultFileProcessor, FileProcessor, process_file_with_processor};
+use substring_marker_snippet_extractor::{DefaultFileProcessor, FileProcessor, process_file_with_processor};
 use unescape_newlines::unescape_newlines;
 use diff_with_branch::run_diff;
 
@@ -91,8 +91,6 @@ mod tests {
     use std::env;
     use std::io::{Write};
     use std::path::Path;
-    // Import from the file_processor submodule.
-    use substring_marker_snippet_extractor::processor::file_processor::FileProcessor;
 
     #[test]
     fn test_fixed_instruction_appended() {

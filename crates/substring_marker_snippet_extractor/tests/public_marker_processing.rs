@@ -2,8 +2,8 @@
 
 use std::io::Write;
 
-use substring_marker_snippet_extractor::filter_substring_markers;
-use substring_marker_snippet_extractor::processor::{
+use substring_marker_snippet_extractor::{
+    filter_substring_markers,
     process_file_with_processor,
     DefaultFileProcessor,
 };
