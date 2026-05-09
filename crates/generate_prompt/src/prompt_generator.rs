@@ -1,12 +1,21 @@
 // crates/generate_prompt/src/prompt_generator.rs
 
 use anyhow::{anyhow, Context, Result};
-use std::env;
 use std::path::{Path, PathBuf};
 
 use crate::file_selector;
 use crate::search_root;
 use extract_instruction_content::extract_instruction_content;
+
+#[derive(Debug, Clone, Default)]
+pub struct GeneratePromptOptions {
+    pub singular: bool,
+    pub force_global: bool,
+    pub include_references: bool,
+    pub excludes: Vec<String>,
+    pub diff_branch: Option<String>,
+    pub targeted: bool,
+}
 
 /// Orchestrates the prompt-generation workflow.
 ///
@@ -21,6 +30,7 @@ use extract_instruction_content::extract_instruction_content;
 /// # Returns
 ///
 /// On success, returns `Ok(())`. On failure, returns an error via `anyhow::Result`.
+#[cfg(test)]
 pub fn generate_prompt(
     git_root: &str,
     file_path: &str,
@@ -29,29 +39,47 @@ pub fn generate_prompt(
     include_references: bool,
     excludes: &[String],
 ) -> Result<()> {
+    generate_prompt_with_options(
+        git_root,
+        file_path,
+        &GeneratePromptOptions {
+            singular,
+            force_global,
+            include_references,
+            excludes: excludes.to_vec(),
+            diff_branch: std::env::var("DIFF_WITH_BRANCH").ok(),
+            targeted: std::env::var("TARGETED").is_ok(),
+        },
+    )
+}
+
+pub fn generate_prompt_with_options(
+    git_root: &str,
+    file_path: &str,
+    options: &GeneratePromptOptions,
+) -> Result<()> {
     let todo_file_basename = Path::new(file_path)
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or("")
         .to_string();
-    let diff_branch = env::var("DIFF_WITH_BRANCH").ok();
 
     // Check file type compatibility.
-    if include_references && !file_path.ends_with(".swift") {
+    if options.include_references && !file_path.ends_with(".swift") {
         return Err(anyhow!(
             "--include-references is only supported for Swift files"
         ));
     }
 
     // Determine package scope.
-    let base_dir = if force_global {
+    let base_dir = if options.force_global {
         println!("Force global enabled: using Git root for context");
         PathBuf::from(git_root)
     } else {
         PathBuf::from(git_root)
     };
 
-    let search_root_path = if force_global {
+    let search_root_path = if options.force_global {
         base_dir.clone()
     } else {
         search_root::determine_search_root(&base_dir, file_path)
@@ -65,18 +93,21 @@ pub fn generate_prompt(
     println!("--------------------------------------------------");
 
     // Determine the list of files to include.
-    let found_files = file_selector::determine_files_to_include(
+    let found_files = file_selector::determine_files_to_include_with_options(
         file_path,
-        singular,
+        options.singular,
         &search_root_path,
-        excludes,
-        include_references,
+        &options.excludes,
+        &file_selector::FileSelectionOptions {
+            include_references: options.include_references,
+            targeted: options.targeted,
+        },
     )?;
 
     // Assemble the final prompt.
     let assembly_options = assemble_prompt::AssemblyOptions {
         todo_file_basename: Some(todo_file_basename),
-        diff_branch: diff_branch.clone(),
+        diff_branch: options.diff_branch.clone(),
     };
     let assembled_prompt = assemble_prompt::assemble_prompt_with_options(
         &found_files,
@@ -85,7 +116,7 @@ pub fn generate_prompt(
     )
     .context("Failed to assemble prompt")?;
 
-    let diff_enabled = diff_branch.is_some();
+    let diff_enabled = options.diff_branch.is_some();
 
     // Post-process the prompt.
     let final_prompt = post_processing::scrub_extra_todo_markers(
