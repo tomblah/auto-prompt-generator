@@ -1,14 +1,14 @@
 // crates/generate_prompt/src/prompt_generator.rs
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use std::env;
 use std::path::{Path, PathBuf};
 
-use extract_instruction_content::extract_instruction_content;
-use crate::search_root;
 use crate::file_selector;
-use assemble_prompt;    // imported as an external crate
-use post_processing;    // imported as an external crate
+use crate::search_root;
+use assemble_prompt; // imported as an external crate
+use extract_instruction_content::extract_instruction_content;
+use post_processing; // imported as an external crate
 
 /// Orchestrates the prompt-generation workflow.
 ///
@@ -41,8 +41,9 @@ pub fn generate_prompt(
 
     // Check file type compatibility.
     if include_references && !file_path.ends_with(".swift") {
-        eprintln!("Error: --include-references is only supported for Swift files.");
-        std::process::exit(1);
+        return Err(anyhow!(
+            "--include-references is only supported for Swift files"
+        ));
     }
 
     // Determine package scope.
@@ -61,8 +62,8 @@ pub fn generate_prompt(
     println!("Search root: {}", search_root_path.display());
 
     // Extract the instruction content.
-    let instruction_content = extract_instruction_content(file_path)
-        .context("Failed to extract instruction content")?;
+    let instruction_content =
+        extract_instruction_content(file_path).context("Failed to extract instruction content")?;
     println!("Instruction content: {}", instruction_content.trim());
     println!("--------------------------------------------------");
 
@@ -76,11 +77,9 @@ pub fn generate_prompt(
     )?;
 
     // Assemble the final prompt.
-    let assembled_prompt = assemble_prompt::assemble_prompt(
-        &found_files,
-        instruction_content.trim(),
-    )
-    .context("Failed to assemble prompt")?;
+    let assembled_prompt =
+        assemble_prompt::assemble_prompt(&found_files, instruction_content.trim())
+            .context("Failed to assemble prompt")?;
 
     let diff_enabled = env::var("DIFF_WITH_BRANCH").is_ok();
 
@@ -90,17 +89,11 @@ pub fn generate_prompt(
         diff_enabled,
         instruction_content.trim(),
     )
-    .unwrap_or_else(|err| {
-        eprintln!("Error during post-processing: {}", err);
-        std::process::exit(1);
-    });
+    .map_err(|err| anyhow!("Error during post-processing: {err}"))?;
 
     // Validate the marker count.
     crate::prompt_validation::validate_marker_count(&final_prompt, diff_enabled)
-        .unwrap_or_else(|err| {
-            eprintln!("{}", err);
-            std::process::exit(1);
-        });
+        .map_err(|err| anyhow!("Prompt marker validation failed: {err}"))?;
 
     println!("--------------------------------------------------");
     println!("Success:\n");
@@ -109,7 +102,7 @@ pub fn generate_prompt(
     println!("Prompt has been copied to clipboard.");
 
     // Copy the final prompt to the clipboard.
-    crate::clipboard::copy_to_clipboard(&final_prompt);
+    crate::clipboard::copy_to_clipboard(&final_prompt)?;
 
     Ok(())
 }
@@ -120,8 +113,8 @@ mod tests {
     use std::env;
     use std::fs::File;
     use std::io::Write;
-    use tempfile::tempdir;
     use std::path::PathBuf;
+    use tempfile::tempdir;
 
     /// Helper to write a file with the given contents.
     fn write_temp_file(dir: &PathBuf, filename: &str, contents: &str) -> PathBuf {
@@ -169,7 +162,10 @@ mod tests {
             include_references,
             &excludes,
         );
-        assert!(result.is_ok(), "Expected generate_prompt to succeed in singular mode");
+        assert!(
+            result.is_ok(),
+            "Expected generate_prompt to succeed in singular mode"
+        );
     }
 
     /// Test that generate_prompt succeeds in non‑singular mode for a Swift instruction file when include_references is enabled.
@@ -208,7 +204,37 @@ class Dummy {}
             include_references,
             &excludes,
         );
-        assert!(result.is_ok(), "Expected generate_prompt to succeed for Swift file with references");
+        assert!(
+            result.is_ok(),
+            "Expected generate_prompt to succeed for Swift file with references"
+        );
+    }
+
+    /// Regression test for the desired library behavior: unsupported reference lookup should return an error.
+    #[test]
+    fn test_generate_prompt_include_references_non_swift_returns_error() {
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let git_root = temp_dir.path().to_str().unwrap();
+        let file_content = r#"
+// Some JS code
+// TODO: - JS Test instruction
+"#;
+        let instruction_file = write_temp_file(
+            &temp_dir.path().to_path_buf(),
+            "instruction.js",
+            file_content,
+        );
+        let file_path_str = instruction_file.to_str().unwrap();
+        let excludes: Vec<String> = vec![];
+
+        let result = generate_prompt(git_root, file_path_str, false, false, true, &excludes);
+
+        let err = result.expect_err("Expected non-Swift include_references to return an error");
+        assert!(
+            err.to_string()
+                .contains("--include-references is only supported for Swift files"),
+            "Unexpected error: {err}"
+        );
     }
 
     /// Test that generate_prompt behaves correctly in force global mode.
@@ -247,7 +273,10 @@ class Dummy {}
             include_references,
             &excludes,
         );
-        assert!(result.is_ok(), "Expected generate_prompt to succeed in force global mode");
+        assert!(
+            result.is_ok(),
+            "Expected generate_prompt to succeed in force global mode"
+        );
     }
 
     /// Test that a JavaScript file triggers the warning but still succeeds.
@@ -286,6 +315,9 @@ class Dummy {}
             include_references,
             &excludes,
         );
-        assert!(result.is_ok(), "Expected generate_prompt to succeed for a JS file (with warning)");
+        assert!(
+            result.is_ok(),
+            "Expected generate_prompt to succeed for a JS file (with warning)"
+        );
     }
 }

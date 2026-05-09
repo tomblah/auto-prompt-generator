@@ -1,30 +1,37 @@
 // crates/generate_prompt/src/clipboard.rs
 
-use std::process::{Command, Stdio};
+use anyhow::{anyhow, Context, Result};
 use std::io::Write;
+use std::process::{Command, Stdio};
 use unescape_newlines::unescape_newlines;
 
 /// Copies the provided prompt to the clipboard using the `pbcopy` command.
 /// If the environment variable `DISABLE_PBCOPY` is set, the function logs a message and skips copying.
-pub fn copy_to_clipboard(final_prompt: &str) {
+pub fn copy_to_clipboard(final_prompt: &str) -> Result<()> {
     if std::env::var("DISABLE_PBCOPY").is_err() {
         let mut pbcopy = Command::new("pbcopy")
             .stdin(Stdio::piped())
             .spawn()
-            .unwrap_or_else(|err| {
-                eprintln!("Error running pbcopy: {}", err);
-                std::process::exit(1);
-            });
+            .context("Error running pbcopy")?;
         {
-            let pb_stdin = pbcopy.stdin.as_mut().expect("Failed to open pbcopy stdin");
+            let pb_stdin = pbcopy
+                .stdin
+                .as_mut()
+                .context("Failed to open pbcopy stdin")?;
             pb_stdin
                 .write_all(unescape_newlines(final_prompt).as_bytes())
-                .expect("Failed to write to pbcopy");
+                .context("Failed to write to pbcopy")?;
         }
-        pbcopy.wait().expect("Failed to wait on pbcopy");
+
+        let status = pbcopy.wait().context("Failed to wait on pbcopy")?;
+        if !status.success() {
+            return Err(anyhow!("pbcopy exited with status {status}"));
+        }
     } else {
         eprintln!("DISABLE_PBCOPY is set; skipping clipboard copy.");
     }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -33,9 +40,9 @@ mod tests {
     use std::env;
     use std::fs;
     use std::io::Read;
-    use tempfile::tempdir;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+    use tempfile::tempdir;
 
     #[test]
     fn test_copy_to_clipboard_disabled() {
@@ -43,7 +50,7 @@ mod tests {
         env::set_var("DISABLE_PBCOPY", "1");
 
         // Call the function. This branch should not attempt to run pbcopy.
-        copy_to_clipboard("Test\\nPrompt");
+        copy_to_clipboard("Test\\nPrompt").expect("clipboard copy should be skipped");
 
         // Clean up the environment variable.
         env::remove_var("DISABLE_PBCOPY");
@@ -68,7 +75,8 @@ mod tests {
         #[cfg(unix)]
         let script_content = "#!/bin/sh\ncat > \"$FAKE_PBCOPY_OUTPUT\"\n";
         #[cfg(windows)]
-        let script_content = "@echo off\r\nsetlocal\r\nset OUTPUT=%FAKE_PBCOPY_OUTPUT%\r\nmore > %OUTPUT%\r\n";
+        let script_content =
+            "@echo off\r\nsetlocal\r\nset OUTPUT=%FAKE_PBCOPY_OUTPUT%\r\nmore > %OUTPUT%\r\n";
 
         fs::write(&fake_pbcopy_path, script_content).expect("failed to write fake pbcopy script");
 
@@ -89,7 +97,7 @@ mod tests {
 
         // Call copy_to_clipboard with a prompt containing an escaped newline.
         // The unescape_newlines function should convert "Test\\nPrompt" to "Test\nPrompt".
-        copy_to_clipboard("Test\\nPrompt");
+        copy_to_clipboard("Test\\nPrompt").expect("clipboard copy should succeed");
 
         // Read the contents of the file where our fake pbcopy wrote the data.
         let mut output = String::new();
@@ -104,5 +112,37 @@ mod tests {
         // Restore the original PATH and clean up the FAKE_PBCOPY_OUTPUT variable.
         env::set_var("PATH", original_path);
         env::remove_var("FAKE_PBCOPY_OUTPUT");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_copy_to_clipboard_returns_error_when_pbcopy_fails() {
+        env::remove_var("DISABLE_PBCOPY");
+
+        let temp_dir = tempdir().expect("failed to create temp dir");
+        let fake_pbcopy_path = temp_dir.path().join("pbcopy");
+        fs::write(&fake_pbcopy_path, "#!/bin/sh\nexit 42\n")
+            .expect("failed to write fake pbcopy script");
+
+        let mut perms = fs::metadata(&fake_pbcopy_path)
+            .expect("failed to get metadata")
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&fake_pbcopy_path, perms).expect("failed to set permissions");
+
+        let original_path = env::var("PATH").unwrap_or_default();
+        env::set_var(
+            "PATH",
+            format!("{}:{}", temp_dir.path().display(), original_path),
+        );
+
+        let err = copy_to_clipboard("Test\\nPrompt")
+            .expect_err("expected failed pbcopy status to be returned");
+        assert!(
+            err.to_string().contains("pbcopy exited with status"),
+            "Unexpected error: {err}"
+        );
+
+        env::set_var("PATH", original_path);
     }
 }
