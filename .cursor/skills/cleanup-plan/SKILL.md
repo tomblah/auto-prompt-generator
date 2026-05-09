@@ -48,6 +48,8 @@ The plan must include a full regression-safety workflow before and after the cle
 6. Include commit guidance.
    - Commit only intended files.
    - Use at least two commits when pre-work tests are added: one commit for regression-safety tests, then one commit for the cleanup implementation and any implementation-specific coverage.
+   - Follow the project commit-message rule and use Conventional Commits-style subjects.
+   - Prefer `test:` for the pre-work test commit and `cleanup:` or `refactor:` for the cleanup implementation commit.
    - Exclude broad formatting, generated reports, coverage artifacts, or validation side effects unless they are the actual goal.
    - Stop after the final cleanup commit and report the branch, commit hashes, tests run, and any residual risk.
 
@@ -78,7 +80,7 @@ Branch setup:
 1. Add or confirm focused unit/integration coverage before refactoring.
 2. Run the focused tests.
 3. Run the project validation gate and sanity-check coverage if available.
-4. Commit the test-strengthening changes before changing production code.
+4. Commit the test-strengthening changes before changing production code using a Conventional Commits-style subject, usually `test:`.
 
 ## Cleanup Steps
 
@@ -86,7 +88,7 @@ Branch setup:
 2. Add extra unit tests for new failure paths or coverage gaps.
 3. Run focused tests and the full suite.
 4. Clean up unrelated validation side effects.
-5. Commit the cleanup implementation separately from the pre-work tests.
+5. Commit the cleanup implementation separately from the pre-work tests using a Conventional Commits-style subject, usually `cleanup:` or `refactor:`.
 
 ## Out Of Scope
 
