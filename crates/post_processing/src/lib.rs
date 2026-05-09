@@ -8,6 +8,7 @@ use todo_marker::TODO_MARKER;
 /// It removes all extra marker lines except:
 ///   - The first occurrence of a line exactly matching the supplied primary marker (if present), and
 ///   - The very last line that contains the marker substring.
+///
 /// If the primary marker isn’t found, an error is returned.
 ///
 /// # Arguments
@@ -49,7 +50,7 @@ pub fn scrub_extra_todo_markers(
         .enumerate()
         .filter(|(_, line)| line.contains(marker))
         .map(|(i, _)| i)
-        .last()
+        .next_back()
         .ok_or_else(|| "No marker lines found in prompt".to_string())?;
 
     let mut output_lines = Vec::with_capacity(lines.len());

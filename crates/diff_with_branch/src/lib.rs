@@ -32,7 +32,7 @@ pub fn run_diff_against(file_path: &str, branch: &str) -> Result<Option<String>,
 
     // Check if the file is tracked by Git.
     let ls_files_status = Command::new("git")
-        .args(&["ls-files", "--error-unmatch", file_path])
+        .args(["ls-files", "--error-unmatch", file_path])
         .current_dir(file_dir)
         .stderr(Stdio::null())
         .status()
@@ -45,7 +45,7 @@ pub fn run_diff_against(file_path: &str, branch: &str) -> Result<Option<String>,
 
     // Get the diff between the current branch and the specified branch.
     let diff_output = Command::new("git")
-        .args(&["diff", branch, "--", file_path])
+        .args(["diff", branch, "--", file_path])
         .current_dir(file_dir)
         .stderr(Stdio::null())
         .output()
@@ -80,12 +80,12 @@ mod tests {
 
         // Configure user.name and user.email so that commits don't fail.
         Command::new("git")
-            .args(&["config", "user.email", "test@example.com"])
+            .args(["config", "user.email", "test@example.com"])
             .current_dir(dir)
             .output()
             .expect("Failed to configure git user.email");
         Command::new("git")
-            .args(&["config", "user.name", "Test User"])
+            .args(["config", "user.name", "Test User"])
             .current_dir(dir)
             .output()
             .expect("Failed to configure git user.name");
@@ -121,12 +121,12 @@ mod tests {
             writeln!(file, "Initial content").expect("Failed to write to file");
         }
         Command::new("git")
-            .args(&["add", "tracked.txt"])
+            .args(["add", "tracked.txt"])
             .current_dir(temp_path)
             .output()
             .expect("Failed to add file");
         Command::new("git")
-            .args(&["commit", "-m", "Initial commit"])
+            .args(["commit", "-m", "Initial commit"])
             .current_dir(temp_path)
             .output()
             .expect("Failed to commit");
@@ -150,12 +150,12 @@ mod tests {
             writeln!(file, "Initial content").expect("Failed to write to file");
         }
         Command::new("git")
-            .args(&["add", "tracked.txt"])
+            .args(["add", "tracked.txt"])
             .current_dir(temp_path)
             .output()
             .expect("Failed to add file");
         Command::new("git")
-            .args(&["commit", "-m", "Initial commit"])
+            .args(["commit", "-m", "Initial commit"])
             .current_dir(temp_path)
             .output()
             .expect("Failed to commit");

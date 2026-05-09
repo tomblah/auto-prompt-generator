@@ -50,7 +50,7 @@ mod strict_end_to_end_tests {
         // Optionally, initialize a Git repository.
         StdCommand::new("git")
             .current_dir(temp.path())
-            .args(&["init"])
+            .args(["init"])
             .assert()
             .success();
 

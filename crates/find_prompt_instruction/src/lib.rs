@@ -58,7 +58,7 @@ impl<'a> PromptInstructionFinder<'a> {
                     let reader = io::BufReader::new(file);
                     reader
                         .lines()
-                        .filter_map(Result::ok)
+                        .map_while(Result::ok)
                         .any(|line| line.contains(self.todo_marker))
                 } else {
                     false
@@ -139,7 +139,7 @@ impl<'a> PromptInstructionFinder<'a> {
 fn extract_first_todo_line(path: &Path, marker: &str) -> Option<String> {
     if let Ok(file) = fs::File::open(path) {
         let reader = io::BufReader::new(file);
-        for line in reader.lines().filter_map(Result::ok) {
+        for line in reader.lines().map_while(Result::ok) {
             if line.contains(marker) {
                 return Some(line);
             }

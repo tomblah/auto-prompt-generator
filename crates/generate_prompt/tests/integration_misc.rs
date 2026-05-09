@@ -349,7 +349,7 @@ fn test_generate_prompt_exclude() {
     env::set_var("DISABLE_PBCOPY", "1");
 
     let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-    cmd.args(&["--exclude", "ExcludePattern", "--exclude", "AnotherPattern"]);
+    cmd.args(["--exclude", "ExcludePattern", "--exclude", "AnotherPattern"]);
 
     cmd.assert()
         .success()
@@ -494,7 +494,7 @@ esac
     );
 
     let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-    cmd.args(&["--diff-with", "main"]);
+    cmd.args(["--diff-with", "main"]);
     cmd.assert().success();
 
     let clipboard_content =
@@ -578,7 +578,7 @@ esac
     env::remove_var("DISABLE_PBCOPY");
 
     let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-    cmd.args(&["--diff-with", "nonexistent"]);
+    cmd.args(["--diff-with", "nonexistent"]);
 
     cmd.assert().failure().stderr(predicate::str::contains(
         "Error: Branch 'nonexistent' does not exist.",
@@ -601,7 +601,7 @@ fn test_generate_prompt_diff_with_git_execution_error() {
     env::set_var("PATH", temp_dir.path().to_str().unwrap());
 
     let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-    cmd.args(&["--diff-with", "main"]);
+    cmd.args(["--diff-with", "main"]);
 
     cmd.assert()
         .failure()

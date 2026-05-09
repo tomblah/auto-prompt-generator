@@ -10,13 +10,12 @@ use std::fs;
 use std::mem;
 use std::path::Path;
 use tree_sitter::{Node, Parser};
-use tree_sitter_swift;
 
 use todo_marker::{TODO_MARKER, TODO_MARKER_WS};
 
-/// ---------------------------------------------------------------------------
-///  Parser abstraction
-/// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+//  Parser abstraction
+// ---------------------------------------------------------------------------
 
 /// Something that can parse Swift source and give back a simplified tree.
 pub trait SwiftParser {
@@ -87,9 +86,9 @@ impl SwiftParser for RealSwiftParser {
     }
 }
 
-/// ---------------------------------------------------------------------------
-///  Tree walk helpers
-/// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+//  Tree walk helpers
+// ---------------------------------------------------------------------------
 
 fn find_last_type_declaration(node: &SwiftNode, todo_offset: usize) -> Option<String> {
     let mut candidate = None;
@@ -119,9 +118,9 @@ pub fn extract_enclosing_type_with_parser(
     find_last_type_declaration(&tree.root, todo_offset)
 }
 
-/// ---------------------------------------------------------------------------
-///  Public API – fall back to regex if parser fails
-/// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+//  Public API – fall back to regex if parser fails
+// ---------------------------------------------------------------------------
 
 /// Returns the enclosing type’s name, or (as a last resort) the file’s stem.
 pub fn extract_enclosing_type(file_path: &str) -> Result<String, String> {
@@ -170,7 +169,6 @@ pub fn extract_enclosing_type(file_path: &str) -> Result<String, String> {
 mod tests {
     use super::*;
     use std::fs;
-    use tempfile;
 
     #[test]
     fn test_extract_from_file_with_type_before_todo() {
@@ -360,7 +358,7 @@ enum ThirdEnum {
     #[test]
     fn test_extract_enclosing_type_with_parser_returns_none() {
         let content = "irrelevant";
-        let mut parser = MockSwiftParserFailure::default();
+        let mut parser = MockSwiftParserFailure;
         let todo_offset = content.len();
         let result = extract_enclosing_type_with_parser(content, todo_offset, &mut parser);
         // This should simulate the failure branch, without invoking unsafe code.
@@ -405,7 +403,7 @@ enum ThirdEnum {
     #[test]
     fn test_parse_content_returns_none() {
         let content = "irrelevant";
-        let mut parser = MockSwiftParserNone::default();
+        let mut parser = MockSwiftParserNone;
         let todo_offset = content.len();
         let result = extract_enclosing_type_with_parser(content, todo_offset, &mut parser);
         // We expect None, which covers the path in `extract_enclosing_type_with_parser`

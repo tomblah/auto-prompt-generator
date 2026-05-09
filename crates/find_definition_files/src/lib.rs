@@ -371,7 +371,7 @@ mod tests {
         // Create a subdirectory "SubPackage" that contains a Package.swift file.
         let subpackage = root.join("SubPackage");
         fs::create_dir_all(&subpackage).unwrap();
-        fs::write(&subpackage.join("Package.swift"), "swift package content").unwrap();
+        fs::write(subpackage.join("Package.swift"), "swift package content").unwrap();
 
         let roots = get_search_roots(root).unwrap();
         // Should include both the root and the subpackage directory.

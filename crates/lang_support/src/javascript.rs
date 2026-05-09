@@ -52,10 +52,11 @@ impl LanguageSupport for JavaScriptSupport {
         // Function / method calls
         for cap in CALL_RE.captures_iter(src) {
             let ident = &cap[1];
-            if !is_reserved(ident) && ident.chars().next().unwrap_or(' ').is_ascii_lowercase() {
-                if !out.contains(&ident.to_string()) {
-                    out.push(ident.to_string());
-                }
+            if !is_reserved(ident)
+                && ident.chars().next().unwrap_or(' ').is_ascii_lowercase()
+                && !out.contains(&ident.to_string())
+            {
+                out.push(ident.to_string());
             }
         }
 
@@ -126,7 +127,7 @@ impl LanguageSupport for JavaScriptSupport {
             .unwrap()
             .captures(line)
         {
-            return Some(current_dir.join(cap[1].to_string()));
+            return Some(current_dir.join(&cap[1]));
         }
 
         // const foo = require('./foo')
@@ -134,7 +135,7 @@ impl LanguageSupport for JavaScriptSupport {
             .unwrap()
             .captures(line)
         {
-            return Some(current_dir.join(cap[1].to_string()));
+            return Some(current_dir.join(&cap[1]));
         }
 
         None

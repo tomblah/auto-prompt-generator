@@ -134,7 +134,7 @@ pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> 
         let mut filtered = filter_substring_markers(&full_content, "");
         if !filtered.contains(TODO_MARKER) {
             if let Some(enclosing) = extract_enclosing_block_from_content(&full_content) {
-                filtered.push_str("\n");
+                filtered.push('\n');
                 filtered.push_str(&enclosing);
             }
         }
@@ -147,7 +147,7 @@ pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> 
     let reader = BufReader::new(content_slice.as_bytes());
     let extractor = TypeExtractor::new()?;
     let mut all_types: BTreeSet<String> =
-        extractor.extract_types(reader.lines().filter_map(Result::ok));
+        extractor.extract_types(reader.lines().map_while(Result::ok));
 
     // 2️⃣  Language‑specific extraction on the SAME slice
     if let Some(ext) = swift_file.as_ref().extension().and_then(|s| s.to_str()) {
@@ -176,12 +176,12 @@ fn extract_enclosing_block_from_content(content: &str) -> Option<String> {
     let mut candidate_index = None;
     for i in 0..todo_idx {
         let line = lines[i];
-        if is_candidate_line(line) {
+        let diff_candidate = (line.trim_start().starts_with('-')
+            || line.trim_start().starts_with('+'))
+            && i + 1 < todo_idx
+            && lines[i + 1].contains('{');
+        if is_candidate_line(line) || diff_candidate {
             candidate_index = Some(i);
-        } else if line.trim_start().starts_with('-') || line.trim_start().starts_with('+') {
-            if i + 1 < todo_idx && lines[i + 1].contains('{') {
-                candidate_index = Some(i);
-            }
         }
     }
     let start_index = candidate_index?;

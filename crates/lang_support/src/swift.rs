@@ -61,10 +61,9 @@ impl LanguageSupport for SwiftSupport {
                     .next()
                     .map(|c| c.is_ascii_lowercase())
                     .unwrap_or(false)
+                && !out.contains(&ident.to_string())
             {
-                if !out.contains(&ident.to_string()) {
-                    out.push(ident.to_string());
-                }
+                out.push(ident.to_string());
             }
         }
 

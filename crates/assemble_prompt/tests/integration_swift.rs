@@ -297,7 +297,7 @@ public func genericFunction<T: Equatable>(param: T) -> T? {
         // Initialize a new git repository.
         let init_status = Command::new("git")
             .arg("init")
-            .current_dir(&repo_path)
+            .current_dir(repo_path)
             .status()
             .expect("Failed to initialize git repository");
         assert!(init_status.success(), "Git init failed");
@@ -309,15 +309,15 @@ public func genericFunction<T: Equatable>(param: T) -> T? {
 
         // Add and commit the file.
         let add_status = Command::new("git")
-            .args(&["add", "DiffTest.swift"])
-            .current_dir(&repo_path)
+            .args(["add", "DiffTest.swift"])
+            .current_dir(repo_path)
             .status()
             .expect("Failed to git add file");
         assert!(add_status.success(), "Git add failed");
 
         let commit_status = Command::new("git")
-            .args(&["commit", "-m", "Initial commit"])
-            .current_dir(&repo_path)
+            .args(["commit", "-m", "Initial commit"])
+            .current_dir(repo_path)
             .status()
             .expect("Failed to git commit");
         assert!(commit_status.success(), "Git commit failed");

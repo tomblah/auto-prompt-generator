@@ -4,7 +4,6 @@ use anyhow::Result;
 use extract_enclosing_type::extract_enclosing_type;
 use extract_types::extract_types_from_file;
 use find_definition_files::find_definition_files;
-use find_referencing_files;
 use std::path::Path;
 
 /// Determines the list of files to include in the prompt based on the given parameters.

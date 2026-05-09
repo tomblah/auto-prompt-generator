@@ -108,7 +108,7 @@ fn main() -> Result<()> {
     // 2. If a diff branch is specified, verify it exists.
     if let Ok(diff_branch) = env::var("DIFF_WITH_BRANCH") {
         let verify_status = ProcessCommand::new("git")
-            .args(&["rev-parse", "--verify", &diff_branch])
+            .args(["rev-parse", "--verify", &diff_branch])
             .current_dir(&git_root)
             .stderr(Stdio::null())
             .status()

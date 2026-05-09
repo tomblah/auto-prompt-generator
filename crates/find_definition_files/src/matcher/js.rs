@@ -9,7 +9,7 @@ impl DefinitionMatcher for JSMatcher {
     fn matches_definition(&self, file_content: &str, type_name: &str) -> bool {
         // Look for a JS class declaration using the "class" keyword.
         let pattern = format!(r"\bclass\s+{}\b", regex::escape(type_name));
-        Regex::new(&pattern).map_or(false, |re| re.is_match(file_content))
+        Regex::new(&pattern).is_ok_and(|re| re.is_match(file_content))
     }
 }
 

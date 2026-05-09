@@ -707,7 +707,7 @@ mod integration_diff {
         // Initialize a Git repository.
         let init_status = StdCommand::new("git")
             .arg("init")
-            .current_dir(&git_root_path)
+            .current_dir(git_root_path)
             .status()
             .expect("Failed to initialize git repository");
         assert!(init_status.success(), "Git init failed");
@@ -729,14 +729,14 @@ mod integration_diff {
 
         // Add and commit Instruction.swift.
         let add_status = StdCommand::new("git")
-            .args(&["add", "Instruction.swift"])
+            .args(["add", "Instruction.swift"])
             .current_dir(&package_dir)
             .status()
             .expect("Failed to git add Instruction.swift");
         assert!(add_status.success(), "Git add failed");
 
         let commit_status = StdCommand::new("git")
-            .args(&["commit", "-m", "Initial commit"])
+            .args(["commit", "-m", "Initial commit"])
             .current_dir(&package_dir)
             .status()
             .expect("Failed to git commit");
@@ -921,7 +921,7 @@ public class Dummy {
         // Initialize a Git repository (without any commits so HEAD does not exist).
         let init_status = StdCommand::new("git")
             .arg("init")
-            .current_dir(&git_root_path)
+            .current_dir(git_root_path)
             .status()
             .expect("Failed to initialize git repository");
         assert!(init_status.success(), "Git init failed");
@@ -994,7 +994,7 @@ mod strict_end_to_end_tests {
         // Initialize the temporary directory as a git repository.
         StdCommand::new("git")
             .current_dir(temp.path())
-            .args(&["init"])
+            .args(["init"])
             .assert()
             .success();
 
@@ -1058,7 +1058,7 @@ func exampleFunction() {
         // Initialize a Git repository in the temp directory.
         StdCommand::new("git")
             .current_dir(temp.path())
-            .args(&["init"])
+            .args(["init"])
             .assert()
             .success();
 
@@ -1122,7 +1122,7 @@ mod targeted_mode {
         // Initialize the temporary directory as a Git repository.
         StdCommand::new("git")
             .current_dir(temp.path())
-            .args(&["init"])
+            .args(["init"])
             .assert()
             .success();
 

@@ -23,7 +23,7 @@ pub fn get_search_roots(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     let mut found_dirs: BTreeSet<PathBuf> = BTreeSet::new();
 
     // Include the provided root unless its basename is ".build".
-    if root.file_name().map_or(true, |name| name != ".build") {
+    if root.file_name().is_none_or(|name| name != ".build") {
         found_dirs.insert(root.to_path_buf());
     }
 

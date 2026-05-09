@@ -11,7 +11,7 @@ impl DefinitionMatcher for SwiftMatcher {
             r"\b(?:class|struct|enum|protocol|typealias)\s+{}\b",
             regex::escape(type_name)
         );
-        Regex::new(&pattern).map_or(false, |re| re.is_match(file_content))
+        Regex::new(&pattern).is_ok_and(|re| re.is_match(file_content))
     }
 }
 

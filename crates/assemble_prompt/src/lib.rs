@@ -79,7 +79,7 @@ fn assemble_prompt_with_processor_and_options<P: FileProcessor>(
             .to_string();
 
         let processed_content =
-            match process_file_with_processor(processor, &file_path, Some(&todo_file_basename)) {
+            match process_file_with_processor(processor, &file_path, Some(todo_file_basename)) {
                 Ok(content) => content,
                 Err(err) => {
                     eprintln!(
