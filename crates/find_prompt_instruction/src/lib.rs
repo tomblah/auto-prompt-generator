@@ -266,6 +266,17 @@ mod tests {
     }
 
     #[test]
+    fn test_verbose_output_with_single_file() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("single.swift");
+        fs::write(&file_path, "Header\n// TODO: - Single verbose todo\nFooter").unwrap();
+
+        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), true).unwrap();
+
+        assert_eq!(result, file_path);
+    }
+
+    #[test]
     fn test_same_modification_time_tie() {
         let dir = tempdir().unwrap();
         let file1 = dir.path().join("tie1.swift");
