@@ -1,6 +1,6 @@
 // crates/generate_prompt/src/main.rs
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::{Arg, Command};
 use std::env;
 use std::process::{Command as ProcessCommand, Stdio};
@@ -9,11 +9,11 @@ use std::process::{Command as ProcessCommand, Stdio};
 use get_git_root::get_git_root;
 
 mod clipboard;
-mod search_root;
 mod file_selector;
-mod prompt_validation;
 mod instruction_locator;
-mod prompt_generator; // New module containing the core orchestration
+mod prompt_generator;
+mod prompt_validation;
+mod search_root;
 
 fn main() -> Result<()> {
     let matches = Command::new("generate_prompt")
@@ -98,7 +98,9 @@ fn main() -> Result<()> {
     let git_root = if let Ok(git_root_override) = env::var("GET_GIT_ROOT") {
         git_root_override
     } else {
-        get_git_root().expect("Failed to determine Git root")
+        get_git_root()
+            .map_err(|err| anyhow!("{err}"))
+            .context("Failed to determine Git root")?
     };
     println!("Git root: {}", git_root);
     println!("--------------------------------------------------");
