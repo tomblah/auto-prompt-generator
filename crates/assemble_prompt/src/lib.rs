@@ -109,7 +109,7 @@ mod tests {
 
         // Verify that the output contains the file header and the fixed instruction.
         assert!(output.contains("The contents of"));
-        assert!(output.contains("Can you do the TODO:- in the above code? But ignoring all FIXMEs"));
+        assert!(output.trim().ends_with(fixed_instruction()));
     }
 
     #[test]
@@ -150,6 +150,41 @@ mod tests {
         assert!(output.contains("class MyClass {"));
         assert!(output.contains("struct MyStruct {}"));
         assert!(output.contains(fixed_instruction()));
+    }
+
+    #[test]
+    fn test_files_are_sorted_and_deduplicated_before_rendering() {
+        env::remove_var("DIFF_WITH_BRANCH");
+
+        let dir = tempdir().expect("Failed to create temp dir");
+        let a_path = dir.path().join("a.swift");
+        let b_path = dir.path().join("b.swift");
+        fs::write(&a_path, "struct A {}\n").expect("Failed to write a.swift");
+        fs::write(&b_path, "struct B {}\n").expect("Failed to write b.swift");
+
+        let found_files = vec![
+            b_path.to_string_lossy().into_owned(),
+            a_path.to_string_lossy().into_owned(),
+            b_path.to_string_lossy().into_owned(),
+        ];
+
+        let output = assemble_prompt(&found_files, "ignored")
+            .expect("assemble_prompt failed");
+        let a_header = format!(
+            "The contents of {} is as follows:",
+            a_path.file_name().unwrap().to_string_lossy()
+        );
+        let b_header = format!(
+            "The contents of {} is as follows:",
+            b_path.file_name().unwrap().to_string_lossy()
+        );
+
+        assert_eq!(output.matches(&a_header).count(), 1);
+        assert_eq!(output.matches(&b_header).count(), 1);
+        assert!(
+            output.find(&a_header).expect("missing a.swift header")
+                < output.find(&b_header).expect("missing b.swift header")
+        );
     }
 
     #[test]
