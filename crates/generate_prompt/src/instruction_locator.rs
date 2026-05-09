@@ -1,8 +1,8 @@
 // crates/generate_prompt/src/instruction_locator.rs
 
 use anyhow::{Context, Result};
-use std::env;
 use find_prompt_instruction::find_prompt_instruction_in_dir;
+use std::env;
 
 /// Locates the TODO instruction file.
 ///

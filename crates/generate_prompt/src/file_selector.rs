@@ -1,11 +1,10 @@
 // crates/generate_prompt/src/file_selector.rs
 
-use std::path::Path;
 use anyhow::Result;
+use extract_enclosing_type::extract_enclosing_type;
 use extract_types::extract_types_from_file;
 use find_definition_files::find_definition_files;
-use extract_enclosing_type::extract_enclosing_type;
-use find_referencing_files;
+use std::path::Path;
 
 /// Determines the list of files to include in the prompt based on the given parameters.
 ///
@@ -48,15 +47,15 @@ pub fn determine_files_to_include(
         // Find definition files using the extracted types.
         let def_files_set = find_definition_files(types_content.as_str(), search_root)
             .map_err(|err| anyhow::anyhow!("Failed to find definition files: {}", err))?;
-        
+
         // Add definition files to the in-memory list.
         for path in def_files_set {
             found_files.push(path.to_string_lossy().into_owned());
         }
-        
+
         // Append the instruction file.
         found_files.push(file_path.to_string());
-        
+
         // Apply exclusion filtering.
         if !excludes.is_empty() {
             println!("Excluding files matching: {:?}", excludes);
@@ -123,9 +122,9 @@ pub fn determine_files_to_include(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::{tempdir, NamedTempFile};
     use std::fs::File;
     use std::io::Write;
+    use tempfile::{tempdir, NamedTempFile};
 
     /// In singular mode, only the instruction file should be returned.
     #[test]

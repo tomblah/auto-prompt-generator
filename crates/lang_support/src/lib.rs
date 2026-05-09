@@ -40,9 +40,9 @@ pub fn for_extension(ext: &str) -> Option<&'static dyn LanguageSupport> {
 // ---------------------------------------------------------------------------
 //  One sub‑module per language
 // ---------------------------------------------------------------------------
-mod swift;
 mod javascript;
 mod objc;
+mod swift;
 
 // Re‑export the trait so callers can `use lang_support::LanguageSupport;`
 pub use self::LanguageSupport as _;

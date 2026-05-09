@@ -1,9 +1,9 @@
 // crates/extract_instruction_content/src/lib.rs
 
+use anyhow::{Context, Result};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use anyhow::{Context, Result};
 use todo_marker::TODO_MARKER_WS as MARK;
 
 /// Reads the given Swift file and returns the first line that contains the TODO marker.
@@ -24,21 +24,25 @@ pub fn extract_instruction_content<P: AsRef<Path>>(file_path: P) -> Result<Strin
     let marker = MARK;
 
     for line in reader.lines() {
-        let line = line.with_context(|| format!("Error reading file {}", file_path_ref.display()))?;
+        let line =
+            line.with_context(|| format!("Error reading file {}", file_path_ref.display()))?;
         if line.contains(marker) {
             return Ok(line.trim_start().to_string());
         }
     }
 
-    anyhow::bail!("No valid TODO instruction found in {}", file_path_ref.display());
+    anyhow::bail!(
+        "No valid TODO instruction found in {}",
+        file_path_ref.display()
+    );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Write;
-    use tempfile::NamedTempFile;
     use std::path::Path;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_extract_valid_todo() {
@@ -89,14 +93,13 @@ mod tests {
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Error opening file"));
     }
-    
+
     #[test]
     fn test_extract_instruction_read_error() {
         use std::io::Write;
 
         // Create a temporary file and write invalid UTF-8 bytes
-        let mut temp_file = tempfile::NamedTempFile::new()
-            .expect("Failed to create temp file");
+        let mut temp_file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
         let invalid_utf8 = [0xFF, 0xFE, 0xFD];
         temp_file
             .write_all(&invalid_utf8)

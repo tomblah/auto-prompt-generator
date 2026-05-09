@@ -2,8 +2,10 @@
 
 use std::fs;
 use std::path::PathBuf;
-use substring_marker_snippet_extractor::{filter_substring_markers};
-use substring_marker_snippet_extractor::processor::{DefaultFileProcessor, process_file_with_processor};
+use substring_marker_snippet_extractor::filter_substring_markers;
+use substring_marker_snippet_extractor::processor::{
+    process_file_with_processor, DefaultFileProcessor,
+};
 
 /// Helper function to create a temporary Objective‑C file with the given content.
 /// Returns the full path to the temporary file.
@@ -103,12 +105,15 @@ fn test_markers_todo_outside_objc() {
 
     // Compute the filtered content portion.
     let filtered = filter_substring_markers(content, "// ...");
-    
+
     // Verify that the result:
     // 1. Starts with the filtered marker content.
     // 2. Contains the header indicating that an enclosing context was appended.
     // 3. Contains some content from the extracted enclosing block (e.g. the Objective-C method declaration).
-    assert!(result.starts_with(&filtered), "Result should start with the filtered content");
+    assert!(
+        result.starts_with(&filtered),
+        "Result should start with the filtered content"
+    );
     assert!(
         result.contains("// Enclosing function context:"),
         "Result should contain the enclosing context header"
@@ -117,7 +122,7 @@ fn test_markers_todo_outside_objc() {
         result.contains("- (void)doSomething"),
         "Result should contain the extracted ObjC method context"
     );
-    
+
     fs::remove_file(&path).expect("Failed to remove temporary file");
 }
 
@@ -125,8 +130,12 @@ fn test_markers_todo_outside_objc() {
 fn test_file_not_found_objc() {
     // process_file should return an error when the file does not exist.
     let path = PathBuf::from("non_existent_file.m");
-    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some("non_existent_file.m"));
-    assert!(result.is_err(), "process_file should error for a non-existent file");
+    let result =
+        process_file_with_processor(&DefaultFileProcessor, &path, Some("non_existent_file.m"));
+    assert!(
+        result.is_err(),
+        "process_file should error for a non-existent file"
+    );
 }
 
 #[test]
@@ -160,9 +169,9 @@ line c
     let file_name = path.file_name().unwrap().to_str().unwrap();
     let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
         .expect("process_file should succeed for file with multiple marker blocks");
-    
+
     let expected = filter_substring_markers(content, "// ...");
     assert_eq!(result, expected);
-    
+
     fs::remove_file(&path).expect("Failed to remove temporary file");
 }

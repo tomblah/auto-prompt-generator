@@ -59,7 +59,7 @@ Parse.Cloud.define("someCloudCodeFunction", async (request) => {
         let dummy_pbcopy_path = pbcopy_dir.path().join("pbcopy");
         fs::write(
             &dummy_pbcopy_path,
-            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display())
+            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display()),
         )
         .unwrap();
         #[cfg(unix)]
@@ -71,7 +71,10 @@ Parse.Cloud.define("someCloudCodeFunction", async (request) => {
         }
         // Prepend the dummy pbcopy directory to the PATH.
         let original_path = env::var("PATH").unwrap();
-        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::set_var(
+            "PATH",
+            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+        );
 
         // Ensure that clipboard copying is enabled.
         env::remove_var("DISABLE_PBCOPY");
@@ -82,24 +85,34 @@ Parse.Cloud.define("someCloudCodeFunction", async (request) => {
         cmd.assert().success();
 
         // Read the dummy clipboard file.
-        let clipboard_content = fs::read_to_string(&clipboard_file)
-            .expect("Failed to read dummy clipboard file");
+        let clipboard_content =
+            fs::read_to_string(&clipboard_file).expect("Failed to read dummy clipboard file");
 
         // Assert that the prompt includes the function definition and TODO line from main.js,
         // includes the marked line "const foo = \"include\";",
         // and does not include the unmarked line "const bar = \"exclude\";" nor the content from index.js.
-        assert!(clipboard_content.contains("someCloudCodeFunction"),
-                "Expected the prompt to include the function name");
-        assert!(clipboard_content.contains("// TODO: - example only"),
-                "Expected the prompt to include the TODO comment");
-        assert!(clipboard_content.contains("const foo = \"include\";"),
-                "Expected the prompt to include the 'include' line");
-        assert!(!clipboard_content.contains("const bar = \"exclude\";"),
-                "Expected the prompt to not include the 'exclude' line");
-        assert!(!clipboard_content.contains("const example = \"example\";"),
-                "Expected the prompt to not include index.js content");
+        assert!(
+            clipboard_content.contains("someCloudCodeFunction"),
+            "Expected the prompt to include the function name"
+        );
+        assert!(
+            clipboard_content.contains("// TODO: - example only"),
+            "Expected the prompt to include the TODO comment"
+        );
+        assert!(
+            clipboard_content.contains("const foo = \"include\";"),
+            "Expected the prompt to include the 'include' line"
+        );
+        assert!(
+            !clipboard_content.contains("const bar = \"exclude\";"),
+            "Expected the prompt to not include the 'exclude' line"
+        );
+        assert!(
+            !clipboard_content.contains("const example = \"example\";"),
+            "Expected the prompt to not include index.js content"
+        );
     }
-    
+
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_js_singular_mode_function_style_1() {
@@ -151,7 +164,7 @@ someFunction = function(someParameter) {
         let dummy_pbcopy_path = pbcopy_dir.path().join("pbcopy");
         fs::write(
             &dummy_pbcopy_path,
-            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display())
+            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display()),
         )
         .unwrap();
         #[cfg(unix)]
@@ -163,7 +176,10 @@ someFunction = function(someParameter) {
         }
         // Prepend the dummy pbcopy directory to the PATH.
         let original_path = env::var("PATH").unwrap();
-        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::set_var(
+            "PATH",
+            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+        );
 
         // Ensure that clipboard copying is enabled.
         env::remove_var("DISABLE_PBCOPY");
@@ -174,24 +190,34 @@ someFunction = function(someParameter) {
         cmd.assert().success();
 
         // Read the dummy clipboard file.
-        let clipboard_content = fs::read_to_string(&clipboard_file)
-            .expect("Failed to read dummy clipboard file");
+        let clipboard_content =
+            fs::read_to_string(&clipboard_file).expect("Failed to read dummy clipboard file");
 
         // Assert that the prompt includes the function definition and TODO line from main.js,
         // includes the marked line "const foo = \"include\";",
         // and does not include the unmarked line "const bar = \"exclude\";" nor the content from index.js.
-        assert!(clipboard_content.contains("someFunction"),
-                "Expected the prompt to include the function name");
-        assert!(clipboard_content.contains("// TODO: - example only"),
-                "Expected the prompt to include the TODO comment");
-        assert!(clipboard_content.contains("const foo = \"include\";"),
-                "Expected the prompt to include the 'include' line");
-        assert!(!clipboard_content.contains("const bar = \"exclude\";"),
-                "Expected the prompt to not include the 'exclude' line");
-        assert!(!clipboard_content.contains("const example = \"example\";"),
-                "Expected the prompt to not include index.js content");
+        assert!(
+            clipboard_content.contains("someFunction"),
+            "Expected the prompt to include the function name"
+        );
+        assert!(
+            clipboard_content.contains("// TODO: - example only"),
+            "Expected the prompt to include the TODO comment"
+        );
+        assert!(
+            clipboard_content.contains("const foo = \"include\";"),
+            "Expected the prompt to include the 'include' line"
+        );
+        assert!(
+            !clipboard_content.contains("const bar = \"exclude\";"),
+            "Expected the prompt to not include the 'exclude' line"
+        );
+        assert!(
+            !clipboard_content.contains("const example = \"example\";"),
+            "Expected the prompt to not include index.js content"
+        );
     }
-    
+
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_js_singular_mode_async() {
@@ -237,7 +263,7 @@ async function someFunction(someParameter) {
         let dummy_pbcopy_path = pbcopy_dir.path().join("pbcopy");
         fs::write(
             &dummy_pbcopy_path,
-            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display())
+            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display()),
         )
         .unwrap();
         #[cfg(unix)]
@@ -249,7 +275,10 @@ async function someFunction(someParameter) {
         }
         // Prepend the dummy pbcopy directory to the PATH.
         let original_path = env::var("PATH").unwrap();
-        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::set_var(
+            "PATH",
+            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+        );
 
         // Ensure that clipboard copying is enabled.
         env::remove_var("DISABLE_PBCOPY");
@@ -260,24 +289,34 @@ async function someFunction(someParameter) {
         cmd.assert().success();
 
         // Read the dummy clipboard file.
-        let clipboard_content = fs::read_to_string(&clipboard_file)
-            .expect("Failed to read dummy clipboard file");
+        let clipboard_content =
+            fs::read_to_string(&clipboard_file).expect("Failed to read dummy clipboard file");
 
         // Assert that the prompt includes the async function definition and TODO line from main.js,
         // includes the marked line "const foo = \"include\";",
         // and does not include the unmarked line "const bar = \"exclude\";" nor the content from index.js.
-        assert!(clipboard_content.contains("someFunction"),
-                "Expected the prompt to include the async function name");
-        assert!(clipboard_content.contains("// TODO: - example only"),
-                "Expected the prompt to include the TODO comment");
-        assert!(clipboard_content.contains("const foo = \"include\";"),
-                "Expected the prompt to include the 'include' line");
-        assert!(!clipboard_content.contains("const bar = \"exclude\";"),
-                "Expected the prompt to not include the 'exclude' line");
-        assert!(!clipboard_content.contains("const example = \"example\";"),
-                "Expected the prompt to not include index.js content");
+        assert!(
+            clipboard_content.contains("someFunction"),
+            "Expected the prompt to include the async function name"
+        );
+        assert!(
+            clipboard_content.contains("// TODO: - example only"),
+            "Expected the prompt to include the TODO comment"
+        );
+        assert!(
+            clipboard_content.contains("const foo = \"include\";"),
+            "Expected the prompt to include the 'include' line"
+        );
+        assert!(
+            !clipboard_content.contains("const bar = \"exclude\";"),
+            "Expected the prompt to not include the 'exclude' line"
+        );
+        assert!(
+            !clipboard_content.contains("const example = \"example\";"),
+            "Expected the prompt to not include index.js content"
+        );
     }
-    
+
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_js_singular_mode_large_complex_function() {
@@ -342,7 +381,7 @@ async function someFunction(someParameter) {
         let dummy_pbcopy_path = pbcopy_dir.path().join("pbcopy");
         fs::write(
             &dummy_pbcopy_path,
-            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display())
+            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display()),
         )
         .unwrap();
         #[cfg(unix)]
@@ -354,7 +393,10 @@ async function someFunction(someParameter) {
         }
         // Prepend the dummy pbcopy directory to the PATH.
         let original_path = env::var("PATH").unwrap();
-        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::set_var(
+            "PATH",
+            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+        );
         env::remove_var("DISABLE_PBCOPY");
 
         // Run the generate_prompt binary in singular mode.
@@ -363,26 +405,38 @@ async function someFunction(someParameter) {
         cmd.assert().success();
 
         // Read the content from the dummy clipboard file.
-        let clipboard_content = fs::read_to_string(&clipboard_file)
-            .expect("Failed to read dummy clipboard file");
+        let clipboard_content =
+            fs::read_to_string(&clipboard_file).expect("Failed to read dummy clipboard file");
 
         // Assert that the prompt includes the complete function definition from complex.js,
         // including the TODO marker deep inside the nested function.
-        assert!(clipboard_content.contains("complexFunction"),
-                "Expected the prompt to include the function name 'complexFunction'");
-        assert!(clipboard_content.contains("Entering innerMost"),
-                "Expected the prompt to include 'Entering innerMost'");
-        assert!(clipboard_content.contains("Exiting innerMost"),
-                "Expected the prompt to include 'Exiting innerMost'");
-        assert!(clipboard_content.contains("// TODO: - perform complex calculation here"),
-                "Expected the prompt to include the TODO marker and its comment");
-        assert!(clipboard_content.contains("End of complexFunction"),
-                "Expected the prompt to include the end of the complexFunction block");
+        assert!(
+            clipboard_content.contains("complexFunction"),
+            "Expected the prompt to include the function name 'complexFunction'"
+        );
+        assert!(
+            clipboard_content.contains("Entering innerMost"),
+            "Expected the prompt to include 'Entering innerMost'"
+        );
+        assert!(
+            clipboard_content.contains("Exiting innerMost"),
+            "Expected the prompt to include 'Exiting innerMost'"
+        );
+        assert!(
+            clipboard_content.contains("// TODO: - perform complex calculation here"),
+            "Expected the prompt to include the TODO marker and its comment"
+        );
+        assert!(
+            clipboard_content.contains("End of complexFunction"),
+            "Expected the prompt to include the end of the complexFunction block"
+        );
         // Ensure that the content from other.js is not included.
-        assert!(!clipboard_content.contains("This is other file"),
-                "Expected the prompt to not include content from other.js");
+        assert!(
+            !clipboard_content.contains("This is other file"),
+            "Expected the prompt to not include content from other.js"
+        );
     }
-    
+
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_js_singular_mode_kitchen_sink() {
@@ -438,7 +492,8 @@ async function someFunction(someParameter) {
         fs::write(&js_file_path, &generated_content).unwrap();
 
         // Create another JS file that should be ignored.
-        let other_content = r#"console.log("This file should not be processed in singular mode.");"#;
+        let other_content =
+            r#"console.log("This file should not be processed in singular mode.");"#;
         fs::write(&other_js_path, other_content).unwrap();
 
         // Set environment variables so that kitchen_sink.js is used as the instruction file.
@@ -451,8 +506,9 @@ async function someFunction(someParameter) {
         let dummy_pbcopy_path = pbcopy_dir.path().join("pbcopy");
         fs::write(
             &dummy_pbcopy_path,
-            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display())
-        ).unwrap();
+            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display()),
+        )
+        .unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -462,7 +518,10 @@ async function someFunction(someParameter) {
         }
         // Prepend the dummy pbcopy directory to the PATH.
         let original_path = env::var("PATH").unwrap();
-        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::set_var(
+            "PATH",
+            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+        );
         env::remove_var("DISABLE_PBCOPY");
 
         // Run the generate_prompt binary in singular mode.
@@ -471,29 +530,53 @@ async function someFunction(someParameter) {
         cmd.assert().success();
 
         // Read the output from the dummy clipboard file.
-        let output = fs::read_to_string(&clipboard_file)
-            .expect("Failed to read dummy clipboard file");
+        let output =
+            fs::read_to_string(&clipboard_file).expect("Failed to read dummy clipboard file");
 
         // Assertions:
         // Verify that the complex function's block (with its nested structure and TODO marker)
         // is fully included in the final prompt.
-        assert!(output.contains("complexFunction"), "Expected 'complexFunction' to be in output");
-        assert!(output.contains("Start complexFunction"), "Expected start of complexFunction block");
-        assert!(output.contains("Iteration"), "Expected loop iteration logs to be present");
-        assert!(output.contains("Deep nested start"), "Expected nested function log to be present");
-        assert!(output.contains("// TODO: - process this complex scenario"), "Expected TODO marker in output");
-        assert!(output.contains("Deep nested end"), "Expected nested function log to be present");
-        assert!(output.contains("End complexFunction"), "Expected end of complexFunction block");
+        assert!(
+            output.contains("complexFunction"),
+            "Expected 'complexFunction' to be in output"
+        );
+        assert!(
+            output.contains("Start complexFunction"),
+            "Expected start of complexFunction block"
+        );
+        assert!(
+            output.contains("Iteration"),
+            "Expected loop iteration logs to be present"
+        );
+        assert!(
+            output.contains("Deep nested start"),
+            "Expected nested function log to be present"
+        );
+        assert!(
+            output.contains("// TODO: - process this complex scenario"),
+            "Expected TODO marker in output"
+        );
+        assert!(
+            output.contains("Deep nested end"),
+            "Expected nested function log to be present"
+        );
+        assert!(
+            output.contains("End complexFunction"),
+            "Expected end of complexFunction block"
+        );
         // Ensure that content from the other JS file is not included.
-        assert!(!output.contains("This file should not be processed"), "Did not expect other.js content");
+        assert!(
+            !output.contains("This file should not be processed"),
+            "Did not expect other.js content"
+        );
     }
-    
+
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_js_scrubs_extra_todo_markers() {
         // Ensure diff mode is disabled so that no extra diff markers are appended.
         env::remove_var("DIFF_WITH_BRANCH");
-        
+
         // Create a temporary directory to simulate a dummy JavaScript project.
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let temp_dir_path = temp_dir.path();
@@ -511,8 +594,7 @@ function doSomething() {
 // TODO: - Extra marker that should be scrubbed
 // TODO: - Another marker that should be scrubbed
 "#;
-        fs::write(&instruction_file, instruction_content)
-            .expect("Failed to write Instruction.js");
+        fs::write(&instruction_file, instruction_content).expect("Failed to write Instruction.js");
 
         // Set the environment variable so generate_prompt uses this instruction file.
         env::set_var("GET_INSTRUCTION_FILE", instruction_file.to_str().unwrap());
@@ -524,8 +606,9 @@ function doSomething() {
         let dummy_pbcopy_path = pbcopy_dir.path().join("pbcopy");
         fs::write(
             &dummy_pbcopy_path,
-            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display())
-        ).expect("Failed to write dummy pbcopy script");
+            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display()),
+        )
+        .expect("Failed to write dummy pbcopy script");
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -538,17 +621,20 @@ function doSomething() {
         }
         // Prepend the dummy pbcopy directory to the PATH.
         let original_path = env::var("PATH").expect("PATH not found");
-        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::set_var(
+            "PATH",
+            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+        );
 
         // Run generate_prompt in singular mode so that only the instruction file is processed.
-        let mut cmd = Command::cargo_bin("generate_prompt")
-            .expect("Failed to find generate_prompt binary");
+        let mut cmd =
+            Command::cargo_bin("generate_prompt").expect("Failed to find generate_prompt binary");
         cmd.arg("--singular");
         cmd.assert().success();
 
         // Read the final prompt from the clipboard output.
-        let clipboard_content = fs::read_to_string(&clipboard_file)
-            .expect("Failed to read clipboard file");
+        let clipboard_content =
+            fs::read_to_string(&clipboard_file).expect("Failed to read clipboard file");
 
         // Count the occurrences of marker lines.
         let marker_count = clipboard_content.matches("// TODO: -").count();

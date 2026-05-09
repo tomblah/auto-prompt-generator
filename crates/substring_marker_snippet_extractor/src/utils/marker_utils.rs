@@ -10,9 +10,9 @@ use std::fs;
 
 use todo_marker::TODO_MARKER_WS;
 
-/// ---------------------------------------------------------------------------
-///  Public API – marker filtering
-/// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+//  Public API – marker filtering
+// ---------------------------------------------------------------------------
 
 /// Returns only the text between `// v` … `// ^` blocks.  Everything else is
 /// replaced by `placeholder`.  Multiple blocks are concatenated with a blank
@@ -88,10 +88,8 @@ pub fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
         let trimmed = line.trim();
         if trimmed == "// v" {
             marker_depth += 1;
-        } else if trimmed == "// ^" {
-            if marker_depth > 0 {
-                marker_depth -= 1;
-            }
+        } else if trimmed == "// ^" && marker_depth > 0 {
+            marker_depth -= 1;
         }
         if i == todo_idx {
             break;
@@ -112,9 +110,8 @@ static SWIFT_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
 static JS_ASSIGNMENT_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#).unwrap()
 });
-static JS_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"^\s*(?:async\s+)?function\s+\w+\s*\([^)]*\)\s*\{"#).unwrap()
-});
+static JS_FUNCTION_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"^\s*(?:async\s+)?function\s+\w+\s*\([^)]*\)\s*\{"#).unwrap());
 static PARSE_CLOUD_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r#"^\s*Parse\.Cloud\.(?:define|beforeSave|afterSave)\s*\(\s*(?:"[^"]+"|[A-Za-z][A-Za-z0-9_.]*)\s*,\s*(?:async\s+)?\([^)]*\)\s*=>\s*\{"#,
@@ -133,9 +130,9 @@ fn is_candidate_line(line: &str) -> bool {
         || OBJC_METHOD_RE.is_match(line)
 }
 
-/// ---------------------------------------------------------------------------
-///  Extract the enclosing block around the TODO marker
-/// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+//  Extract the enclosing block around the TODO marker
+// ---------------------------------------------------------------------------
 
 pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
     let content = fs::read_to_string(file_path).ok()?;
@@ -152,12 +149,12 @@ pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
     let mut candidate_index = None;
     for i in 0..todo_idx {
         let line = lines[i];
-        if is_candidate_line(line) {
+        let diff_candidate = (line.trim_start().starts_with('-')
+            || line.trim_start().starts_with('+'))
+            && i + 1 < todo_idx
+            && lines[i + 1].contains('{');
+        if is_candidate_line(line) || diff_candidate {
             candidate_index = Some(i);
-        } else if line.trim_start().starts_with('-') || line.trim_start().starts_with('+') {
-            if i + 1 < todo_idx && lines[i + 1].contains('{') {
-                candidate_index = Some(i);
-            }
         }
     }
 

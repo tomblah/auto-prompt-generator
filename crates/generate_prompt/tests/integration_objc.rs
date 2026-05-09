@@ -1,13 +1,13 @@
 // crates/generate_prompt/tests/integration_objc.rs
 
 mod strict_end_to_end_tests {
-    use assert_cmd::Command;           // for running your binary via cargo_bin
-    use std::env;                      // for env::set_var etc.
-    use assert_fs::prelude::*;         // for methods like child(), which requires the PathChild trait
-    use assert_fs::fixture::PathChild; // explicitly bring the PathChild trait into scope
-    use std::process::Command as StdCommand;
     use assert_cmd::assert::OutputAssertExt;
+    use assert_cmd::Command; // for running your binary via cargo_bin
+    use assert_fs::fixture::PathChild; // explicitly bring the PathChild trait into scope
+    use assert_fs::prelude::*; // for methods like child(), which requires the PathChild trait
     use predicates::boolean::PredicateBooleanExt;
+    use std::env; // for env::set_var etc.
+    use std::process::Command as StdCommand;
 
     #[test]
     #[cfg(unix)]
@@ -35,7 +35,10 @@ mod strict_end_to_end_tests {
             .unwrap();
 
         // Force generate_prompt to use this file as the instruction file.
-        env::set_var("GET_INSTRUCTION_FILE", example_objc.path().to_str().unwrap());
+        env::set_var(
+            "GET_INSTRUCTION_FILE",
+            example_objc.path().to_str().unwrap(),
+        );
 
         // Set GET_GIT_ROOT to the canonicalized temporary directory.
         let canonical_git_root = temp.path().canonicalize().unwrap();
@@ -47,7 +50,7 @@ mod strict_end_to_end_tests {
         // Optionally, initialize a Git repository.
         StdCommand::new("git")
             .current_dir(temp.path())
-            .args(&["init"])
+            .args(["init"])
             .assert()
             .success();
 
@@ -58,8 +61,7 @@ mod strict_end_to_end_tests {
             .assert()
             .success()
             .stdout(
-                predicates::str::contains("Success:")
-                    .and(predicates::str::contains("example")),
+                predicates::str::contains("Success:").and(predicates::str::contains("example")),
             );
 
         // Cleanup

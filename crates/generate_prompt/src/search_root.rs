@@ -1,7 +1,7 @@
 // crates/generate_prompt/src/search_root.rs
 
-use std::path::{Path, PathBuf};
 use get_search_roots::get_search_roots;
+use std::path::{Path, PathBuf};
 
 /// Determines the search root directory for the prompt generation.
 ///
@@ -17,13 +17,14 @@ use get_search_roots::get_search_roots;
 ///
 /// The chosen search root as a `PathBuf`.
 pub fn determine_search_root(base_dir: &Path, file_path: &str) -> PathBuf {
-    let candidate_roots = get_search_roots(base_dir)
-        .unwrap_or_else(|_| vec![base_dir.to_path_buf()]);
+    let candidate_roots =
+        get_search_roots(base_dir).unwrap_or_else(|_| vec![base_dir.to_path_buf()]);
     if candidate_roots.len() == 1 {
         candidate_roots[0].clone()
     } else {
         let todo_path = PathBuf::from(file_path);
-        candidate_roots.into_iter()
+        candidate_roots
+            .into_iter()
             .filter(|p| todo_path.starts_with(p))
             // Choose the candidate with the maximum number of path components (i.e. the deepest one)
             .max_by_key(|p| p.components().count())

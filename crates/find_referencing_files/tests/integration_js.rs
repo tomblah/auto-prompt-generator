@@ -2,9 +2,9 @@
 
 #[cfg(test)]
 mod integration_js {
+    use find_referencing_files::find_files_referencing;
     use std::fs;
     use tempfile::tempdir;
-    use find_referencing_files::find_files_referencing;
 
     /// Test that when files with allowed extensions reference a target type in JavaScript,
     /// only those files (and not files in excluded directories or with disallowed extensions)
@@ -31,10 +31,7 @@ mod integration_js {
 
         // Create a file with a disallowed extension (.txt) that references "MyJSClass".
         let file4_path = temp_dir.path().join("file4.txt");
-        fs::write(
-            &file4_path,
-            "This is a reference: new MyJSClass();",
-        )?;
+        fs::write(&file4_path, "This is a reference: new MyJSClass();")?;
 
         // Create a JavaScript file inside a "Pods" subdirectory that references "MyJSClass" (should be excluded).
         let pods_dir = temp_dir.path().join("Pods");
@@ -74,9 +71,13 @@ mod integration_js {
 
         // Create a JavaScript file that does not reference "NonExistentJSClass".
         let file_path = temp_dir.path().join("file.js");
-        fs::write(&file_path, "function test() { console.log('No match here'); }")?;
+        fs::write(
+            &file_path,
+            "function test() { console.log('No match here'); }",
+        )?;
 
-        let result = find_files_referencing("NonExistentJSClass", temp_dir.path().to_str().unwrap())?;
+        let result =
+            find_files_referencing("NonExistentJSClass", temp_dir.path().to_str().unwrap())?;
         assert!(
             result.is_empty(),
             "Expected no matches for 'NonExistentJSClass'"
@@ -87,7 +88,8 @@ mod integration_js {
     /// Test that when multiple JavaScript files reference a given target,
     /// all are returned and that references embedded within longer words are not falsely matched.
     #[test]
-    fn test_find_referencing_files_multiple_references_js() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_find_referencing_files_multiple_references_js() -> Result<(), Box<dyn std::error::Error>>
+    {
         let temp_dir = tempdir()?;
 
         // Create several JavaScript files that reference "TargetJS".

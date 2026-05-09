@@ -19,12 +19,10 @@ This modular design facilitates reuse of common marker processing logic and
 encourages a clear separation of concerns.
 */
 
-pub mod utils;
 pub mod processor;
+pub mod utils;
 
-pub use processor::{DefaultFileProcessor, FileProcessor, process_file_with_processor};
+pub use processor::{process_file_with_processor, DefaultFileProcessor, FileProcessor};
 pub use utils::marker_utils::{
-    file_uses_markers,
-    filter_substring_markers,
-    is_todo_inside_markers,
+    file_uses_markers, filter_substring_markers, is_todo_inside_markers,
 };

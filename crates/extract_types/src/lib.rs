@@ -10,9 +10,7 @@ use std::path::Path;
 
 use lang_support::for_extension;
 use substring_marker_snippet_extractor::{
-    file_uses_markers,
-    filter_substring_markers,
-    is_todo_inside_markers,
+    file_uses_markers, filter_substring_markers, is_todo_inside_markers,
 };
 use todo_marker::{TODO_MARKER, TODO_MARKER_WS};
 
@@ -25,8 +23,9 @@ static SWIFT_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
     )
     .unwrap()
 });
-static JS_ASSIGNMENT_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#).unwrap());
+static JS_ASSIGNMENT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#).unwrap()
+});
 static JS_FUNCTION_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"^\s*(?:async\s+)?function\s+\w+\s*\([^)]*\)\s*\{"#).unwrap());
 static PARSE_CLOUD_RE: Lazy<Regex> = Lazy::new(|| {
@@ -38,10 +37,8 @@ static PARSE_CLOUD_RE: Lazy<Regex> = Lazy::new(|| {
 static OBJC_METHOD_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^\s*[-+]\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*(?::\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*)*\s*\{"#).unwrap()
 });
-static SWIFT_CLASS_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"^\s*class\s+\w+.*\{"#).unwrap());
-static SWIFT_ENUM_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"^\s*enum\s+\w+.*\{"#).unwrap());
+static SWIFT_CLASS_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"^\s*class\s+\w+.*\{"#).unwrap());
+static SWIFT_ENUM_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"^\s*enum\s+\w+.*\{"#).unwrap());
 
 fn is_candidate_line(line: &str) -> bool {
     SWIFT_FUNCTION_RE.is_match(line)
@@ -137,7 +134,7 @@ pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> 
         let mut filtered = filter_substring_markers(&full_content, "");
         if !filtered.contains(TODO_MARKER) {
             if let Some(enclosing) = extract_enclosing_block_from_content(&full_content) {
-                filtered.push_str("\n");
+                filtered.push('\n');
                 filtered.push_str(&enclosing);
             }
         }
@@ -150,7 +147,7 @@ pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> 
     let reader = BufReader::new(content_slice.as_bytes());
     let extractor = TypeExtractor::new()?;
     let mut all_types: BTreeSet<String> =
-        extractor.extract_types(reader.lines().filter_map(Result::ok));
+        extractor.extract_types(reader.lines().map_while(Result::ok));
 
     // 2️⃣  Language‑specific extraction on the SAME slice
     if let Some(ext) = swift_file.as_ref().extension().and_then(|s| s.to_str()) {
@@ -168,7 +165,9 @@ pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> 
 ///  Helper: extract enclosing block (unchanged)
 /// ---------------------------------------------------------------------------
 fn extract_enclosing_block_from_content(content: &str) -> Option<String> {
-    let todo_idx = content.lines().position(|line| line.contains(TODO_MARKER_WS))?;
+    let todo_idx = content
+        .lines()
+        .position(|line| line.contains(TODO_MARKER_WS))?;
     if is_todo_inside_markers(content, todo_idx) {
         return None;
     }
@@ -177,12 +176,12 @@ fn extract_enclosing_block_from_content(content: &str) -> Option<String> {
     let mut candidate_index = None;
     for i in 0..todo_idx {
         let line = lines[i];
-        if is_candidate_line(line) {
+        let diff_candidate = (line.trim_start().starts_with('-')
+            || line.trim_start().starts_with('+'))
+            && i + 1 < todo_idx
+            && lines[i + 1].contains('{');
+        if is_candidate_line(line) || diff_candidate {
             candidate_index = Some(i);
-        } else if line.trim_start().starts_with('-') || line.trim_start().starts_with('+') {
-            if i + 1 < todo_idx && lines[i + 1].contains('{') {
-                candidate_index = Some(i);
-            }
         }
     }
     let start_index = candidate_index?;
@@ -247,10 +246,10 @@ fn extract_inner_block_from_content(content: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
-    use tempfile::NamedTempFile;
     use anyhow::Result;
     use std::env;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_extract_inner_block_success() {
@@ -268,9 +267,21 @@ mod tests {
         let inner_str = inner.unwrap();
         // Ensure that the extracted inner block contains the inner declaration and the TODO marker,
         // and that it does not include "OuterType".
-        assert!(inner_str.contains("class InnerType"), "Extracted block: {}", inner_str);
-        assert!(inner_str.contains("// TODO: -"), "Extracted block: {}", inner_str);
-        assert!(!inner_str.contains("OuterType"), "Extracted block should not contain OuterType: {}", inner_str);
+        assert!(
+            inner_str.contains("class InnerType"),
+            "Extracted block: {}",
+            inner_str
+        );
+        assert!(
+            inner_str.contains("// TODO: -"),
+            "Extracted block: {}",
+            inner_str
+        );
+        assert!(
+            !inner_str.contains("OuterType"),
+            "Extracted block should not contain OuterType: {}",
+            inner_str
+        );
     }
 
     #[test]
@@ -291,7 +302,10 @@ mod tests {
     #[test]
     fn test_extract_types_extracts_capitalized_words() -> Result<()> {
         let mut swift_file = NamedTempFile::new()?;
-        writeln!(swift_file, "import Foundation\nclass MyClass {{}}\nstruct MyStruct {{}}\nenum MyEnum {{}}")?;
+        writeln!(
+            swift_file,
+            "import Foundation\nclass MyClass {{}}\nstruct MyStruct {{}}\nenum MyEnum {{}}"
+        )?;
         let result = extract_types_from_file(swift_file.path())?;
         let expected = "MyClass\nMyEnum\nMyStruct";
         assert_eq!(result.trim(), expected);
@@ -334,7 +348,10 @@ mod tests {
         writeln!(swift_file, "class My_Class {{}}")?;
         let result = extract_types_from_file(swift_file.path())?;
         for token in result.lines() {
-            assert_ne!(token, "My_Class", "Found token 'My_Class', which should have been split.");
+            assert_ne!(
+                token, "My_Class",
+                "Found token 'My_Class', which should have been split."
+            );
         }
         Ok(())
     }
@@ -472,7 +489,9 @@ mod type_extractor_tests {
     #[test]
     fn test_extract_tokens_for_trigger_comment() {
         let extractor = TypeExtractor::new().unwrap();
-        let tokens = extractor.extract_tokens("// TODO: - MyTriggeredType").unwrap();
+        let tokens = extractor
+            .extract_tokens("// TODO: - MyTriggeredType")
+            .unwrap();
         assert_eq!(tokens, vec!["MyTriggeredType"]);
     }
 
@@ -577,24 +596,36 @@ mod candidate_detection_tests {
     #[test]
     fn test_candidate_line_swift_function_async() {
         let async_func = "func testAsyncFunction(foo: Int) async {";
-        assert!(is_candidate_line(async_func), "Swift async function should be detected as a candidate");
+        assert!(
+            is_candidate_line(async_func),
+            "Swift async function should be detected as a candidate"
+        );
     }
 
     #[test]
     fn test_candidate_line_swift_class() {
         let swift_class = "class MyInnerClass {";
-        assert!(is_candidate_line(swift_class), "Swift class declaration should be detected as a candidate");
+        assert!(
+            is_candidate_line(swift_class),
+            "Swift class declaration should be detected as a candidate"
+        );
     }
 
     #[test]
     fn test_candidate_line_swift_enum() {
         let swift_enum = "enum MyEnum {";
-        assert!(is_candidate_line(swift_enum), "Swift enum declaration should be detected as a candidate");
+        assert!(
+            is_candidate_line(swift_enum),
+            "Swift enum declaration should be detected as a candidate"
+        );
     }
 
     #[test]
     fn test_candidate_line_non_candidate() {
         let non_candidate = "let x = 10;";
-        assert!(!is_candidate_line(non_candidate), "Non-declaration line should not be detected as a candidate");
+        assert!(
+            !is_candidate_line(non_candidate),
+            "Non-declaration line should not be detected as a candidate"
+        );
     }
 }

@@ -1,12 +1,14 @@
 // crates/assemble_prompt/src/lib.rs
 
+use anyhow::Result;
+use diff_with_branch::run_diff_against;
 use std::env;
 use std::fs;
 use std::path::Path;
-use anyhow::{Result};
-use substring_marker_snippet_extractor::{DefaultFileProcessor, FileProcessor, process_file_with_processor};
+use substring_marker_snippet_extractor::{
+    process_file_with_processor, DefaultFileProcessor, FileProcessor,
+};
 use unescape_newlines::unescape_newlines;
-use diff_with_branch::run_diff_against;
 
 const FIXED_INSTRUCTION: &str = "Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen";
 
@@ -28,7 +30,11 @@ impl AssemblyOptions {
 /// Public API: assembles the final prompt from the found files (provided as an in‑memory slice)
 /// and instruction content. The prompt is returned as a String.
 pub fn assemble_prompt(found_files: &[String], _instruction_content: &str) -> Result<String> {
-    assemble_prompt_with_options(found_files, _instruction_content, &AssemblyOptions::from_env())
+    assemble_prompt_with_options(
+        found_files,
+        _instruction_content,
+        &AssemblyOptions::from_env(),
+    )
 }
 
 pub fn assemble_prompt_with_options(
@@ -72,13 +78,17 @@ fn assemble_prompt_with_processor_and_options<P: FileProcessor>(
             .unwrap_or(&file_path)
             .to_string();
 
-        let processed_content = match process_file_with_processor(processor, &file_path, Some(&todo_file_basename)) {
-            Ok(content) => content,
-            Err(err) => {
-                eprintln!("Error processing {}: {}. Falling back to raw file contents.", file_path, err);
-                fs::read_to_string(&file_path).unwrap_or_default()
-            }
-        };
+        let processed_content =
+            match process_file_with_processor(processor, &file_path, Some(todo_file_basename)) {
+                Ok(content) => content,
+                Err(err) => {
+                    eprintln!(
+                        "Error processing {}: {}. Falling back to raw file contents.",
+                        file_path, err
+                    );
+                    fs::read_to_string(&file_path).unwrap_or_default()
+                }
+            };
 
         final_prompt.push_str(&format!(
             "\nThe contents of {} is as follows:\n\n{}\n\n",
@@ -117,11 +127,11 @@ fn assemble_prompt_with_processor_and_options<P: FileProcessor>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::{NamedTempFile, tempdir};
-    use std::fs;
     use std::env;
-    use std::io::{Write};
+    use std::fs;
+    use std::io::Write;
     use std::path::Path;
+    use tempfile::{tempdir, NamedTempFile};
 
     #[test]
     fn test_fixed_instruction_appended() {
@@ -135,8 +145,7 @@ mod tests {
         // Build the in-memory list.
         let found_files = vec![file1_path];
 
-        let output = assemble_prompt(&found_files, "ignored")
-            .expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
 
         // Verify that the output contains the file header and the fixed instruction.
         assert!(output.contains("The contents of"));
@@ -148,12 +157,16 @@ mod tests {
         // Create two temporary source files.
         let mut file1 = NamedTempFile::new().expect("Failed to create file1");
         let file1_content = "class MyClass {\n    // TODO: - Do something important\n}\n";
-        file1.write_all(file1_content.as_bytes()).expect("Failed to write file1");
+        file1
+            .write_all(file1_content.as_bytes())
+            .expect("Failed to write file1");
         let file1_path = file1.path().to_owned();
 
         let mut file2 = NamedTempFile::new().expect("Failed to create file2");
         let file2_content = "struct MyStruct {}\n";
-        file2.write_all(file2_content.as_bytes()).expect("Failed to write file2");
+        file2
+            .write_all(file2_content.as_bytes())
+            .expect("Failed to write file2");
         let file2_path = file2.path().to_owned();
 
         // Build an in-memory list that includes file1, file2 and a duplicate of file1.
@@ -165,8 +178,8 @@ mod tests {
 
         let instruction_content = "This instruction content is ignored.";
 
-        let output = assemble_prompt(&found_files, instruction_content)
-            .expect("assemble_prompt failed");
+        let output =
+            assemble_prompt(&found_files, instruction_content).expect("assemble_prompt failed");
 
         // Verify that headers for both files are present.
         assert!(output.contains(&format!(
@@ -199,8 +212,7 @@ mod tests {
             b_path.to_string_lossy().into_owned(),
         ];
 
-        let output = assemble_prompt(&found_files, "ignored")
-            .expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
         let a_header = format!(
             "The contents of {} is as follows:",
             a_path.file_name().unwrap().to_string_lossy()
@@ -233,14 +245,15 @@ func publicFunction() {
     print(\"This is outside the markers.\")
 }
 ";
-        marked_file.write_all(marked_content.as_bytes()).expect("Failed to write marked file");
+        marked_file
+            .write_all(marked_content.as_bytes())
+            .expect("Failed to write marked file");
         let marked_file_path = marked_file.path().to_owned();
 
         // Build the in-memory list.
         let found_files = vec![marked_file_path.to_string_lossy().into_owned()];
 
-        let output = assemble_prompt(&found_files, "ignored")
-            .expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
 
         // Verify that the header is present and only the marked content is included.
         assert!(output.contains(&format!(
@@ -280,15 +293,23 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
     
 });
 ";
-        file_js.write_all(js_content.as_bytes()).expect("Failed to write JS file");
+        file_js
+            .write_all(js_content.as_bytes())
+            .expect("Failed to write JS file");
         let file_js_path = file_js.path().to_owned();
 
-        env::set_var("TODO_FILE_BASENAME", file_js_path.file_name().unwrap().to_string_lossy().to_string());
+        env::set_var(
+            "TODO_FILE_BASENAME",
+            file_js_path
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string(),
+        );
 
         let found_files = vec![file_js_path.to_string_lossy().into_owned()];
 
-        let output = assemble_prompt(&found_files, "ignored")
-            .expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
 
         assert!(output.contains(&format!(
             "The contents of {} is as follows:",
@@ -306,8 +327,7 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
     fn test_missing_file_in_found_files() {
         let found_files = vec!["/path/to/nonexistent/file.swift".to_string()];
 
-        let output = assemble_prompt(&found_files, "ignored")
-            .expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
 
         // Since the file doesn't exist, its header should not be included.
         assert!(!output.contains("file.swift"));
@@ -318,8 +338,7 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
     fn test_empty_found_files_list() {
         let found_files: Vec<String> = Vec::new();
 
-        let output = assemble_prompt(&found_files, "ignored")
-            .expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
 
         // With an empty list, the prompt should consist only of the fixed instruction.
         assert!(output.trim().ends_with(FIXED_INSTRUCTION));
@@ -339,11 +358,14 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
         // Set up a dummy git script that produces no diff.
         let dummy_dir = tempdir().unwrap();
         let dummy_path = dummy_dir.path().join("diff_script");
-        fs::write(&dummy_path, "#!/bin/sh\necho \"\"\n").expect("Failed to write dummy diff script");
+        fs::write(&dummy_path, "#!/bin/sh\necho \"\"\n")
+            .expect("Failed to write dummy diff script");
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&dummy_path).expect("Failed to get metadata").permissions();
+            let mut perms = fs::metadata(&dummy_path)
+                .expect("Failed to get metadata")
+                .permissions();
             perms.set_mode(0o755);
             fs::set_permissions(&dummy_path, perms).expect("Failed to set permissions");
         }
@@ -351,8 +373,7 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
         let new_path = format!("{}:{}", dummy_dir.path().to_str().unwrap(), original_path);
         env::set_var("PATH", new_path);
 
-        let output = assemble_prompt(&found_files, "ignored")
-            .expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
 
         assert!(!output.contains("against branch dummy-branch"));
         assert!(!output.contains("Dummy diff output"));
@@ -379,12 +400,11 @@ func outsideFunction() {
 
         let found_files = vec![file_path.to_string_lossy().into_owned()];
 
-        let output = assemble_prompt(&found_files, "ignored")
-            .expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
 
         assert!(output.contains("print(\"This is inside an unclosed marker.\")"));
     }
-    
+
     #[test]
     fn test_diff_inclusion() {
         let mut file_diff = NamedTempFile::new().unwrap();
@@ -412,7 +432,8 @@ case \"$@\" in
         ;;
 esac
 ",
-        ).unwrap();
+        )
+        .unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -424,10 +445,13 @@ esac
         let new_path = format!("{}:{}", temp_dir.path().to_str().unwrap(), current_path);
         env::set_var("PATH", new_path);
 
-        let output = assemble_prompt(&found_files, "ignored")
-            .expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
 
-        assert!(output.contains("Dummy diff output for file"), "Output did not include diff output: {}", output);
+        assert!(
+            output.contains("Dummy diff output for file"),
+            "Output did not include diff output: {}",
+            output
+        );
         assert!(output.contains("against branch dummy-branch"));
 
         env::remove_var("DIFF_WITH_BRANCH");
@@ -463,11 +487,14 @@ case \"$@\" in
         ;;
 esac
 ",
-        ).expect("Failed to write dummy git script");
+        )
+        .expect("Failed to write dummy git script");
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&dummy_git).expect("Failed to get metadata").permissions();
+            let mut perms = fs::metadata(&dummy_git)
+                .expect("Failed to get metadata")
+                .permissions();
             perms.set_mode(0o755);
             fs::set_permissions(&dummy_git, perms).expect("Failed to set permissions");
         }
@@ -475,11 +502,14 @@ esac
         let new_path = format!("{}:{}", dummy_dir.path().to_str().unwrap(), original_path);
         env::set_var("PATH", new_path);
 
-        let output = assemble_prompt(&found_files, "ignored")
-            .expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
 
         let expected_diff = "Dummy diff output for file";
-        assert!(output.contains(expected_diff), "Expected diff output missing: {}", output);
+        assert!(
+            output.contains(expected_diff),
+            "Expected diff output missing: {}",
+            output
+        );
         assert!(output.contains("against branch dummy-branch"));
 
         env::remove_var("DIFF_WITH_BRANCH");
@@ -517,7 +547,8 @@ case \"$@\" in
         ;;
 esac
 ",
-        ).expect("Failed to write dummy git script");
+        )
+        .expect("Failed to write dummy git script");
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -529,11 +560,14 @@ esac
         let new_path = format!("{}:{}", dummy_dir.path().to_str().unwrap(), original_path);
         env::set_var("PATH", new_path);
 
-        let output = assemble_prompt(&found_files, "ignored")
-            .expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
 
         let marker_count = output.lines().filter(|l| l.contains("// TODO: -")).count();
-        assert!(marker_count == 2 || marker_count == 3, "Unexpected marker count: {}", marker_count);
+        assert!(
+            marker_count == 2 || marker_count == 3,
+            "Unexpected marker count: {}",
+            marker_count
+        );
 
         env::remove_var("DIFF_WITH_BRANCH");
         env::set_var("PATH", original_path);
@@ -546,7 +580,11 @@ esac
     }
 
     impl FileProcessor for MockFileProcessor {
-        fn process_file(&self, _file_path: &Path, _todo_file_basename: Option<&str>) -> anyhow::Result<String> {
+        fn process_file(
+            &self,
+            _file_path: &Path,
+            _todo_file_basename: Option<&str>,
+        ) -> anyhow::Result<String> {
             Ok(self.return_value.clone())
         }
     }
@@ -554,15 +592,26 @@ esac
     struct TodoBasenameEchoProcessor;
 
     impl FileProcessor for TodoBasenameEchoProcessor {
-        fn process_file(&self, _file_path: &Path, todo_file_basename: Option<&str>) -> anyhow::Result<String> {
-            Ok(format!("todo basename: {}", todo_file_basename.unwrap_or("<none>")))
+        fn process_file(
+            &self,
+            _file_path: &Path,
+            todo_file_basename: Option<&str>,
+        ) -> anyhow::Result<String> {
+            Ok(format!(
+                "todo basename: {}",
+                todo_file_basename.unwrap_or("<none>")
+            ))
         }
     }
 
     struct FailingMockProcessor;
 
     impl FileProcessor for FailingMockProcessor {
-        fn process_file(&self, _file_path: &Path, _todo_file_basename: Option<&str>) -> anyhow::Result<String> {
+        fn process_file(
+            &self,
+            _file_path: &Path,
+            _todo_file_basename: Option<&str>,
+        ) -> anyhow::Result<String> {
             Err(anyhow::anyhow!("Simulated processing failure"))
         }
     }
@@ -574,11 +623,16 @@ esac
         let file_path = file.path().to_str().unwrap().to_string();
         let found_files = vec![file_path];
 
-        let mock_processor = MockFileProcessor { return_value: "mock processed content".to_string() };
+        let mock_processor = MockFileProcessor {
+            return_value: "mock processed content".to_string(),
+        };
 
         let output = assemble_prompt_with_processor(&found_files, &mock_processor)
             .expect("assemble_prompt_with_processor failed with mock processor");
-        assert!(output.contains("mock processed content"), "Output should include the mock content");
+        assert!(
+            output.contains("mock processed content"),
+            "Output should include the mock content"
+        );
     }
 
     #[test]
@@ -630,8 +684,7 @@ esac
 
         env::remove_var("DIFF_WITH_BRANCH");
 
-        let output = assemble_prompt(&found_files, "ignored")
-            .expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
 
         assert!(!output.contains("The diff for"));
         assert!(!output.contains("against branch"));
@@ -649,6 +702,9 @@ esac
         let output = assemble_prompt_with_processor(&found_files, &failing_processor)
             .expect("assemble_prompt_with_processor failed with failing processor");
         // Since processing fails, it should fall back to reading the raw file content.
-        assert!(output.contains("fallback content"), "Output should fallback to raw file content");
+        assert!(
+            output.contains("fallback content"),
+            "Output should fallback to raw file content"
+        );
     }
 }

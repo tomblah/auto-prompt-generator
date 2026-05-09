@@ -1,10 +1,10 @@
 // crates/extract_types/tests/integration_swift.rs
 
+use anyhow::Result;
 use extract_types::extract_types_from_file;
 use std::env;
 use std::io::Write;
 use tempfile::NamedTempFile;
-use anyhow::Result;
 
 #[test]
 fn integration_extract_types_basic() -> Result<()> {
@@ -18,7 +18,7 @@ fn integration_extract_types_basic() -> Result<()> {
     "#;
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", swift_content)?;
-    
+
     let result = extract_types_from_file(temp_file.path())?;
     // Expected sorted order: MyClass, MyEnum, MyStruct.
     let expected = "MyClass\nMyEnum\nMyStruct";
@@ -35,7 +35,7 @@ fn integration_extract_types_bracket_notation() -> Result<()> {
     "#;
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", swift_content)?;
-    
+
     let result = extract_types_from_file(temp_file.path())?;
     let expected = "CustomType";
     assert_eq!(result.trim(), expected);
@@ -51,7 +51,7 @@ fn integration_extract_types_no_types() -> Result<()> {
     "#;
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", swift_content)?;
-    
+
     let result = extract_types_from_file(temp_file.path())?;
     assert!(result.trim().is_empty());
     Ok(())
@@ -72,7 +72,7 @@ fn integration_extract_types_with_substring_markers() -> Result<()> {
     "#;
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", swift_content)?;
-    
+
     let result = extract_types_from_file(temp_file.path())?;
     // Expect only the content between markers to yield "InsideType"
     let expected = "InsideType";
@@ -89,7 +89,7 @@ fn integration_extract_types_trigger_comment() -> Result<()> {
     "#;
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", swift_content)?;
-    
+
     let result = extract_types_from_file(temp_file.path())?;
     let expected = "TriggeredType";
     assert_eq!(result.trim(), expected);
@@ -140,7 +140,7 @@ fn integration_extract_types_targeted_mode() -> Result<()> {
     "#;
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", swift_content)?;
-    
+
     let result = extract_types_from_file(temp_file.path())?;
     // In targeted mode:
     // - "class InnerType {}" produces "InnerType"
@@ -166,7 +166,7 @@ fn integration_extract_types_targeted_mode_no_enclosing_block() -> Result<()> {
     "#;
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", swift_content)?;
-    
+
     let result = extract_types_from_file(temp_file.path())?;
     // Since no candidate block is found, the full content is processed:
     // - "class OuterType {}" produces "OuterType"

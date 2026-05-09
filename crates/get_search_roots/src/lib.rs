@@ -23,14 +23,18 @@ pub fn get_search_roots(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     let mut found_dirs: BTreeSet<PathBuf> = BTreeSet::new();
 
     // Include the provided root unless its basename is ".build".
-    if root.file_name().map_or(true, |name| name != ".build") {
+    if root.file_name().is_none_or(|name| name != ".build") {
         found_dirs.insert(root.to_path_buf());
     }
 
     // Recursively search for "Package.swift" files under the root, excluding those under ".build".
     for entry in WalkDir::new(root).into_iter().filter_map(Result::ok) {
         if entry.file_type().is_file() && entry.file_name() == "Package.swift" {
-            if entry.path().components().any(|comp| comp.as_os_str() == ".build") {
+            if entry
+                .path()
+                .components()
+                .any(|comp| comp.as_os_str() == ".build")
+            {
                 continue;
             }
             if let Some(parent) = entry.path().parent() {
@@ -67,17 +71,24 @@ mod tests {
         fs::write(non_pkg.join("somefile.txt"), "just some text").unwrap();
 
         let roots = get_search_roots(repo_path).unwrap();
-        let mut paths: Vec<String> = roots.into_iter()
+        let mut paths: Vec<String> = roots
+            .into_iter()
             .map(|p| p.to_string_lossy().to_string())
             .collect();
         paths.sort();
 
         // Expect the repo root to be included.
-        assert!(paths.iter().any(|s| s == repo_path.to_string_lossy().as_ref()));
+        assert!(paths
+            .iter()
+            .any(|s| s == repo_path.to_string_lossy().as_ref()));
         // Expect the SubPackage directory (which contains Package.swift) to be included.
-        assert!(paths.iter().any(|s| s == sub_pkg.to_string_lossy().as_ref()));
+        assert!(paths
+            .iter()
+            .any(|s| s == sub_pkg.to_string_lossy().as_ref()));
         // The NonPackage directory should not be present.
-        assert!(!paths.iter().any(|s| s == non_pkg.to_string_lossy().as_ref()));
+        assert!(!paths
+            .iter()
+            .any(|s| s == non_pkg.to_string_lossy().as_ref()));
     }
 
     // Test that when the provided root itself is a Swift package (contains Package.swift),
@@ -118,7 +129,9 @@ mod tests {
             .collect();
 
         // ValidPackage should be included.
-        assert!(paths.iter().any(|s| s == valid_sub.to_string_lossy().as_ref()));
+        assert!(paths
+            .iter()
+            .any(|s| s == valid_sub.to_string_lossy().as_ref()));
         // None of the returned paths should include ".build".
         for p in paths {
             assert!(
@@ -140,7 +153,11 @@ mod tests {
         fs::create_dir_all(&build_dir).unwrap();
 
         let result = get_search_roots(&build_dir).unwrap();
-        assert!(result.is_empty(), "Expected empty result for .build directory, got {:?}", result);
+        assert!(
+            result.is_empty(),
+            "Expected empty result for .build directory, got {:?}",
+            result
+        );
     }
 
     // Test that passing an invalid (non-existent) directory returns an error.
@@ -174,7 +191,10 @@ mod tests {
         File::create(&file_path).unwrap();
 
         let result = get_search_roots(&file_path);
-        assert!(result.is_err(), "Expected error when passing a file instead of a directory");
+        assert!(
+            result.is_err(),
+            "Expected error when passing a file instead of a directory"
+        );
     }
 
     // Test multiple nested package directories and check deduplication.
@@ -207,12 +227,7 @@ mod tests {
         // - pkg_b
         // - pkg_b_c
         assert_eq!(roots.len(), 4);
-        let expected = vec![
-            repo_path.to_path_buf(),
-            pkg_a,
-            pkg_b,
-            pkg_b_c,
-        ];
+        let expected = vec![repo_path.to_path_buf(), pkg_a, pkg_b, pkg_b_c];
         // Sort both lists for comparison.
         let mut expected_sorted = expected.clone();
         expected_sorted.sort();

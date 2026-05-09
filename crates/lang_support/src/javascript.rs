@@ -23,8 +23,7 @@ pub(super) const JS: JavaScriptSupport = JavaScriptSupport;
 // ---------------------------------------------------------------------------
 
 // Function call (identifier followed by '(' – excludes 'if(', 'for(' …)
-static CALL_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(").unwrap());
+static CALL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(").unwrap());
 
 // Class instantiation `new Foo(` or declaration `class Foo {`
 static CLASS_RE: Lazy<Regex> =
@@ -34,8 +33,8 @@ static CLASS_RE: Lazy<Regex> =
 //  Reserved words we don't want as identifiers
 // ---------------------------------------------------------------------------
 static RESERVED: &[&str] = &[
-    "if", "for", "while", "switch", "catch", "function", "return",
-    "class", "new", "await", "async", "const", "let", "var",
+    "if", "for", "while", "switch", "catch", "function", "return", "class", "new", "await",
+    "async", "const", "let", "var",
 ];
 
 fn is_reserved(w: &str) -> bool {
@@ -53,10 +52,11 @@ impl LanguageSupport for JavaScriptSupport {
         // Function / method calls
         for cap in CALL_RE.captures_iter(src) {
             let ident = &cap[1];
-            if !is_reserved(ident) && ident.chars().next().unwrap_or(' ').is_ascii_lowercase() {
-                if !out.contains(&ident.to_string()) {
-                    out.push(ident.to_string());
-                }
+            if !is_reserved(ident)
+                && ident.chars().next().unwrap_or(' ').is_ascii_lowercase()
+                && !out.contains(&ident.to_string())
+            {
+                out.push(ident.to_string());
             }
         }
 
@@ -89,8 +89,10 @@ impl LanguageSupport for JavaScriptSupport {
             }
 
             // 3. ES module export
-            let es_export_fn =
-                format!(r"\bexport\s+(?:async\s+)?function\s+{}\b", regex::escape(ident));
+            let es_export_fn = format!(
+                r"\bexport\s+(?:async\s+)?function\s+{}\b",
+                regex::escape(ident)
+            );
             if Regex::new(&es_export_fn).unwrap().is_match(content) {
                 return true;
             }
@@ -101,20 +103,17 @@ impl LanguageSupport for JavaScriptSupport {
             }
 
             // 4. CommonJS exports
-            let cjs_default =
-                format!(r"\bmodule\.exports\s*=\s*{}\b", regex::escape(ident));
+            let cjs_default = format!(r"\bmodule\.exports\s*=\s*{}\b", regex::escape(ident));
             if Regex::new(&cjs_default).unwrap().is_match(content) {
                 return true;
             }
-            let cjs_named =
-                format!(r"\bexports\.{}\s*=", regex::escape(ident));
+            let cjs_named = format!(r"\bexports\.{}\s*=", regex::escape(ident));
             if Regex::new(&cjs_named).unwrap().is_match(content) {
                 return true;
             }
 
             // 5. Class declaration
-            let class_decl =
-                format!(r"\bclass\s+{}\b", regex::escape(ident));
+            let class_decl = format!(r"\bclass\s+{}\b", regex::escape(ident));
             if Regex::new(&class_decl).unwrap().is_match(content) {
                 return true;
             }
@@ -122,17 +121,13 @@ impl LanguageSupport for JavaScriptSupport {
         false
     }
 
-    fn resolve_dependency_path(
-        &self,
-        line: &str,
-        current_dir: &Path,
-    ) -> Option<PathBuf> {
+    fn resolve_dependency_path(&self, line: &str, current_dir: &Path) -> Option<PathBuf> {
         // import Foo from './foo.js'
         if let Some(cap) = Regex::new(r#"from\s+['"]([^'"]+)['"]"#)
             .unwrap()
             .captures(line)
         {
-            return Some(current_dir.join(cap[1].to_string()));
+            return Some(current_dir.join(&cap[1]));
         }
 
         // const foo = require('./foo')
@@ -140,7 +135,7 @@ impl LanguageSupport for JavaScriptSupport {
             .unwrap()
             .captures(line)
         {
-            return Some(current_dir.join(cap[1].to_string()));
+            return Some(current_dir.join(&cap[1]));
         }
 
         None

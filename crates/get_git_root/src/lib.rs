@@ -6,13 +6,11 @@ use std::process::Command;
 /// or an error message if the current directory is not inside a Git repository.
 pub fn get_git_root() -> Result<String, String> {
     let output = Command::new("git")
-        .args(&["rev-parse", "--show-toplevel"])
+        .args(["rev-parse", "--show-toplevel"])
         .output()
         .map_err(|e| format!("Failed to execute git: {}", e))?;
     if output.status.success() {
-        let git_root = String::from_utf8_lossy(&output.stdout)
-            .trim()
-            .to_string();
+        let git_root = String::from_utf8_lossy(&output.stdout).trim().to_string();
         Ok(git_root)
     } else {
         Err("Error: Not a git repository.".to_string())

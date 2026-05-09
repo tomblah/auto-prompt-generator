@@ -29,7 +29,7 @@ func anotherFunction() {
 }
 // More code
 // TODO: - CTA Marker"#;
-    
+
     let output = scrub_extra_todo_markers(input, false, primary_marker)
         .expect("Primary marker should be found");
     assert_eq!(output, expected);

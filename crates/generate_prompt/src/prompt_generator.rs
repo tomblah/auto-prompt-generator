@@ -6,9 +6,7 @@ use std::path::{Path, PathBuf};
 
 use crate::file_selector;
 use crate::search_root;
-use assemble_prompt; // imported as an external crate
 use extract_instruction_content::extract_instruction_content;
-use post_processing; // imported as an external crate
 
 /// Orchestrates the prompt-generation workflow.
 ///
@@ -119,11 +117,11 @@ mod tests {
     use std::env;
     use std::fs::File;
     use std::io::Write;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use tempfile::tempdir;
 
     /// Helper to write a file with the given contents.
-    fn write_temp_file(dir: &PathBuf, filename: &str, contents: &str) -> PathBuf {
+    fn write_temp_file(dir: &Path, filename: &str, contents: &str) -> PathBuf {
         let file_path = dir.join(filename);
         let mut file = File::create(&file_path).expect("Failed to create temp file");
         file.write_all(contents.as_bytes())
@@ -144,11 +142,7 @@ mod tests {
 // TODO: - Test instruction
 // Some more code
 "#;
-        let instruction_file = write_temp_file(
-            &temp_dir.path().to_path_buf(),
-            "instruction.txt",
-            file_content,
-        );
+        let instruction_file = write_temp_file(temp_dir.path(), "instruction.txt", file_content);
         let file_path_str = instruction_file.to_str().unwrap();
 
         // Set an environment variable to disable clipboard copying.
@@ -186,11 +180,7 @@ mod tests {
 class Dummy {}
 // TODO: - Test instruction
 "#;
-        let instruction_file = write_temp_file(
-            &temp_dir.path().to_path_buf(),
-            "instruction.swift",
-            file_content,
-        );
+        let instruction_file = write_temp_file(temp_dir.path(), "instruction.swift", file_content);
         let file_path_str = instruction_file.to_str().unwrap();
 
         // Disable clipboard copying.
@@ -225,11 +215,7 @@ class Dummy {}
 // Some JS code
 // TODO: - JS Test instruction
 "#;
-        let instruction_file = write_temp_file(
-            &temp_dir.path().to_path_buf(),
-            "instruction.js",
-            file_content,
-        );
+        let instruction_file = write_temp_file(temp_dir.path(), "instruction.js", file_content);
         let file_path_str = instruction_file.to_str().unwrap();
         let excludes: Vec<String> = vec![];
 
@@ -255,11 +241,7 @@ class Dummy {}
 // Some code
 // TODO: - Force global test
 "#;
-        let instruction_file = write_temp_file(
-            &temp_dir.path().to_path_buf(),
-            "instruction.txt",
-            file_content,
-        );
+        let instruction_file = write_temp_file(temp_dir.path(), "instruction.txt", file_content);
         let file_path_str = instruction_file.to_str().unwrap();
 
         // Disable clipboard copying.
@@ -297,11 +279,7 @@ class Dummy {}
 // Some JS code
 // TODO: - JS Test instruction
 "#;
-        let instruction_file = write_temp_file(
-            &temp_dir.path().to_path_buf(),
-            "instruction.js",
-            file_content,
-        );
+        let instruction_file = write_temp_file(temp_dir.path(), "instruction.js", file_content);
         let file_path_str = instruction_file.to_str().unwrap();
 
         // Disable clipboard copying.

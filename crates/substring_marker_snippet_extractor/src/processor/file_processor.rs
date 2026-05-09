@@ -1,10 +1,12 @@
 // crates/substring_marker_snippet_extractor/src/processor/file_processor.rs
 
-use std::path::Path;
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use std::fs;
+use std::path::Path;
 
-use crate::utils::marker_utils::{filter_substring_markers, file_uses_markers, extract_enclosing_block};
+use crate::utils::marker_utils::{
+    extract_enclosing_block, file_uses_markers, filter_substring_markers,
+};
 
 /// Trait that abstracts file processing.
 pub trait FileProcessor {
@@ -17,9 +19,11 @@ pub struct DefaultFileProcessor;
 
 impl FileProcessor for DefaultFileProcessor {
     fn process_file(&self, file_path: &Path, todo_file_basename: Option<&str>) -> Result<String> {
-        let file_path_str = file_path.to_str().ok_or_else(|| anyhow!("Invalid file path"))?;
+        let file_path_str = file_path
+            .to_str()
+            .ok_or_else(|| anyhow!("Invalid file path"))?;
         let file_content = fs::read_to_string(file_path)?;
-        
+
         // Use marker filtering if markers are present.
         let processed_content = if file_content.lines().any(|line| line.trim() == "// v") {
             filter_substring_markers(&file_content, "// ...")
@@ -27,10 +31,7 @@ impl FileProcessor for DefaultFileProcessor {
             file_content.clone()
         };
 
-        let file_basename = file_path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
+        let file_basename = file_path.file_name().and_then(|s| s.to_str()).unwrap_or("");
         let mut combined_content = processed_content;
 
         // Append the enclosing context if markers are used and the basename matches.
@@ -44,7 +45,7 @@ impl FileProcessor for DefaultFileProcessor {
                 }
             }
         }
-        
+
         Ok(combined_content)
     }
 }
@@ -53,7 +54,7 @@ impl FileProcessor for DefaultFileProcessor {
 pub fn process_file_with_processor<P: AsRef<Path>>(
     processor: &dyn FileProcessor,
     file_path: P,
-    todo_file_basename: Option<&str>
+    todo_file_basename: Option<&str>,
 ) -> Result<String> {
     processor.process_file(file_path.as_ref(), todo_file_basename)
 }
@@ -61,14 +62,18 @@ pub fn process_file_with_processor<P: AsRef<Path>>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
     use std::io::Write;
+    use tempfile::NamedTempFile;
 
     /// Dummy processor that always returns an error.
     pub struct FailingProcessor;
 
     impl FileProcessor for FailingProcessor {
-        fn process_file(&self, _file_path: &Path, _todo_file_basename: Option<&str>) -> Result<String> {
+        fn process_file(
+            &self,
+            _file_path: &Path,
+            _todo_file_basename: Option<&str>,
+        ) -> Result<String> {
             Err(anyhow!("Simulated processing failure"))
         }
     }
@@ -80,10 +85,12 @@ mod tests {
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "{}", raw_content).unwrap();
         let processor = DefaultFileProcessor;
-        let result = processor.process_file(
-            temp_file.path(),
-            Some(temp_file.path().file_name().unwrap().to_str().unwrap())
-        ).unwrap();
+        let result = processor
+            .process_file(
+                temp_file.path(),
+                Some(temp_file.path().file_name().unwrap().to_str().unwrap()),
+            )
+            .unwrap();
         assert_eq!(result, raw_content);
     }
 
@@ -119,7 +126,8 @@ mod tests {
         //    exactly as it appears in the file:
         let expected_context = "func myFunction() {\nlet x = 10;\n}";
         // 3. The processor appends the context, prefixed by the header.
-        let expected_context_appended = format!("// Enclosing function context:\n{}", expected_context);
+        let expected_context_appended =
+            format!("// Enclosing function context:\n{}", expected_context);
         let expected = format!("{}{}", expected_filtered, expected_context_appended);
 
         // Create an isolated temporary file for this test.

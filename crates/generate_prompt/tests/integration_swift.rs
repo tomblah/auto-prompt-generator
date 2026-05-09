@@ -3,11 +3,11 @@
 #[cfg(test)]
 mod integration_tests {
     use assert_cmd::Command;
+    use filetime::{set_file_mtime, FileTime};
     use std::env;
     use std::fs;
     use std::path::PathBuf;
     use tempfile::TempDir;
-    use filetime::{set_file_mtime, FileTime};
 
     /// Sets up a dummy Git project that is inside a Swift package,
     /// but with one extra file outside the package.
@@ -137,18 +137,24 @@ mod integration_tests {
         env::remove_var("DIFF_WITH_BRANCH");
         let (_project_dir, instruction_file_path) = setup_dummy_project();
 
-        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
+        env::set_var(
+            "GET_INSTRUCTION_FILE",
+            instruction_file_path.to_str().unwrap(),
+        );
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::set_var(
+            "PATH",
+            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+        );
 
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
         cmd.assert().success();
 
-        let clipboard_content = fs::read_to_string(&clipboard_file)
-            .expect("Failed to read dummy clipboard file");
+        let clipboard_content =
+            fs::read_to_string(&clipboard_file).expect("Failed to read dummy clipboard file");
 
         assert!(
             clipboard_content.contains("The contents of Instruction.swift is as follows:"),
@@ -205,19 +211,25 @@ mod integration_tests {
         env::remove_var("DIFF_WITH_BRANCH");
         let (_project_dir, instruction_file_path) = setup_dummy_project();
 
-        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
+        env::set_var(
+            "GET_INSTRUCTION_FILE",
+            instruction_file_path.to_str().unwrap(),
+        );
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::set_var(
+            "PATH",
+            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+        );
 
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
         cmd.arg("--singular");
         cmd.assert().success();
 
-        let clipboard_content = fs::read_to_string(&clipboard_file)
-            .expect("Failed to read dummy clipboard file");
+        let clipboard_content =
+            fs::read_to_string(&clipboard_file).expect("Failed to read dummy clipboard file");
 
         assert!(
             clipboard_content.contains("The contents of Instruction.swift is as follows:"),
@@ -266,19 +278,25 @@ mod integration_tests {
         env::remove_var("DIFF_WITH_BRANCH");
         let (_project_dir, instruction_file_path) = setup_dummy_project();
 
-        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
+        env::set_var(
+            "GET_INSTRUCTION_FILE",
+            instruction_file_path.to_str().unwrap(),
+        );
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::set_var(
+            "PATH",
+            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+        );
 
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
         cmd.arg("--include-references");
         cmd.assert().success();
 
-        let clipboard_content = fs::read_to_string(&clipboard_file)
-            .expect("Failed to read dummy clipboard file");
+        let clipboard_content =
+            fs::read_to_string(&clipboard_file).expect("Failed to read dummy clipboard file");
 
         assert!(
             clipboard_content.contains("The contents of Instruction.swift is as follows:"),
@@ -313,7 +331,7 @@ mod integration_tests {
             "Did not expect the old TODO marker to appear in the prompt"
         );
     }
-    
+
     /// Integration test for exclusion flags.
     /// Here we run generate_prompt with the --exclude flag for "Definition1.swift".
     /// We expect that the final prompt includes the Instruction.swift file and Definition2.swift,
@@ -324,20 +342,26 @@ mod integration_tests {
         env::remove_var("DIFF_WITH_BRANCH");
         let (_project_dir, instruction_file_path) = setup_dummy_project();
 
-        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
+        env::set_var(
+            "GET_INSTRUCTION_FILE",
+            instruction_file_path.to_str().unwrap(),
+        );
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::set_var(
+            "PATH",
+            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+        );
 
         // Run generate_prompt with the exclusion flag for "Definition1.swift"
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
         cmd.arg("--exclude").arg("Definition1.swift");
         cmd.assert().success();
 
-        let clipboard_content = fs::read_to_string(&clipboard_file)
-            .expect("Failed to read dummy clipboard file");
+        let clipboard_content =
+            fs::read_to_string(&clipboard_file).expect("Failed to read dummy clipboard file");
 
         // Assert that the prompt still includes the Instruction.swift file header.
         assert!(
@@ -370,19 +394,25 @@ mod integration_tests {
         env::remove_var("DIFF_WITH_BRANCH");
         let (_project_dir, instruction_file_path) = setup_dummy_project();
 
-        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
+        env::set_var(
+            "GET_INSTRUCTION_FILE",
+            instruction_file_path.to_str().unwrap(),
+        );
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::set_var(
+            "PATH",
+            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+        );
 
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
         cmd.arg("--force-global");
         cmd.assert().success();
 
-        let clipboard_content = fs::read_to_string(&clipboard_file)
-            .expect("Failed to read dummy clipboard file");
+        let clipboard_content =
+            fs::read_to_string(&clipboard_file).expect("Failed to read dummy clipboard file");
 
         // Verify that the global search has included Outside.swift.
         assert!(
@@ -394,7 +424,7 @@ mod integration_tests {
             "Expected clipboard to contain the declaration of DummyType3"
         );
     }
-    
+
     /// New Integration test to verify that when the TODO trigger references "TriggerCommentType",
     /// the file TriggerCommentReferenced.swift (which defines TriggerCommentType) is included in the final prompt.
     #[test]
@@ -404,23 +434,30 @@ mod integration_tests {
         let (_project_dir, instruction_file_path) = setup_dummy_project();
 
         // Set the GET_INSTRUCTION_FILE to point to Instruction.swift.
-        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
+        env::set_var(
+            "GET_INSTRUCTION_FILE",
+            instruction_file_path.to_str().unwrap(),
+        );
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::set_var(
+            "PATH",
+            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+        );
 
         // Run generate_prompt (normal mode).
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
         cmd.assert().success();
 
-        let clipboard_content = fs::read_to_string(&clipboard_file)
-            .expect("Failed to read dummy clipboard file");
+        let clipboard_content =
+            fs::read_to_string(&clipboard_file).expect("Failed to read dummy clipboard file");
 
         // Verify that TriggerCommentReferenced.swift (defining TriggerCommentType) is included in the final prompt.
         assert!(
-            clipboard_content.contains("The contents of TriggerCommentReferenced.swift is as follows:"),
+            clipboard_content
+                .contains("The contents of TriggerCommentReferenced.swift is as follows:"),
             "Expected TriggerCommentReferenced.swift header in prompt. Got:\n{}",
             clipboard_content
         );
@@ -430,7 +467,7 @@ mod integration_tests {
             clipboard_content
         );
     }
-    
+
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_excludes_comment_referenced_file() {
@@ -438,19 +475,25 @@ mod integration_tests {
         let (_project_dir, instruction_file_path) = setup_dummy_project();
 
         // Set the GET_INSTRUCTION_FILE to point to Instruction.swift.
-        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
+        env::set_var(
+            "GET_INSTRUCTION_FILE",
+            instruction_file_path.to_str().unwrap(),
+        );
         env::remove_var("DISABLE_PBCOPY");
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::set_var(
+            "PATH",
+            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+        );
 
         // Run generate_prompt (normal mode).
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
         cmd.assert().success();
 
-        let clipboard_content = fs::read_to_string(&clipboard_file)
-            .expect("Failed to read dummy clipboard file");
+        let clipboard_content =
+            fs::read_to_string(&clipboard_file).expect("Failed to read dummy clipboard file");
 
         // Assert that CommentReferenced.swift is NOT included in the final prompt.
         assert!(
@@ -535,7 +578,7 @@ public func enclosingFunction<V: Equatable, W: Codable>(input: V) -> W? {
         let dummy_pbcopy_path = pbcopy_dir.path().join("pbcopy");
         fs::write(
             &dummy_pbcopy_path,
-            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display())
+            format!("#!/bin/sh\ncat > \"{}\"", clipboard_file.display()),
         )
         .unwrap();
         #[cfg(unix)]
@@ -547,7 +590,10 @@ public func enclosingFunction<V: Equatable, W: Codable>(input: V) -> W? {
         }
         // Prepend the dummy pbcopy directory to the PATH.
         let original_path = env::var("PATH").unwrap();
-        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::set_var(
+            "PATH",
+            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+        );
 
         // Ensure that clipboard copying is enabled.
         env::remove_var("DISABLE_PBCOPY");
@@ -558,8 +604,8 @@ public func enclosingFunction<V: Equatable, W: Codable>(input: V) -> W? {
         cmd.assert().success();
 
         // Read the output from the dummy clipboard file.
-        let clipboard_content = fs::read_to_string(&clipboard_file)
-            .expect("Failed to read dummy clipboard file");
+        let clipboard_content =
+            fs::read_to_string(&clipboard_file).expect("Failed to read dummy clipboard file");
 
         // Assert that the final prompt includes the content from the substring markers.
         assert!(
@@ -609,7 +655,7 @@ public func enclosingFunction<V: Equatable, W: Codable>(input: V) -> W? {
             "Expected the prompt to not include 'unimportantFunction'; got:\n{}",
             clipboard_content
         );
-        
+
         // Assert that 'anotherUnimportantFunction' does not appear in the final prompt.
         assert!(
             !clipboard_content.contains("anotherUnimportantFunction"),
@@ -622,12 +668,12 @@ public func enclosingFunction<V: Equatable, W: Codable>(input: V) -> W? {
 #[cfg(test)]
 mod integration_diff {
     use assert_cmd::Command;
+    use predicates::prelude::*;
     use std::env;
     use std::fs;
     use std::path::PathBuf;
     use std::process::Command as StdCommand;
-    use tempfile::{TempDir};
-    use predicates::prelude::*;
+    use tempfile::TempDir;
 
     /// Sets up a dummy pbcopy executable that writes its stdin to a temporary file.
     /// Returns a tuple (pbcopy_dir, clipboard_file) where pbcopy_dir is the TempDir
@@ -661,7 +707,7 @@ mod integration_diff {
         // Initialize a Git repository.
         let init_status = StdCommand::new("git")
             .arg("init")
-            .current_dir(&git_root_path)
+            .current_dir(git_root_path)
             .status()
             .expect("Failed to initialize git repository");
         assert!(init_status.success(), "Git init failed");
@@ -676,19 +722,21 @@ mod integration_diff {
 
         // Create Instruction.swift with initial content.
         let instruction_file_path = package_dir.join("Instruction.swift");
-        let initial_content = "public final class SomeClass {\n    var x: Int = 0\n}\n// TODO: - Fix SomeClass\n";
-        fs::write(&instruction_file_path, initial_content).expect("Failed to write Instruction.swift");
+        let initial_content =
+            "public final class SomeClass {\n    var x: Int = 0\n}\n// TODO: - Fix SomeClass\n";
+        fs::write(&instruction_file_path, initial_content)
+            .expect("Failed to write Instruction.swift");
 
         // Add and commit Instruction.swift.
         let add_status = StdCommand::new("git")
-            .args(&["add", "Instruction.swift"])
+            .args(["add", "Instruction.swift"])
             .current_dir(&package_dir)
             .status()
             .expect("Failed to git add Instruction.swift");
         assert!(add_status.success(), "Git add failed");
 
         let commit_status = StdCommand::new("git")
-            .args(&["commit", "-m", "Initial commit"])
+            .args(["commit", "-m", "Initial commit"])
             .current_dir(&package_dir)
             .status()
             .expect("Failed to git commit");
@@ -696,17 +744,24 @@ mod integration_diff {
 
         // Modify Instruction.swift to create a diff.
         let modified_content = "public final class SomeClass {\n    var x: Int = 0\n    func diffFunc() {}\n}\n// TODO: - Fix SomeClass\n";
-        fs::write(&instruction_file_path, modified_content).expect("Failed to modify Instruction.swift");
+        fs::write(&instruction_file_path, modified_content)
+            .expect("Failed to modify Instruction.swift");
 
         // Set environment variables so generate_prompt picks up our dummy project.
         env::set_var("GET_GIT_ROOT", git_root_path.to_str().unwrap());
-        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
+        env::set_var(
+            "GET_INSTRUCTION_FILE",
+            instruction_file_path.to_str().unwrap(),
+        );
         env::remove_var("DISABLE_PBCOPY");
 
         // Set up dummy pbcopy so that clipboard output is captured.
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::set_var(
+            "PATH",
+            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+        );
 
         // Enable diff reporting by setting DIFF_WITH_BRANCH (using "HEAD" here).
         env::set_var("DIFF_WITH_BRANCH", "HEAD");
@@ -721,12 +776,13 @@ mod integration_diff {
         env::set_var("TODO_FILE_BASENAME", &file_basename);
 
         // Run the generate_prompt binary.
-        let mut cmd = Command::cargo_bin("generate_prompt").expect("Failed to find generate_prompt binary");
+        let mut cmd =
+            Command::cargo_bin("generate_prompt").expect("Failed to find generate_prompt binary");
         cmd.assert().success();
 
         // Read the content from our dummy clipboard file.
-        let clipboard_content = fs::read_to_string(&clipboard_file)
-            .expect("Failed to read clipboard content");
+        let clipboard_content =
+            fs::read_to_string(&clipboard_file).expect("Failed to read clipboard content");
 
         // Assert that the prompt includes a diff section.
         assert!(
@@ -808,17 +864,20 @@ public class Dummy {
         }
         // Prepend the dummy pbcopy directory to the PATH.
         let original_path = env::var("PATH").expect("PATH not found");
-        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::set_var(
+            "PATH",
+            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+        );
 
         // Run generate_prompt in singular mode so that only the instruction file is processed.
-        let mut cmd = Command::cargo_bin("generate_prompt")
-            .expect("Failed to find generate_prompt binary");
+        let mut cmd =
+            Command::cargo_bin("generate_prompt").expect("Failed to find generate_prompt binary");
         cmd.arg("--singular");
         cmd.assert().success();
 
         // Read the final prompt from the clipboard output.
-        let clipboard_content = fs::read_to_string(&clipboard_file)
-            .expect("Failed to read clipboard file");
+        let clipboard_content =
+            fs::read_to_string(&clipboard_file).expect("Failed to read clipboard file");
 
         // Count the occurrences of marker lines.
         let marker_count = clipboard_content.matches("// TODO: -").count();
@@ -850,7 +909,7 @@ public class Dummy {
             "Another extra marker was not scrubbed from final prompt"
         );
     }
-    
+
     /// New integration test that asserts failure when a branch specified by DIFF_WITH_BRANCH is not found.
     #[test]
     #[cfg(unix)]
@@ -862,7 +921,7 @@ public class Dummy {
         // Initialize a Git repository (without any commits so HEAD does not exist).
         let init_status = StdCommand::new("git")
             .arg("init")
-            .current_dir(&git_root_path)
+            .current_dir(git_root_path)
             .status()
             .expect("Failed to initialize git repository");
         assert!(init_status.success(), "Git init failed");
@@ -877,12 +936,16 @@ public class Dummy {
 
         // Create Instruction.swift with some content.
         let instruction_file_path = package_dir.join("Instruction.swift");
-        let content = "public final class SomeClass { var x: Int = 0 } \n// TODO: - Fix SomeClass\n";
+        let content =
+            "public final class SomeClass { var x: Int = 0 } \n// TODO: - Fix SomeClass\n";
         fs::write(&instruction_file_path, content).expect("Failed to write Instruction.swift");
 
         // Set environment variables.
         env::set_var("GET_GIT_ROOT", git_root_path.to_str().unwrap());
-        env::set_var("GET_INSTRUCTION_FILE", instruction_file_path.to_str().unwrap());
+        env::set_var(
+            "GET_INSTRUCTION_FILE",
+            instruction_file_path.to_str().unwrap(),
+        );
         // Set DIFF_WITH_BRANCH to a branch that doesn't exist.
         env::set_var("DIFF_WITH_BRANCH", "nonexistent");
         env::remove_var("DISABLE_PBCOPY");
@@ -890,25 +953,29 @@ public class Dummy {
         // Set up dummy pbcopy so that if any output were produced, it would be captured.
         let (pbcopy_dir, _clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var("PATH", format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path));
+        env::set_var(
+            "PATH",
+            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+        );
 
         // Run generate_prompt and assert that it fails with the expected error.
-        let mut cmd = Command::cargo_bin("generate_prompt").expect("Failed to find generate_prompt binary");
-        cmd.assert()
-           .failure()
-           .stderr(predicate::str::contains("Error: Branch 'nonexistent' does not exist."));
+        let mut cmd =
+            Command::cargo_bin("generate_prompt").expect("Failed to find generate_prompt binary");
+        cmd.assert().failure().stderr(predicate::str::contains(
+            "Error: Branch 'nonexistent' does not exist.",
+        ));
     }
 }
 
 // NB: these tests are currently for when we find a bug and want to reproduce it
 mod strict_end_to_end_tests {
-    use assert_cmd::Command;           // for running your binary via cargo_bin
-    use std::env;                      // for env::set_var etc.
-    use assert_fs::prelude::*;         // for methods like child(), which requires the PathChild trait
-    use assert_fs::fixture::PathChild; // explicitly bring the PathChild trait into scope
-    use std::process::Command as StdCommand;
     use assert_cmd::assert::OutputAssertExt;
+    use assert_cmd::Command; // for running your binary via cargo_bin
+    use assert_fs::fixture::PathChild; // explicitly bring the PathChild trait into scope
+    use assert_fs::prelude::*; // for methods like child(), which requires the PathChild trait
     use predicates::boolean::PredicateBooleanExt;
+    use std::env; // for env::set_var etc.
+    use std::process::Command as StdCommand;
 
     #[test]
     fn test_generate_prompt_runs_in_git_repo() {
@@ -927,7 +994,7 @@ mod strict_end_to_end_tests {
         // Initialize the temporary directory as a git repository.
         StdCommand::new("git")
             .current_dir(temp.path())
-            .args(&["init"])
+            .args(["init"])
             .assert()
             .success();
 
@@ -949,7 +1016,7 @@ mod strict_end_to_end_tests {
         // Cleanup.
         temp.close().unwrap();
     }
-    
+
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_with_swift_input() {
@@ -964,7 +1031,7 @@ mod strict_end_to_end_tests {
         let example_swift = temp.child("Example.swift");
         example_swift
             .write_str(
-r#"// v
+                r#"// v
 // ^
 
 func exampleFunction() {
@@ -976,7 +1043,10 @@ func exampleFunction() {
             .unwrap();
 
         // Force generate_prompt to use this file as the instruction file.
-        env::set_var("GET_INSTRUCTION_FILE", example_swift.path().to_str().unwrap());
+        env::set_var(
+            "GET_INSTRUCTION_FILE",
+            example_swift.path().to_str().unwrap(),
+        );
 
         // Set GET_GIT_ROOT to the canonicalized temporary directory.
         let canonical_git_root = temp.path().canonicalize().unwrap();
@@ -988,7 +1058,7 @@ func exampleFunction() {
         // Initialize a Git repository in the temp directory.
         StdCommand::new("git")
             .current_dir(temp.path())
-            .args(&["init"])
+            .args(["init"])
             .assert()
             .success();
 
@@ -999,8 +1069,7 @@ func exampleFunction() {
             .assert()
             .success()
             .stdout(
-                predicates::str::contains("Success:")
-                    .and(predicates::str::contains("example")),
+                predicates::str::contains("Success:").and(predicates::str::contains("example")),
             );
 
         // Cleanup.
@@ -1009,13 +1078,13 @@ func exampleFunction() {
 }
 
 mod targeted_mode {
+    use assert_cmd::assert::OutputAssertExt;
     use assert_cmd::Command;
-    use assert_fs::prelude::*;
     use assert_fs::fixture::PathChild;
+    use assert_fs::prelude::*;
     use predicates::str::contains;
     use std::env;
     use std::process::Command as StdCommand;
-    use assert_cmd::assert::OutputAssertExt;
 
     #[test]
     fn test_generate_prompt_with_targeted_mode() {
@@ -1029,14 +1098,16 @@ mod targeted_mode {
         //   The trigger comment is: "// TODO: - Perform action"
         //   Since tokens starting with lowercase letters are filtered out, only "Perform" should be extracted.
         let swift_file = temp.child("Targeted.swift");
-        swift_file.write_str(
-    r#"class OuterType {}
+        swift_file
+            .write_str(
+                r#"class OuterType {}
     func fetchData(from urlString: String) async throws -> Data {
         class InnerType {}
         // TODO: - Perform action
     }
     "#,
-        ).unwrap();
+            )
+            .unwrap();
 
         // Force generate_prompt to use this file as the instruction file.
         env::set_var("GET_INSTRUCTION_FILE", swift_file.path().to_str().unwrap());
@@ -1051,7 +1122,7 @@ mod targeted_mode {
         // Initialize the temporary directory as a Git repository.
         StdCommand::new("git")
             .current_dir(temp.path())
-            .args(&["init"])
+            .args(["init"])
             .assert()
             .success();
 

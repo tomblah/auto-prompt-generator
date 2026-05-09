@@ -10,7 +10,10 @@ pub fn get_package_root(start_path: &Path) -> Option<PathBuf> {
     let mut current_dir: PathBuf = if start_path.is_dir() {
         start_path.to_path_buf()
     } else {
-        start_path.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("/"))
+        start_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("/"))
     };
 
     // Walk upward until we reach the root.
