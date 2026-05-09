@@ -1,7 +1,7 @@
 SHELL = /bin/bash
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: build test tests coverage clean fix-headers mc mmc mmmc mmmmc all check review
+.PHONY: build test tests coverage clean fix-headers fmt fmt-check lint quality install-hooks mc mmc mmmc mmmmc all check review
 
 # Ensure Cargo is installed
 ifeq ($(shell command -v cargo 2> /dev/null),)
@@ -34,6 +34,29 @@ coverage-compare:
 fix-headers:
 	@echo "Fixing headers..."
 	./scripts/fix-headers.sh
+
+# Format all Rust code.
+fmt:
+	@echo "Formatting Rust code..."
+	cargo fmt --all
+
+# Check Rust formatting without modifying files.
+fmt-check:
+	@echo "Checking Rust formatting..."
+	cargo fmt --all -- --check
+
+# Run strict Rust lints.
+lint:
+	@echo "Running Clippy..."
+	cargo clippy --workspace --all-targets -- -D warnings
+
+# Run non-mutating quality gates.
+quality: fmt-check lint
+
+# Install repo-managed Git hooks into the local checkout.
+install-hooks:
+	@echo "Installing Git hooks..."
+	./scripts/install-hooks.sh
 
 # Clean Rust build artifacts.
 clean:
@@ -79,8 +102,8 @@ mmmmc:
 	  echo "Error: No clipboard tool found (requires pbcopy or xclip)"; exit 1; \
 	fi
 
-# Default target: clean, fix headers, build, test, and generate coverage.
-all: clean fix-headers build test coverage
+# Default target: clean, fix headers, quality gates, build, test, and coverage.
+all: clean fix-headers quality build test coverage
 
 # Run the diff‑and‑copy check script
 check:

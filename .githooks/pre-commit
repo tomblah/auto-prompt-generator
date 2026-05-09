@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"
+cd "$repo_root"
+
+echo "Checking Rust formatting..."
+if ! cargo fmt --all -- --check; then
+  echo
+  echo "Rust formatting check failed."
+  echo "Run: make fmt"
+  echo "Then review and stage the formatting changes before committing again."
+  exit 1
+fi
+
+echo "Running strict Rust lints..."
+if ! cargo clippy --workspace --all-targets -- -D warnings; then
+  echo
+  echo "Clippy failed."
+  echo "Fix the reported issues, then commit again."
+  exit 1
+fi
