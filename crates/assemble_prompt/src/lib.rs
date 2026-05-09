@@ -6,19 +6,51 @@ use std::path::Path;
 use anyhow::{Result};
 use substring_marker_snippet_extractor::{DefaultFileProcessor, FileProcessor, process_file_with_processor};
 use unescape_newlines::unescape_newlines;
-use diff_with_branch::run_diff;
+use diff_with_branch::run_diff_against;
 
 const FIXED_INSTRUCTION: &str = "Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen";
+
+#[derive(Debug, Clone, Default)]
+pub struct AssemblyOptions {
+    pub todo_file_basename: Option<String>,
+    pub diff_branch: Option<String>,
+}
+
+impl AssemblyOptions {
+    fn from_env() -> Self {
+        Self {
+            todo_file_basename: env::var("TODO_FILE_BASENAME").ok(),
+            diff_branch: env::var("DIFF_WITH_BRANCH").ok(),
+        }
+    }
+}
 
 /// Public API: assembles the final prompt from the found files (provided as an in‑memory slice)
 /// and instruction content. The prompt is returned as a String.
 pub fn assemble_prompt(found_files: &[String], _instruction_content: &str) -> Result<String> {
-    assemble_prompt_with_processor(found_files, &DefaultFileProcessor)
+    assemble_prompt_with_options(found_files, _instruction_content, &AssemblyOptions::from_env())
 }
 
+pub fn assemble_prompt_with_options(
+    found_files: &[String],
+    _instruction_content: &str,
+    options: &AssemblyOptions,
+) -> Result<String> {
+    assemble_prompt_with_processor_and_options(found_files, &DefaultFileProcessor, options)
+}
+
+#[cfg(test)]
 fn assemble_prompt_with_processor<P: FileProcessor>(
     found_files: &[String],
     processor: &P,
+) -> Result<String> {
+    assemble_prompt_with_processor_and_options(found_files, processor, &AssemblyOptions::from_env())
+}
+
+fn assemble_prompt_with_processor_and_options<P: FileProcessor>(
+    found_files: &[String],
+    processor: &P,
+    options: &AssemblyOptions,
 ) -> Result<String> {
     // Sort and deduplicate the list.
     let mut files = found_files.to_vec();
@@ -26,8 +58,7 @@ fn assemble_prompt_with_processor<P: FileProcessor>(
     files.dedup();
 
     let mut final_prompt = String::new();
-    // Retrieve TODO file basename from the environment.
-    let todo_file_basename = env::var("TODO_FILE_BASENAME").unwrap_or_default();
+    let todo_file_basename = options.todo_file_basename.as_deref().unwrap_or("");
 
     // Process each file in the deduplicated list.
     for file_path in files {
@@ -54,9 +85,9 @@ fn assemble_prompt_with_processor<P: FileProcessor>(
             basename, processed_content
         ));
 
-        // If DIFF_WITH_BRANCH is set, append a diff report using the diff_with_branch crate.
-        if let Ok(diff_branch) = env::var("DIFF_WITH_BRANCH") {
-            let diff_output = match run_diff(&file_path) {
+        // If a diff branch is set, append a diff report using the diff_with_branch crate.
+        if let Some(diff_branch) = options.diff_branch.as_deref() {
+            let diff_output = match run_diff_against(&file_path, diff_branch) {
                 Ok(Some(diff)) => diff,
                 Ok(None) => String::new(),
                 Err(err) => {
@@ -565,6 +596,29 @@ esac
         assert!(output.contains("todo basename: Instruction.swift"));
 
         env::remove_var("TODO_FILE_BASENAME");
+    }
+
+    #[test]
+    fn test_explicit_todo_file_basename_is_passed_to_processor() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "raw content").unwrap();
+        let file_path = file.path().to_str().unwrap().to_string();
+        let found_files = vec![file_path];
+        let options = AssemblyOptions {
+            todo_file_basename: Some("Instruction.swift".to_string()),
+            diff_branch: None,
+        };
+
+        env::remove_var("TODO_FILE_BASENAME");
+
+        let output = assemble_prompt_with_processor_and_options(
+            &found_files,
+            &TodoBasenameEchoProcessor,
+            &options,
+        )
+        .expect("assemble_prompt_with_processor_and_options failed with echo processor");
+
+        assert!(output.contains("todo basename: Instruction.swift"));
     }
 
     #[test]
