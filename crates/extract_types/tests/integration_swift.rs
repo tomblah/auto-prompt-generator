@@ -1,7 +1,9 @@
 // crates/extract_types/tests/integration_swift.rs
 
 use anyhow::Result;
-use extract_types::extract_types_from_file;
+use extract_types::{
+    extract_types_from_file, extract_types_from_file_with_options, ExtractTypesOptions,
+};
 use std::env;
 use std::io::Write;
 use tempfile::NamedTempFile;
@@ -170,6 +172,30 @@ fn integration_extract_types_without_targeted_env_processes_full_content() -> Re
 
     let result = extract_types_from_file(temp_file.path())?;
     let expected = "InnerType\nOuterType\nPerform";
+    assert_eq!(result.trim(), expected);
+
+    Ok(())
+}
+
+#[test]
+fn integration_extract_types_explicit_targeted_option_ignores_env() -> Result<()> {
+    env::remove_var("TARGETED");
+
+    let swift_content = r#"
+        class OuterType {}
+        func testFunction() {
+            class InnerType {}
+            // TODO: - Perform action
+        }
+    "#;
+    let mut temp_file = NamedTempFile::new()?;
+    write!(temp_file, "{}", swift_content)?;
+
+    let result = extract_types_from_file_with_options(
+        temp_file.path(),
+        &ExtractTypesOptions { targeted: true },
+    )?;
+    let expected = "InnerType\nPerform";
     assert_eq!(result.trim(), expected);
 
     Ok(())

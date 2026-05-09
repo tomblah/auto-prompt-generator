@@ -77,18 +77,10 @@ fn main() -> Result<()> {
         .unwrap_or_default()
         .map(|s| s.to_string())
         .collect();
-
-    // Set the diff branch from CLI if not already set via env.
-    if env::var("DIFF_WITH_BRANCH").is_err() {
-        if let Some(diff_branch) = matches.get_one::<String>("diff_with") {
-            env::set_var("DIFF_WITH_BRANCH", diff_branch);
-        }
-    }
-
-    // Set the TARGETED environment variable if the flag is enabled.
-    if *matches.get_one::<bool>("tgtd").unwrap() {
-        env::set_var("TARGETED", "1");
-    }
+    let diff_branch = env::var("DIFF_WITH_BRANCH")
+        .ok()
+        .or_else(|| matches.get_one::<String>("diff_with").cloned());
+    let targeted = *matches.get_one::<bool>("tgtd").unwrap();
 
     // 1. Save the current directory and determine the Git root.
     let current_dir = env::current_dir().context("Failed to get current directory")?;
@@ -106,9 +98,9 @@ fn main() -> Result<()> {
     println!("--------------------------------------------------");
 
     // 2. If a diff branch is specified, verify it exists.
-    if let Ok(diff_branch) = env::var("DIFF_WITH_BRANCH") {
+    if let Some(diff_branch) = &diff_branch {
         let verify_status = ProcessCommand::new("git")
-            .args(["rev-parse", "--verify", &diff_branch])
+            .args(["rev-parse", "--verify", diff_branch])
             .current_dir(&git_root)
             .stderr(Stdio::null())
             .status()
@@ -128,13 +120,17 @@ fn main() -> Result<()> {
     println!("--------------------------------------------------");
 
     // 5. Delegate to the prompt generator module.
-    prompt_generator::generate_prompt(
+    prompt_generator::generate_prompt_with_options(
         &git_root,
         &file_path,
-        singular,
-        force_global,
-        include_references,
-        &excludes,
+        &prompt_generator::GeneratePromptOptions {
+            singular,
+            force_global,
+            include_references,
+            excludes,
+            diff_branch,
+            targeted,
+        },
     )?;
 
     Ok(())

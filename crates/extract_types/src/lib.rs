@@ -118,13 +118,27 @@ impl TypeExtractor {
 /// ---------------------------------------------------------------------------
 ///  Public API
 /// ---------------------------------------------------------------------------
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExtractTypesOptions {
+    pub targeted: bool,
+}
+
 pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> {
+    let options = ExtractTypesOptions {
+        targeted: std::env::var("TARGETED").is_ok(),
+    };
+    extract_types_from_file_with_options(swift_file, &options)
+}
+
+pub fn extract_types_from_file_with_options<P: AsRef<Path>>(
+    swift_file: P,
+    options: &ExtractTypesOptions,
+) -> Result<String> {
     let full_content = fs::read_to_string(&swift_file)
         .with_context(|| format!("Failed to open file {}", swift_file.as_ref().display()))?;
 
     // Decide which slice of the file to analyse
-    let targeted = std::env::var("TARGETED").is_ok();
-    let content_slice = if targeted {
+    let content_slice = if options.targeted {
         if let Some(inner) = extract_inner_block_from_content(&full_content) {
             inner
         } else {

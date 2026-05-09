@@ -2,10 +2,17 @@
 
 use anyhow::Result;
 use extract_enclosing_type::extract_enclosing_type;
-use extract_types::extract_types_from_file;
+use extract_types::{extract_types_from_file_with_options, ExtractTypesOptions};
 use find_definition_files::find_definition_files;
 use std::path::Path;
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FileSelectionOptions {
+    pub include_references: bool,
+    pub targeted: bool,
+}
+
+#[cfg(test)]
 /// Determines the list of files to include in the prompt based on the given parameters.
 ///
 /// - If `singular` is true, only the instruction file (TODO file) is included.
@@ -31,6 +38,25 @@ pub fn determine_files_to_include(
     excludes: &[String],
     include_references: bool,
 ) -> Result<Vec<String>> {
+    determine_files_to_include_with_options(
+        file_path,
+        singular,
+        search_root,
+        excludes,
+        &FileSelectionOptions {
+            include_references,
+            targeted: std::env::var("TARGETED").is_ok(),
+        },
+    )
+}
+
+pub fn determine_files_to_include_with_options(
+    file_path: &str,
+    singular: bool,
+    search_root: &Path,
+    excludes: &[String],
+    options: &FileSelectionOptions,
+) -> Result<Vec<String>> {
     let mut found_files: Vec<String> = Vec::new();
 
     if singular {
@@ -38,8 +64,13 @@ pub fn determine_files_to_include(
         found_files.push(file_path.to_string());
     } else {
         // Extract types as a newline-separated string.
-        let types_content = extract_types_from_file(file_path)
-            .map_err(|e| anyhow::anyhow!("Failed to extract types: {}", e))?;
+        let types_content = extract_types_from_file_with_options(
+            file_path,
+            &ExtractTypesOptions {
+                targeted: options.targeted,
+            },
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to extract types: {}", e))?;
         println!("Types found:");
         println!("{}", types_content.trim());
         println!("--------------------------------------------------");
@@ -69,7 +100,7 @@ pub fn determine_files_to_include(
         }
     }
 
-    if include_references {
+    if options.include_references {
         println!("Including files that reference the enclosing type");
         let enclosing_type = match extract_enclosing_type(file_path) {
             Ok(ty) => ty,
