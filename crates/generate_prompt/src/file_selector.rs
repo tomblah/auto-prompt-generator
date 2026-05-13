@@ -12,7 +12,6 @@ pub struct FileSelectionOptions {
     pub targeted: bool,
 }
 
-#[cfg(test)]
 /// Determines the list of files to include in the prompt based on the given parameters.
 ///
 /// - If `singular` is true, only the instruction file (TODO file) is included.
@@ -26,30 +25,11 @@ pub struct FileSelectionOptions {
 /// * `singular` - Whether to operate in singular mode.
 /// * `search_root` - The search root directory for definition file lookup.
 /// * `excludes` - A slice of file basename strings to exclude.
-/// * `include_references` - Whether to search for and include referencing files.
+/// * `options` - Explicit file-selection behavior.
 ///
 /// # Returns
 ///
 /// A vector of file paths (as Strings) that should be included in the final prompt.
-pub fn determine_files_to_include(
-    file_path: &str,
-    singular: bool,
-    search_root: &Path,
-    excludes: &[String],
-    include_references: bool,
-) -> Result<Vec<String>> {
-    determine_files_to_include_with_options(
-        file_path,
-        singular,
-        search_root,
-        excludes,
-        &FileSelectionOptions {
-            include_references,
-            targeted: std::env::var("TARGETED").is_ok(),
-        },
-    )
-}
-
 pub fn determine_files_to_include_with_options(
     file_path: &str,
     singular: bool,
@@ -169,8 +149,17 @@ mod tests {
         // Use the file's parent as search root.
         let search_root = temp_instr.path().parent().unwrap().to_path_buf();
 
-        let files = determine_files_to_include(&instr_path, true, &search_root, &[], false)
-            .expect("Failed in singular mode");
+        let files = determine_files_to_include_with_options(
+            &instr_path,
+            true,
+            &search_root,
+            &[],
+            &FileSelectionOptions {
+                include_references: false,
+                targeted: false,
+            },
+        )
+        .expect("Failed in singular mode");
         assert_eq!(files.len(), 1);
         assert_eq!(files[0], instr_path);
     }
@@ -199,12 +188,15 @@ mod tests {
             writeln!(f, "class TypeA {{ }}").unwrap();
         }
 
-        let files = determine_files_to_include(
+        let files = determine_files_to_include_with_options(
             instr_path.to_str().unwrap(),
             false,
             &search_root,
             &[],
-            false,
+            &FileSelectionOptions {
+                include_references: false,
+                targeted: false,
+            },
         )
         .expect("Non-singular without references failed");
         // Expect both the instruction file and the definition file.
@@ -334,12 +326,15 @@ mod tests {
             writeln!(f, "let x = RefType()").unwrap();
         }
 
-        let files = determine_files_to_include(
+        let files = determine_files_to_include_with_options(
             instr_path.to_str().unwrap(),
             false,
             &search_root,
             &[],
-            true,
+            &FileSelectionOptions {
+                include_references: true,
+                targeted: false,
+            },
         )
         .expect("Non-singular with references failed");
         // Expected: Instruction.swift, Def.swift, and Ref.swift.
@@ -347,6 +342,29 @@ mod tests {
         assert!(files.contains(&def_path.to_str().unwrap().to_string()));
         assert!(files.contains(&ref_path.to_str().unwrap().to_string()));
         assert_eq!(files.len(), 3);
+    }
+
+    #[test]
+    fn test_include_references_skips_search_when_enclosing_type_errors() {
+        let temp_dir = tempdir().unwrap();
+        let missing_instruction = temp_dir.path().join("MissingInstruction.swift");
+
+        let files = determine_files_to_include_with_options(
+            missing_instruction.to_str().unwrap(),
+            true,
+            temp_dir.path(),
+            &[],
+            &FileSelectionOptions {
+                include_references: true,
+                targeted: false,
+            },
+        )
+        .expect("Missing file should only skip reference lookup");
+
+        assert_eq!(
+            files,
+            vec![missing_instruction.to_string_lossy().into_owned()]
+        );
     }
 
     /// Test exclusion filtering in non-singular mode with references enabled.
@@ -381,12 +399,15 @@ mod tests {
         }
 
         // Now use include_references = true and exclude "Def.swift".
-        let files = determine_files_to_include(
+        let files = determine_files_to_include_with_options(
             instr_path.to_str().unwrap(),
             false,
             &search_root,
             &["Def.swift".to_string()],
-            true,
+            &FileSelectionOptions {
+                include_references: true,
+                targeted: false,
+            },
         )
         .expect("Exclusion test failed");
         // Expected: Instruction.swift and Ref.swift should be present; Def.swift should be excluded.
