@@ -153,6 +153,7 @@ pub fn determine_files_to_include_with_options(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
     use std::fs::File;
     use std::io::Write;
     use tempfile::{tempdir, NamedTempFile};
@@ -210,6 +211,98 @@ mod tests {
         assert!(files.contains(&instr_path.to_str().unwrap().to_string()));
         assert!(files.contains(&def_path.to_str().unwrap().to_string()));
         assert_eq!(files.len(), 2);
+    }
+
+    #[test]
+    fn test_explicit_targeted_false_ignores_targeted_env() {
+        env::set_var("TARGETED", "1");
+        let temp_dir = tempdir().unwrap();
+        let search_root = temp_dir.path().to_path_buf();
+
+        let instr_path = temp_dir.path().join("Instruction.swift");
+        {
+            let mut f = File::create(&instr_path).unwrap();
+            writeln!(f, "class OuterType {{ }}").unwrap();
+            writeln!(f, "func testFunction() {{").unwrap();
+            writeln!(f, "    class InnerType {{ }}").unwrap();
+            writeln!(f, "    // TODO: - Perform action").unwrap();
+            writeln!(f, "}}").unwrap();
+        }
+
+        let outer_def_path = temp_dir.path().join("OuterDefinition.swift");
+        {
+            let mut f = File::create(&outer_def_path).unwrap();
+            writeln!(f, "class OuterType {{ }}").unwrap();
+        }
+
+        let inner_def_path = temp_dir.path().join("InnerDefinition.swift");
+        {
+            let mut f = File::create(&inner_def_path).unwrap();
+            writeln!(f, "class InnerType {{ }}").unwrap();
+        }
+
+        let files = determine_files_to_include_with_options(
+            instr_path.to_str().unwrap(),
+            false,
+            &search_root,
+            &[],
+            &FileSelectionOptions {
+                include_references: false,
+                targeted: false,
+            },
+        )
+        .expect("Explicit non-targeted selection failed");
+
+        env::remove_var("TARGETED");
+
+        assert!(files.contains(&instr_path.to_str().unwrap().to_string()));
+        assert!(files.contains(&outer_def_path.to_str().unwrap().to_string()));
+        assert!(files.contains(&inner_def_path.to_str().unwrap().to_string()));
+    }
+
+    #[test]
+    fn test_explicit_targeted_true_ignores_absent_targeted_env() {
+        env::remove_var("TARGETED");
+        let temp_dir = tempdir().unwrap();
+        let search_root = temp_dir.path().to_path_buf();
+
+        let instr_path = temp_dir.path().join("Instruction.swift");
+        {
+            let mut f = File::create(&instr_path).unwrap();
+            writeln!(f, "class OuterType {{ }}").unwrap();
+            writeln!(f, "func testFunction() {{").unwrap();
+            writeln!(f, "    class InnerType {{ }}").unwrap();
+            writeln!(f, "    // TODO: - Perform action").unwrap();
+            writeln!(f, "}}").unwrap();
+        }
+
+        let outer_def_path = temp_dir.path().join("OuterDefinition.swift");
+        {
+            let mut f = File::create(&outer_def_path).unwrap();
+            writeln!(f, "class OuterType {{ }}").unwrap();
+        }
+
+        let inner_def_path = temp_dir.path().join("InnerDefinition.swift");
+        {
+            let mut f = File::create(&inner_def_path).unwrap();
+            writeln!(f, "class InnerType {{ }}").unwrap();
+        }
+
+        let files = determine_files_to_include_with_options(
+            instr_path.to_str().unwrap(),
+            false,
+            &search_root,
+            &[],
+            &FileSelectionOptions {
+                include_references: false,
+                targeted: true,
+            },
+        )
+        .expect("Explicit targeted selection failed");
+
+        assert!(files.contains(&instr_path.to_str().unwrap().to_string()));
+        assert!(!files.contains(&outer_def_path.to_str().unwrap().to_string()));
+        assert!(files.contains(&inner_def_path.to_str().unwrap().to_string()));
     }
 
     /// In non-singular mode with references enabled, if the instruction file declares "RefType"

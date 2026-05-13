@@ -146,8 +146,10 @@ pub fn generate_prompt_with_options(
 mod tests {
     use super::*;
     use std::env;
-    use std::fs::File;
+    use std::fs::{self, File};
     use std::io::Write;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
     use tempfile::tempdir;
 
@@ -158,6 +160,89 @@ mod tests {
         file.write_all(contents.as_bytes())
             .expect("Failed to write to temp file");
         file_path
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_with_options_targeted_ignores_env() {
+        env::remove_var("TARGETED");
+        let original_path = env::var("PATH").unwrap_or_default();
+        let original_disable_pbcopy = env::var("DISABLE_PBCOPY").ok();
+
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let git_root = temp_dir.path().to_str().unwrap();
+        let clipboard_file = temp_dir.path().join("clipboard.txt");
+        let fake_pbcopy_path = temp_dir.path().join("pbcopy");
+        fs::write(
+            &fake_pbcopy_path,
+            format!("#!/bin/sh\ncat > \"{}\"\n", clipboard_file.display()),
+        )
+        .expect("Failed to write fake pbcopy");
+        let mut perms = fs::metadata(&fake_pbcopy_path)
+            .expect("Failed to read fake pbcopy metadata")
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&fake_pbcopy_path, perms)
+            .expect("Failed to make fake pbcopy executable");
+
+        env::set_var(
+            "PATH",
+            format!("{}:{}", temp_dir.path().display(), original_path),
+        );
+        env::remove_var("DISABLE_PBCOPY");
+
+        let instruction_file = write_temp_file(
+            temp_dir.path(),
+            "Instruction.swift",
+            r#"
+class OuterType {}
+func testFunction() {
+    class InnerType {}
+    // TODO: - Perform action
+}
+"#,
+        );
+        let outer_def_path = write_temp_file(
+            temp_dir.path(),
+            "OuterDefinition.swift",
+            "class OuterType {}\n",
+        );
+        let inner_def_path = write_temp_file(
+            temp_dir.path(),
+            "InnerDefinition.swift",
+            "class InnerType {}\n",
+        );
+
+        let result = generate_prompt_with_options(
+            git_root,
+            instruction_file.to_str().unwrap(),
+            &GeneratePromptOptions {
+                singular: false,
+                force_global: false,
+                include_references: false,
+                excludes: vec![],
+                diff_branch: None,
+                targeted: true,
+            },
+        );
+
+        env::set_var("PATH", original_path);
+        if let Some(value) = original_disable_pbcopy {
+            env::set_var("DISABLE_PBCOPY", value);
+        } else {
+            env::remove_var("DISABLE_PBCOPY");
+        }
+
+        assert!(
+            result.is_ok(),
+            "Expected explicit targeted prompt generation"
+        );
+        let clipboard_content =
+            fs::read_to_string(&clipboard_file).expect("Failed to read fake clipboard");
+        assert!(clipboard_content
+            .contains(inner_def_path.file_name().and_then(|s| s.to_str()).unwrap()));
+        assert!(!clipboard_content
+            .contains(outer_def_path.file_name().and_then(|s| s.to_str()).unwrap()));
     }
 
     /// Test that generate_prompt succeeds in singular mode with a non‑Swift (e.g. .txt) instruction file.
