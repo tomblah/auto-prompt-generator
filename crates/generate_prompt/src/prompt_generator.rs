@@ -17,42 +17,6 @@ pub struct GeneratePromptOptions {
     pub targeted: bool,
 }
 
-/// Orchestrates the prompt-generation workflow.
-///
-/// # Parameters
-/// - `git_root`: The root directory of the Git repository (as a string slice).
-/// - `file_path`: The path to the instruction (TODO) file.
-/// - `singular`: If true, only the instruction file is used.
-/// - `force_global`: If true, the Git root is used directly as the context.
-/// - `include_references`: Whether to include files referencing the enclosing type.
-/// - `excludes`: A slice of file basenames to exclude.
-///
-/// # Returns
-///
-/// On success, returns `Ok(())`. On failure, returns an error via `anyhow::Result`.
-#[cfg(test)]
-pub fn generate_prompt(
-    git_root: &str,
-    file_path: &str,
-    singular: bool,
-    force_global: bool,
-    include_references: bool,
-    excludes: &[String],
-) -> Result<()> {
-    generate_prompt_with_options(
-        git_root,
-        file_path,
-        &GeneratePromptOptions {
-            singular,
-            force_global,
-            include_references,
-            excludes: excludes.to_vec(),
-            diff_branch: std::env::var("DIFF_WITH_BRANCH").ok(),
-            targeted: std::env::var("TARGETED").is_ok(),
-        },
-    )
-}
-
 pub fn generate_prompt_with_options(
     git_root: &str,
     file_path: &str,
@@ -146,8 +110,10 @@ pub fn generate_prompt_with_options(
 mod tests {
     use super::*;
     use std::env;
-    use std::fs::File;
+    use std::fs::{self, File};
     use std::io::Write;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
     use tempfile::tempdir;
 
@@ -158,6 +124,89 @@ mod tests {
         file.write_all(contents.as_bytes())
             .expect("Failed to write to temp file");
         file_path
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_generate_prompt_with_options_targeted_ignores_env() {
+        env::remove_var("TARGETED");
+        let original_path = env::var("PATH").unwrap_or_default();
+        let original_disable_pbcopy = env::var("DISABLE_PBCOPY").ok();
+
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let git_root = temp_dir.path().to_str().unwrap();
+        let clipboard_file = temp_dir.path().join("clipboard.txt");
+        let fake_pbcopy_path = temp_dir.path().join("pbcopy");
+        fs::write(
+            &fake_pbcopy_path,
+            format!("#!/bin/sh\ncat > \"{}\"\n", clipboard_file.display()),
+        )
+        .expect("Failed to write fake pbcopy");
+        let mut perms = fs::metadata(&fake_pbcopy_path)
+            .expect("Failed to read fake pbcopy metadata")
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&fake_pbcopy_path, perms)
+            .expect("Failed to make fake pbcopy executable");
+
+        env::set_var(
+            "PATH",
+            format!("{}:{}", temp_dir.path().display(), original_path),
+        );
+        env::remove_var("DISABLE_PBCOPY");
+
+        let instruction_file = write_temp_file(
+            temp_dir.path(),
+            "Instruction.swift",
+            r#"
+class OuterType {}
+func testFunction() {
+    class InnerType {}
+    // TODO: - Perform action
+}
+"#,
+        );
+        let outer_def_path = write_temp_file(
+            temp_dir.path(),
+            "OuterDefinition.swift",
+            "class OuterType {}\n",
+        );
+        let inner_def_path = write_temp_file(
+            temp_dir.path(),
+            "InnerDefinition.swift",
+            "class InnerType {}\n",
+        );
+
+        let result = generate_prompt_with_options(
+            git_root,
+            instruction_file.to_str().unwrap(),
+            &GeneratePromptOptions {
+                singular: false,
+                force_global: false,
+                include_references: false,
+                excludes: vec![],
+                diff_branch: None,
+                targeted: true,
+            },
+        );
+
+        env::set_var("PATH", original_path);
+        if let Some(value) = original_disable_pbcopy {
+            env::set_var("DISABLE_PBCOPY", value);
+        } else {
+            env::remove_var("DISABLE_PBCOPY");
+        }
+
+        assert!(
+            result.is_ok(),
+            "Expected explicit targeted prompt generation"
+        );
+        let clipboard_content =
+            fs::read_to_string(&clipboard_file).expect("Failed to read fake clipboard");
+        assert!(clipboard_content
+            .contains(inner_def_path.file_name().and_then(|s| s.to_str()).unwrap()));
+        assert!(!clipboard_content
+            .contains(outer_def_path.file_name().and_then(|s| s.to_str()).unwrap()));
     }
 
     /// Test that generate_prompt succeeds in singular mode with a non‑Swift (e.g. .txt) instruction file.
@@ -179,19 +228,17 @@ mod tests {
         // Set an environment variable to disable clipboard copying.
         env::set_var("DISABLE_PBCOPY", "1");
 
-        // Use singular mode so that only the TODO file is included.
-        let singular = true;
-        let force_global = false;
-        let include_references = false;
-        let excludes: Vec<String> = vec![];
-
-        let result = generate_prompt(
+        let result = generate_prompt_with_options(
             git_root,
             file_path_str,
-            singular,
-            force_global,
-            include_references,
-            &excludes,
+            &GeneratePromptOptions {
+                singular: true,
+                force_global: false,
+                include_references: false,
+                excludes: vec![],
+                diff_branch: None,
+                targeted: false,
+            },
         );
         assert!(
             result.is_ok(),
@@ -217,19 +264,17 @@ class Dummy {}
         // Disable clipboard copying.
         env::set_var("DISABLE_PBCOPY", "1");
 
-        // Non-singular mode with include_references enabled.
-        let singular = false;
-        let force_global = false;
-        let include_references = true;
-        let excludes: Vec<String> = vec![];
-
-        let result = generate_prompt(
+        let result = generate_prompt_with_options(
             git_root,
             file_path_str,
-            singular,
-            force_global,
-            include_references,
-            &excludes,
+            &GeneratePromptOptions {
+                singular: false,
+                force_global: false,
+                include_references: true,
+                excludes: vec![],
+                diff_branch: None,
+                targeted: false,
+            },
         );
         assert!(
             result.is_ok(),
@@ -248,9 +293,18 @@ class Dummy {}
 "#;
         let instruction_file = write_temp_file(temp_dir.path(), "instruction.js", file_content);
         let file_path_str = instruction_file.to_str().unwrap();
-        let excludes: Vec<String> = vec![];
-
-        let result = generate_prompt(git_root, file_path_str, false, false, true, &excludes);
+        let result = generate_prompt_with_options(
+            git_root,
+            file_path_str,
+            &GeneratePromptOptions {
+                singular: false,
+                force_global: false,
+                include_references: true,
+                excludes: vec![],
+                diff_branch: None,
+                targeted: false,
+            },
+        );
 
         let err = result.expect_err("Expected non-Swift include_references to return an error");
         assert!(
@@ -278,19 +332,17 @@ class Dummy {}
         // Disable clipboard copying.
         env::set_var("DISABLE_PBCOPY", "1");
 
-        // Use force_global to bypass search_root determination.
-        let singular = true;
-        let force_global = true;
-        let include_references = false;
-        let excludes: Vec<String> = vec![];
-
-        let result = generate_prompt(
+        let result = generate_prompt_with_options(
             git_root,
             file_path_str,
-            singular,
-            force_global,
-            include_references,
-            &excludes,
+            &GeneratePromptOptions {
+                singular: true,
+                force_global: true,
+                include_references: false,
+                excludes: vec![],
+                diff_branch: None,
+                targeted: false,
+            },
         );
         assert!(
             result.is_ok(),
@@ -316,19 +368,17 @@ class Dummy {}
         // Disable clipboard copying.
         env::set_var("DISABLE_PBCOPY", "1");
 
-        // Use non-singular mode (this should print a warning but proceed).
-        let singular = false;
-        let force_global = false;
-        let include_references = false;
-        let excludes: Vec<String> = vec![];
-
-        let result = generate_prompt(
+        let result = generate_prompt_with_options(
             git_root,
             file_path_str,
-            singular,
-            force_global,
-            include_references,
-            &excludes,
+            &GeneratePromptOptions {
+                singular: false,
+                force_global: false,
+                include_references: false,
+                excludes: vec![],
+                diff_branch: None,
+                targeted: false,
+            },
         );
         assert!(
             result.is_ok(),
