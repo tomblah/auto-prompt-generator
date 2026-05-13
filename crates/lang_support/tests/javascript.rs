@@ -48,6 +48,15 @@ fn file_defines_any_matches_various_forms() {
 }
 
 #[test]
+fn file_defines_any_matches_named_export_and_false_case() {
+    let js = for_extension("js").unwrap();
+    let want = vec!["helper".to_string()];
+
+    assert!(js.file_defines_any("export { helper }", &want));
+    assert!(!js.file_defines_any("function other() {}", &want));
+}
+
+#[test]
 fn for_extension_dispatches() {
     assert!(for_extension("JSx").is_some());
     assert!(for_extension("swift").is_some());
