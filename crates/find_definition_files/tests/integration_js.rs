@@ -142,4 +142,23 @@ mod integration_javascript {
         assert_eq!(result, expected);
         Ok(())
     }
+
+    #[test]
+    fn test_find_definition_files_js_function_definitions() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = tempdir()?;
+        let types_path = dir.path().join("types.txt");
+        fs::write(&types_path, "helper\n")?;
+
+        let function_path = dir.path().join("helper.js");
+        fs::write(&function_path, "export function helper() {}")?;
+
+        let types_content = fs::read_to_string(&types_path)?;
+        let result = find_definition_files(types_content.as_str(), dir.path())?;
+
+        let mut expected = BTreeSet::new();
+        expected.insert(function_path);
+        assert_eq!(result, expected);
+        Ok(())
+    }
 }
