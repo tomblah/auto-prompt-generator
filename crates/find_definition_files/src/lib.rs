@@ -6,10 +6,7 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use get_search_roots::get_search_roots;
-use lang_support::for_extension; // new crate‑wide helper
-
-mod matcher;
-use matcher::get_matcher_for_extension;
+use lang_support::for_extension;
 
 /// ---------------------------------------------------------------------------
 ///  DefinitionFinder
@@ -61,26 +58,13 @@ impl DefinitionFinder {
                     None => continue,
                 };
 
-                let matcher = match get_matcher_for_extension(ext) {
-                    Some(m) => m,
+                let lang = match for_extension(ext) {
+                    Some(lang) => lang,
                     None => continue,
                 };
 
                 if let Ok(content) = std::fs::read_to_string(path) {
-                    // ---------- fast path via lang_support ----------
-                    if let Some(lang) = for_extension(ext) {
-                        if lang.file_defines_any(&content, &self.types) {
-                            found_files.insert(path.to_path_buf());
-                            continue; // skip legacy matcher
-                        }
-                    }
-
-                    // ---------- legacy regex matcher ----------
-                    if self
-                        .types
-                        .iter()
-                        .any(|t| matcher.matches_definition(&content, t))
-                    {
+                    if lang.file_defines_any(&content, &self.types) {
                         found_files.insert(path.to_path_buf());
                     }
                 }

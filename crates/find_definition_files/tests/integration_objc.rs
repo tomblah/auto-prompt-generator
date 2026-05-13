@@ -123,4 +123,43 @@ mod integration_objc {
         assert_eq!(result, expected);
         Ok(())
     }
+
+    #[test]
+    fn test_find_definition_files_objc_whitespace_variation(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
+        let types_path = dir.path().join("types.txt");
+        fs::write(&types_path, "Message\n")?;
+
+        let header_path = dir.path().join("Message.h");
+        fs::write(&header_path, "   @interface   Message   : NSObject")?;
+
+        let types_content = fs::read_to_string(&types_path)?;
+        let result = find_definition_files(types_content.as_str(), dir.path())?;
+
+        let mut expected = BTreeSet::new();
+        expected.insert(header_path);
+        assert_eq!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_find_definition_files_objc_rejects_partial_match(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
+        let types_path = dir.path().join("types.txt");
+        fs::write(&types_path, "Message\n")?;
+
+        let header_path = dir.path().join("MessageExtra.h");
+        fs::write(&header_path, "@interface MessageExtra : NSObject @end")?;
+        let impl_path = dir.path().join("MessageExtra.m");
+        fs::write(&impl_path, "@implementation MessageExtra @end")?;
+
+        let types_content = fs::read_to_string(&types_path)?;
+        let result = find_definition_files(types_content.as_str(), dir.path())?;
+        let expected: BTreeSet<PathBuf> = BTreeSet::new();
+
+        assert_eq!(result, expected);
+        Ok(())
+    }
 }

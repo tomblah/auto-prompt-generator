@@ -326,7 +326,6 @@ version = "0.1.0"
 dependencies = [
  "get_search_roots",
  "lang_support",
- "regex",
  "tempfile",
  "walkdir",
 ]

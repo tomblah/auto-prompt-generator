@@ -1,10 +1,7 @@
 // crates/lang_support/src/objc.rs
 
-//!
-//! Placeholder only: returns empty results so the workspace builds. We’ll
-//! migrate the real Obj‑C definition/identifier logic here later.
-
 use super::LanguageSupport;
+use regex::Regex;
 use std::path::{Path, PathBuf};
 
 pub(super) struct ObjCSupport;
@@ -15,8 +12,14 @@ impl LanguageSupport for ObjCSupport {
         Vec::new()
     }
 
-    fn file_defines_any(&self, _file_content: &str, _idents: &[String]) -> bool {
-        false
+    fn file_defines_any(&self, file_content: &str, idents: &[String]) -> bool {
+        idents.iter().any(|ident| {
+            let interface_pattern = format!(r"@interface\s+{}\b", regex::escape(ident));
+            let implementation_pattern = format!(r"@implementation\s+{}\b", regex::escape(ident));
+
+            Regex::new(&interface_pattern).is_ok_and(|re| re.is_match(file_content))
+                || Regex::new(&implementation_pattern).is_ok_and(|re| re.is_match(file_content))
+        })
     }
 
     fn resolve_dependency_path(&self, _line: &str, _current_dir: &Path) -> Option<PathBuf> {
