@@ -131,6 +131,7 @@ mod tests {
     use std::fs;
     use std::io::Write;
     use std::path::Path;
+    use std::process::Command;
     use tempfile::{tempdir, NamedTempFile};
 
     #[test]
@@ -346,40 +347,69 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
 
     #[test]
     fn test_diff_with_branch_no_diff_output() {
-        let mut file = NamedTempFile::new().unwrap();
-        let content = "class NoDiff {}";
-        file.write_all(content.as_bytes()).unwrap();
-        let file_path = file.path().to_owned();
+        let repo = tempdir().expect("Failed to create temp repo");
+        Command::new("git")
+            .arg("init")
+            .current_dir(repo.path())
+            .output()
+            .expect("Failed to initialize git repo");
+
+        let file_path = repo.path().join("NoDiff.swift");
+        fs::write(&file_path, "class NoDiff {}").expect("Failed to write tracked file");
+        Command::new("git")
+            .args(["add", "NoDiff.swift"])
+            .current_dir(repo.path())
+            .output()
+            .expect("Failed to add tracked file");
+        Command::new("git")
+            .args([
+                "-c",
+                "user.name=Test User",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-m",
+                "Initial commit",
+            ])
+            .current_dir(repo.path())
+            .output()
+            .expect("Failed to commit tracked file");
 
         let found_files = vec![file_path.to_string_lossy().into_owned()];
+        let options = AssemblyOptions {
+            todo_file_basename: None,
+            diff_branch: Some("HEAD".to_string()),
+        };
 
-        env::set_var("DIFF_WITH_BRANCH", "dummy-branch");
+        let output = assemble_prompt_with_options(&found_files, "ignored", &options)
+            .expect("assemble_prompt_with_options failed");
 
-        // Set up a dummy git script that produces no diff.
-        let dummy_dir = tempdir().unwrap();
-        let dummy_path = dummy_dir.path().join("diff_script");
-        fs::write(&dummy_path, "#!/bin/sh\necho \"\"\n")
-            .expect("Failed to write dummy diff script");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&dummy_path)
-                .expect("Failed to get metadata")
-                .permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&dummy_path, perms).expect("Failed to set permissions");
-        }
-        let original_path = env::var("PATH").unwrap_or_default();
-        let new_path = format!("{}:{}", dummy_dir.path().to_str().unwrap(), original_path);
-        env::set_var("PATH", new_path);
-
-        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
-
-        assert!(!output.contains("against branch dummy-branch"));
+        assert!(!output.contains("against branch HEAD"));
         assert!(!output.contains("Dummy diff output"));
+    }
 
-        env::remove_var("DIFF_WITH_BRANCH");
+    #[test]
+    fn test_diff_lookup_error_is_omitted_from_prompt() {
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(b"class DiffError {}").unwrap();
+        let file_path = file.path().to_owned();
+        let found_files = vec![file_path.to_string_lossy().into_owned()];
+        let options = AssemblyOptions {
+            todo_file_basename: None,
+            diff_branch: Some("missing-branch".to_string()),
+        };
+
+        let original_path = env::var("PATH").unwrap_or_default();
+        let empty_path_dir = tempdir().expect("Failed to create empty PATH dir");
+        env::set_var("PATH", empty_path_dir.path());
+
+        let output = assemble_prompt_with_options(&found_files, "ignored", &options)
+            .expect("assemble_prompt_with_options failed");
+
         env::set_var("PATH", original_path);
+
+        assert!(!output.contains("The diff for"));
+        assert!(!output.contains("against branch missing-branch"));
     }
 
     #[test]
