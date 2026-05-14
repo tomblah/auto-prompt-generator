@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod integration_js {
-    use assemble_prompt::assemble_prompt;
+    use assemble_prompt::{assemble_prompt, AssemblyOptions};
     use std::fs;
     use std::io::Write;
     use std::path::PathBuf;
@@ -39,7 +39,7 @@ mod integration_js {
         let found_files_vec = read_found_files(found_files_path.to_str().unwrap());
 
         // Call assemble_prompt with the in‑memory list.
-        let output = assemble_prompt(&found_files_vec, "ignored instruction")
+        let output = assemble_prompt(&found_files_vec, &AssemblyOptions::default())
             .expect("assemble_prompt failed");
 
         // Bind the file name to an owned String.
@@ -92,7 +92,7 @@ mod integration_js {
         // Read the found files into a vector.
         let found_files_vec = read_found_files(found_files_path.to_str().unwrap());
 
-        let output = assemble_prompt(&found_files_vec, "ignored instruction")
+        let output = assemble_prompt(&found_files_vec, &AssemblyOptions::default())
             .expect("assemble_prompt failed");
 
         // Bind file names to owned strings.
@@ -156,7 +156,7 @@ mod integration_js {
         // Read the found files into a vector.
         let found_files_vec = read_found_files(found_files_path.to_str().unwrap());
 
-        let output = assemble_prompt(&found_files_vec, "ignored instruction")
+        let output = assemble_prompt(&found_files_vec, &AssemblyOptions::default())
             .expect("assemble_prompt failed");
 
         let binding = PathBuf::from(&js_path);
@@ -185,8 +185,8 @@ mod integration_js {
         // Use an empty in-memory found_files list.
         let found_files: Vec<String> = Vec::new();
 
-        let output =
-            assemble_prompt(&found_files, "ignored instruction").expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, &AssemblyOptions::default())
+            .expect("assemble_prompt failed");
 
         let trimmed_output = output.trim();
         assert!(
