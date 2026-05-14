@@ -227,6 +227,23 @@ mod tests {
     }
 
     #[test]
+    fn test_instruction_content_does_not_affect_assembled_prompt() {
+        env::remove_var("DIFF_WITH_BRANCH");
+        env::remove_var("TODO_FILE_BASENAME");
+
+        let mut file = NamedTempFile::new().expect("Failed to create file");
+        writeln!(file, "struct StableOutput {{}}").expect("Failed to write file");
+        let found_files = vec![file.path().to_string_lossy().into_owned()];
+
+        let first_output =
+            assemble_prompt(&found_files, "first instruction").expect("assemble_prompt failed");
+        let second_output =
+            assemble_prompt(&found_files, "second instruction").expect("assemble_prompt failed");
+
+        assert_eq!(first_output, second_output);
+    }
+
+    #[test]
     fn test_files_are_sorted_and_deduplicated_before_rendering() {
         env::remove_var("DIFF_WITH_BRANCH");
 
@@ -575,6 +592,14 @@ func outsideFunction() {
         }
     }
 
+    struct BranchEchoDiffProvider;
+
+    impl DiffProvider for BranchEchoDiffProvider {
+        fn diff_for_file(&self, _file_path: &str, branch: &str) -> Result<Option<String>, String> {
+            Ok(Some(format!("diff against {branch}")))
+        }
+    }
+
     fn diff_options(branch: &str) -> AssemblyOptions {
         AssemblyOptions {
             todo_file_basename: None,
@@ -639,6 +664,58 @@ func outsideFunction() {
         .expect("assemble_prompt_with_processor_and_options failed with echo processor");
 
         assert!(output.contains("todo basename: Instruction.swift"));
+    }
+
+    #[test]
+    fn test_explicit_todo_file_basename_ignores_env() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "raw content").unwrap();
+        let file_path = file.path().to_str().unwrap().to_string();
+        let found_files = vec![file_path];
+        let options = AssemblyOptions {
+            todo_file_basename: Some("ExplicitInstruction.swift".to_string()),
+            diff_branch: None,
+        };
+
+        env::set_var("TODO_FILE_BASENAME", "EnvInstruction.swift");
+
+        let output = assemble_prompt_with_processor_and_options(
+            &found_files,
+            &TodoBasenameEchoProcessor,
+            &options,
+        )
+        .expect("assemble_prompt_with_processor_and_options failed with echo processor");
+
+        assert!(output.contains("todo basename: ExplicitInstruction.swift"));
+        assert!(!output.contains("todo basename: EnvInstruction.swift"));
+
+        env::remove_var("TODO_FILE_BASENAME");
+    }
+
+    #[test]
+    fn test_explicit_diff_branch_ignores_env() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "class ExplicitDiff {{}}").unwrap();
+        let found_files = vec![file.path().to_string_lossy().into_owned()];
+        let options = AssemblyOptions {
+            todo_file_basename: None,
+            diff_branch: Some("explicit-branch".to_string()),
+        };
+
+        env::set_var("DIFF_WITH_BRANCH", "env-branch");
+
+        let output = assemble_prompt_with_processor_options_and_diff_provider(
+            &found_files,
+            &DefaultFileProcessor,
+            &options,
+            &BranchEchoDiffProvider,
+        )
+        .expect("assemble_prompt_with_processor_options_and_diff_provider failed");
+
+        assert!(output.contains("diff against explicit-branch"));
+        assert!(!output.contains("diff against env-branch"));
+
+        env::remove_var("DIFF_WITH_BRANCH");
     }
 
     #[test]
