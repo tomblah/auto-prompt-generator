@@ -27,19 +27,19 @@ impl AssemblyOptions {
     }
 }
 
-/// Public API: assembles the final prompt from the found files (provided as an in‑memory slice)
-/// and instruction content. The prompt is returned as a String.
-pub fn assemble_prompt(found_files: &[String], _instruction_content: &str) -> Result<String> {
-    assemble_prompt_with_options(
-        found_files,
-        _instruction_content,
-        &AssemblyOptions::from_env(),
-    )
+/// Public API: assembles the final prompt from the found files and explicit options.
+pub fn assemble_prompt(found_files: &[String], options: &AssemblyOptions) -> Result<String> {
+    assemble_prompt_with_options(found_files, options)
+}
+
+/// Compatibility helper for callers that intentionally source assembly options from the process
+/// environment.
+pub fn assemble_prompt_from_env(found_files: &[String]) -> Result<String> {
+    assemble_prompt_with_options(found_files, &AssemblyOptions::from_env())
 }
 
 pub fn assemble_prompt_with_options(
     found_files: &[String],
-    _instruction_content: &str,
     options: &AssemblyOptions,
 ) -> Result<String> {
     assemble_prompt_with_processor_and_options(found_files, &DefaultFileProcessor, options)
@@ -58,7 +58,7 @@ impl DiffProvider for GitDiffProvider {
 }
 
 #[cfg(test)]
-fn assemble_prompt_with_processor<P: FileProcessor>(
+fn assemble_prompt_with_processor_from_env<P: FileProcessor>(
     found_files: &[String],
     processor: &P,
 ) -> Result<String> {
@@ -175,7 +175,8 @@ mod tests {
         // Build the in-memory list.
         let found_files = vec![file1_path];
 
-        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, &AssemblyOptions::default())
+            .expect("assemble_prompt failed");
 
         // Verify that the output contains the file header and the fixed instruction.
         assert!(output.contains("The contents of"));
@@ -206,10 +207,8 @@ mod tests {
             file1_path.to_string_lossy().into_owned(),
         ];
 
-        let instruction_content = "This instruction content is ignored.";
-
-        let output =
-            assemble_prompt(&found_files, instruction_content).expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, &AssemblyOptions::default())
+            .expect("assemble_prompt failed");
 
         // Verify that headers for both files are present.
         assert!(output.contains(&format!(
@@ -227,20 +226,20 @@ mod tests {
     }
 
     #[test]
-    fn test_instruction_content_does_not_affect_assembled_prompt() {
+    fn test_assembled_prompt_uses_fixed_instruction_without_dynamic_instruction_content() {
         env::remove_var("DIFF_WITH_BRANCH");
         env::remove_var("TODO_FILE_BASENAME");
 
         let mut file = NamedTempFile::new().expect("Failed to create file");
         writeln!(file, "struct StableOutput {{}}").expect("Failed to write file");
         let found_files = vec![file.path().to_string_lossy().into_owned()];
+        let dynamic_instruction = "dynamic instruction must stay out of assembly";
 
-        let first_output =
-            assemble_prompt(&found_files, "first instruction").expect("assemble_prompt failed");
-        let second_output =
-            assemble_prompt(&found_files, "second instruction").expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, &AssemblyOptions::default())
+            .expect("assemble_prompt failed");
 
-        assert_eq!(first_output, second_output);
+        assert!(output.contains(FIXED_INSTRUCTION));
+        assert!(!output.contains(dynamic_instruction));
     }
 
     #[test]
@@ -259,7 +258,8 @@ mod tests {
             b_path.to_string_lossy().into_owned(),
         ];
 
-        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, &AssemblyOptions::default())
+            .expect("assemble_prompt failed");
         let a_header = format!(
             "The contents of {} is as follows:",
             a_path.file_name().unwrap().to_string_lossy()
@@ -300,7 +300,8 @@ func publicFunction() {
         // Build the in-memory list.
         let found_files = vec![marked_file_path.to_string_lossy().into_owned()];
 
-        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, &AssemblyOptions::default())
+            .expect("assemble_prompt failed");
 
         // Verify that the header is present and only the marked content is included.
         assert!(output.contains(&format!(
@@ -356,7 +357,7 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
 
         let found_files = vec![file_js_path.to_string_lossy().into_owned()];
 
-        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
+        let output = assemble_prompt_from_env(&found_files).expect("assemble_prompt failed");
 
         assert!(output.contains(&format!(
             "The contents of {} is as follows:",
@@ -374,7 +375,8 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
     fn test_missing_file_in_found_files() {
         let found_files = vec!["/path/to/nonexistent/file.swift".to_string()];
 
-        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, &AssemblyOptions::default())
+            .expect("assemble_prompt failed");
 
         // Since the file doesn't exist, its header should not be included.
         assert!(!output.contains("file.swift"));
@@ -385,7 +387,8 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
     fn test_empty_found_files_list() {
         let found_files: Vec<String> = Vec::new();
 
-        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, &AssemblyOptions::default())
+            .expect("assemble_prompt failed");
 
         // With an empty list, the prompt should consist only of the fixed instruction.
         assert!(output.trim().ends_with(FIXED_INSTRUCTION));
@@ -449,7 +452,8 @@ func outsideFunction() {
 
         let found_files = vec![file_path.to_string_lossy().into_owned()];
 
-        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, &AssemblyOptions::default())
+            .expect("assemble_prompt failed");
 
         assert!(output.contains("print(\"This is inside an unclosed marker.\")"));
     }
@@ -618,7 +622,7 @@ func outsideFunction() {
             return_value: "mock processed content".to_string(),
         };
 
-        let output = assemble_prompt_with_processor(&found_files, &mock_processor)
+        let output = assemble_prompt_with_processor_from_env(&found_files, &mock_processor)
             .expect("assemble_prompt_with_processor failed with mock processor");
         assert!(
             output.contains("mock processed content"),
@@ -635,8 +639,9 @@ func outsideFunction() {
 
         env::set_var("TODO_FILE_BASENAME", "Instruction.swift");
 
-        let output = assemble_prompt_with_processor(&found_files, &TodoBasenameEchoProcessor)
-            .expect("assemble_prompt_with_processor failed with echo processor");
+        let output =
+            assemble_prompt_with_processor_from_env(&found_files, &TodoBasenameEchoProcessor)
+                .expect("assemble_prompt_with_processor failed with echo processor");
 
         assert!(output.contains("todo basename: Instruction.swift"));
 
@@ -727,7 +732,7 @@ func outsideFunction() {
 
         env::remove_var("DIFF_WITH_BRANCH");
 
-        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
+        let output = assemble_prompt_from_env(&found_files).expect("assemble_prompt failed");
 
         assert!(!output.contains("The diff for"));
         assert!(!output.contains("against branch"));
@@ -742,7 +747,7 @@ func outsideFunction() {
 
         let failing_processor = FailingMockProcessor;
 
-        let output = assemble_prompt_with_processor(&found_files, &failing_processor)
+        let output = assemble_prompt_with_processor_from_env(&found_files, &failing_processor)
             .expect("assemble_prompt_with_processor failed with failing processor");
         // Since processing fails, it should fall back to reading the raw file content.
         assert!(

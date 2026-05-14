@@ -73,12 +73,9 @@ pub fn generate_prompt_with_options(
         todo_file_basename: Some(todo_file_basename),
         diff_branch: options.diff_branch.clone(),
     };
-    let assembled_prompt = assemble_prompt::assemble_prompt_with_options(
-        &found_files,
-        instruction_content.trim(),
-        &assembly_options,
-    )
-    .context("Failed to assemble prompt")?;
+    let assembled_prompt =
+        assemble_prompt::assemble_prompt_with_options(&found_files, &assembly_options)
+            .context("Failed to assemble prompt")?;
 
     let diff_enabled = options.diff_branch.is_some();
 

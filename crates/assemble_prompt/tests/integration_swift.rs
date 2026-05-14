@@ -2,8 +2,7 @@
 
 #[cfg(test)]
 mod integration_swift {
-    use assemble_prompt::assemble_prompt;
-    use std::env;
+    use assemble_prompt::{assemble_prompt, AssemblyOptions};
     use std::fs;
     use std::io::Write;
     use std::path::PathBuf;
@@ -40,7 +39,6 @@ mod integration_swift {
         // Read the found files into a vector.
         let found_files_vec = read_found_files(found_files_path.to_str().unwrap());
 
-        // Set the TODO_FILE_BASENAME so that context is appended if applicable.
         let file_name = swift_file
             .path()
             .file_name()
@@ -48,11 +46,16 @@ mod integration_swift {
             .to_str()
             .unwrap()
             .to_string();
-        env::set_var("TODO_FILE_BASENAME", &file_name);
 
         // Call assemble_prompt with the in‑memory list.
-        let output = assemble_prompt(&found_files_vec, "ignored instruction")
-            .expect("assemble_prompt failed");
+        let output = assemble_prompt(
+            &found_files_vec,
+            &AssemblyOptions {
+                todo_file_basename: Some(file_name.clone()),
+                diff_branch: None,
+            },
+        )
+        .expect("assemble_prompt failed");
 
         // Check that the output contains a header for the Swift file and the file content.
         assert!(
@@ -99,17 +102,21 @@ mod integration_swift {
         // Read the found files into a vector.
         let found_files_vec = read_found_files(found_files_path.to_str().unwrap());
 
-        // Set the TODO_FILE_BASENAME for swift_file1.
         let file_name1 = PathBuf::from(&swift_path1)
             .file_name()
             .unwrap()
             .to_str()
             .unwrap()
             .to_string();
-        env::set_var("TODO_FILE_BASENAME", &file_name1);
 
-        let output = assemble_prompt(&found_files_vec, "ignored instruction")
-            .expect("assemble_prompt failed");
+        let output = assemble_prompt(
+            &found_files_vec,
+            &AssemblyOptions {
+                todo_file_basename: Some(file_name1.clone()),
+                diff_branch: None,
+            },
+        )
+        .expect("assemble_prompt failed");
 
         // Bind file names.
         let file_name1_dup = PathBuf::from(&swift_path1)
@@ -176,7 +183,7 @@ mod integration_swift {
 
         let found_files_vec = read_found_files(found_files_path.to_str().unwrap());
 
-        let output = assemble_prompt(&found_files_vec, "ignored instruction")
+        let output = assemble_prompt(&found_files_vec, &AssemblyOptions::default())
             .expect("assemble_prompt failed");
 
         let file_name = PathBuf::from(&swift_path)
@@ -211,8 +218,8 @@ mod integration_swift {
         // Use an empty in-memory found_files list.
         let found_files: Vec<String> = Vec::new();
 
-        let output =
-            assemble_prompt(&found_files, "ignored instruction").expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, &AssemblyOptions::default())
+            .expect("assemble_prompt failed");
 
         let trimmed_output = output.trim();
         assert!(
@@ -249,7 +256,6 @@ public func genericFunction<T: Equatable>(param: T) -> T? {
         // Build the in-memory found_files list.
         let found_files = vec![swift_path.clone()];
 
-        // Set the TODO_FILE_BASENAME to the Swift file's basename.
         let file_name = swift_file
             .path()
             .file_name()
@@ -257,11 +263,16 @@ public func genericFunction<T: Equatable>(param: T) -> T? {
             .to_str()
             .unwrap()
             .to_string();
-        env::set_var("TODO_FILE_BASENAME", &file_name);
 
         // Call assemble_prompt.
-        let output =
-            assemble_prompt(&found_files, "ignored instruction").expect("assemble_prompt failed");
+        let output = assemble_prompt(
+            &found_files,
+            &AssemblyOptions {
+                todo_file_basename: Some(file_name.clone()),
+                diff_branch: None,
+            },
+        )
+        .expect("assemble_prompt failed");
 
         // Verify that the output contains the header for the Swift file,
         // and that it includes key substrings from the generic function declaration.
@@ -329,21 +340,22 @@ public func genericFunction<T: Equatable>(param: T) -> T? {
         // Build the in-memory found_files list.
         let found_files = vec![swift_file_path.to_str().unwrap().to_string()];
 
-        // Set DIFF_WITH_BRANCH to "HEAD".
-        env::set_var("DIFF_WITH_BRANCH", "HEAD");
-
-        // Set TODO_FILE_BASENAME.
         let file_basename = swift_file_path
             .file_name()
             .unwrap()
             .to_str()
             .unwrap()
             .to_string();
-        env::set_var("TODO_FILE_BASENAME", &file_basename);
 
         // Call assemble_prompt.
-        let output =
-            assemble_prompt(&found_files, "ignored instruction").expect("assemble_prompt failed");
+        let output = assemble_prompt(
+            &found_files,
+            &AssemblyOptions {
+                todo_file_basename: Some(file_basename),
+                diff_branch: Some("HEAD".to_string()),
+            },
+        )
+        .expect("assemble_prompt failed");
 
         // Verify that the output contains the diff section.
         assert!(
@@ -354,8 +366,5 @@ public func genericFunction<T: Equatable>(param: T) -> T? {
             output.contains("func newDiff()"),
             "Diff should mention the modified content from the Swift file"
         );
-
-        // Cleanup.
-        env::remove_var("DIFF_WITH_BRANCH");
     }
 }
