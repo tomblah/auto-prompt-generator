@@ -45,6 +45,18 @@ pub fn assemble_prompt_with_options(
     assemble_prompt_with_processor_and_options(found_files, &DefaultFileProcessor, options)
 }
 
+trait DiffProvider {
+    fn diff_for_file(&self, file_path: &str, branch: &str) -> Result<Option<String>, String>;
+}
+
+struct GitDiffProvider;
+
+impl DiffProvider for GitDiffProvider {
+    fn diff_for_file(&self, file_path: &str, branch: &str) -> Result<Option<String>, String> {
+        run_diff_against(file_path, branch)
+    }
+}
+
 #[cfg(test)]
 fn assemble_prompt_with_processor<P: FileProcessor>(
     found_files: &[String],
@@ -58,6 +70,24 @@ fn assemble_prompt_with_processor_and_options<P: FileProcessor>(
     processor: &P,
     options: &AssemblyOptions,
 ) -> Result<String> {
+    assemble_prompt_with_processor_options_and_diff_provider(
+        found_files,
+        processor,
+        options,
+        &GitDiffProvider,
+    )
+}
+
+fn assemble_prompt_with_processor_options_and_diff_provider<P, D>(
+    found_files: &[String],
+    processor: &P,
+    options: &AssemblyOptions,
+    diff_provider: &D,
+) -> Result<String>
+where
+    P: FileProcessor,
+    D: DiffProvider,
+{
     // Sort and deduplicate the list.
     let mut files = found_files.to_vec();
     files.sort();
@@ -97,7 +127,7 @@ fn assemble_prompt_with_processor_and_options<P: FileProcessor>(
 
         // If a diff branch is set, append a diff report using the diff_with_branch crate.
         if let Some(diff_branch) = options.diff_branch.as_deref() {
-            let diff_output = match run_diff_against(&file_path, diff_branch) {
+            let diff_output = match diff_provider.diff_for_file(&file_path, diff_branch) {
                 Ok(Some(diff)) => diff,
                 Ok(None) => String::new(),
                 Err(err) => {
@@ -347,39 +377,41 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
     #[test]
     fn test_diff_with_branch_no_diff_output() {
         let mut file = NamedTempFile::new().unwrap();
-        let content = "class NoDiff {}";
-        file.write_all(content.as_bytes()).unwrap();
-        let file_path = file.path().to_owned();
+        file.write_all(b"class NoDiff {}").unwrap();
+        let found_files = vec![file.path().to_string_lossy().into_owned()];
+        let diff_provider = MockDiffProvider { result: Ok(None) };
 
-        let found_files = vec![file_path.to_string_lossy().into_owned()];
+        let output = assemble_prompt_with_processor_options_and_diff_provider(
+            &found_files,
+            &DefaultFileProcessor,
+            &diff_options("HEAD"),
+            &diff_provider,
+        )
+        .expect("assemble_prompt_with_processor_options_and_diff_provider failed");
 
-        env::set_var("DIFF_WITH_BRANCH", "dummy-branch");
-
-        // Set up a dummy git script that produces no diff.
-        let dummy_dir = tempdir().unwrap();
-        let dummy_path = dummy_dir.path().join("diff_script");
-        fs::write(&dummy_path, "#!/bin/sh\necho \"\"\n")
-            .expect("Failed to write dummy diff script");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&dummy_path)
-                .expect("Failed to get metadata")
-                .permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&dummy_path, perms).expect("Failed to set permissions");
-        }
-        let original_path = env::var("PATH").unwrap_or_default();
-        let new_path = format!("{}:{}", dummy_dir.path().to_str().unwrap(), original_path);
-        env::set_var("PATH", new_path);
-
-        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
-
-        assert!(!output.contains("against branch dummy-branch"));
+        assert!(!output.contains("against branch HEAD"));
         assert!(!output.contains("Dummy diff output"));
+    }
 
-        env::remove_var("DIFF_WITH_BRANCH");
-        env::set_var("PATH", original_path);
+    #[test]
+    fn test_diff_lookup_error_is_omitted_from_prompt() {
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(b"class DiffError {}").unwrap();
+        let found_files = vec![file.path().to_string_lossy().into_owned()];
+        let diff_provider = MockDiffProvider {
+            result: Err("git failed".to_string()),
+        };
+
+        let output = assemble_prompt_with_processor_options_and_diff_provider(
+            &found_files,
+            &DefaultFileProcessor,
+            &diff_options("missing-branch"),
+            &diff_provider,
+        )
+        .expect("assemble_prompt_with_processor_options_and_diff_provider failed");
+
+        assert!(!output.contains("The diff for"));
+        assert!(!output.contains("against branch missing-branch"));
     }
 
     #[test]
@@ -411,41 +443,17 @@ func outsideFunction() {
         writeln!(file_diff, "class DummyDiff {{}}").unwrap();
         let file_diff_path = file_diff.path().to_str().unwrap().to_string();
         let found_files = vec![file_diff_path];
+        let diff_provider = MockDiffProvider {
+            result: Ok(Some("Dummy diff output for file".to_string())),
+        };
 
-        env::set_var("DIFF_WITH_BRANCH", "dummy-branch");
-
-        let temp_dir = tempdir().unwrap();
-        let dummy_git = temp_dir.path().join("git");
-        fs::write(
-            &dummy_git,
-            "#!/bin/sh
-case \"$@\" in
-    *ls-files*)
-        exit 0
-        ;;
-    *diff*)
-        echo -n \"Dummy diff output for file\"
-        exit 0
-        ;;
-    *)
-        exit 1
-        ;;
-esac
-",
+        let output = assemble_prompt_with_processor_options_and_diff_provider(
+            &found_files,
+            &DefaultFileProcessor,
+            &diff_options("dummy-branch"),
+            &diff_provider,
         )
-        .unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&dummy_git).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&dummy_git, perms).unwrap();
-        }
-        let current_path = env::var("PATH").unwrap();
-        let new_path = format!("{}:{}", temp_dir.path().to_str().unwrap(), current_path);
-        env::set_var("PATH", new_path);
-
-        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
+        .expect("assemble_prompt_with_processor_options_and_diff_provider failed");
 
         assert!(
             output.contains("Dummy diff output for file"),
@@ -453,9 +461,6 @@ esac
             output
         );
         assert!(output.contains("against branch dummy-branch"));
-
-        env::remove_var("DIFF_WITH_BRANCH");
-        env::set_var("PATH", current_path);
     }
 
     #[test]
@@ -466,43 +471,17 @@ esac
         let file_diff_path = file_diff.path().to_owned();
 
         let found_files = vec![file_diff_path.to_string_lossy().into_owned()];
+        let diff_provider = MockDiffProvider {
+            result: Ok(Some("Dummy diff output for file".to_string())),
+        };
 
-        env::set_var("DIFF_WITH_BRANCH", "dummy-branch");
-
-        let dummy_dir = tempdir().unwrap();
-        let dummy_git = dummy_dir.path().join("git");
-        fs::write(
-            &dummy_git,
-            "#!/bin/sh
-case \"$@\" in
-    *ls-files*)
-        exit 0
-        ;;
-    *diff*)
-        echo -n \"Dummy diff output for file\"
-        exit 0
-        ;;
-    *)
-        exit 1
-        ;;
-esac
-",
+        let output = assemble_prompt_with_processor_options_and_diff_provider(
+            &found_files,
+            &DefaultFileProcessor,
+            &diff_options("dummy-branch"),
+            &diff_provider,
         )
-        .expect("Failed to write dummy git script");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&dummy_git)
-                .expect("Failed to get metadata")
-                .permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&dummy_git, perms).expect("Failed to set permissions");
-        }
-        let original_path = env::var("PATH").unwrap_or_default();
-        let new_path = format!("{}:{}", dummy_dir.path().to_str().unwrap(), original_path);
-        env::set_var("PATH", new_path);
-
-        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
+        .expect("assemble_prompt_with_processor_options_and_diff_provider failed");
 
         let expected_diff = "Dummy diff output for file";
         assert!(
@@ -511,9 +490,6 @@ esac
             output
         );
         assert!(output.contains("against branch dummy-branch"));
-
-        env::remove_var("DIFF_WITH_BRANCH");
-        env::set_var("PATH", original_path);
     }
 
     #[test]
@@ -526,41 +502,17 @@ esac
         writeln!(file, "{}", file_content).unwrap();
         let file_path = file.path().to_str().unwrap().to_string();
         let found_files = vec![file_path];
+        let diff_provider = MockDiffProvider {
+            result: Ok(Some("Diff output".to_string())),
+        };
 
-        env::set_var("DIFF_WITH_BRANCH", "dummy-branch");
-
-        let dummy_dir = tempdir().expect("Failed to create dummy dir");
-        let dummy_git = dummy_dir.path().join("git");
-        fs::write(
-            &dummy_git,
-            "#!/bin/sh
-case \"$@\" in
-    *ls-files*)
-        exit 0
-        ;;
-    *diff*)
-        echo -n \"Diff output\"
-        exit 0
-        ;;
-    *)
-        exit 1
-        ;;
-esac
-",
+        let output = assemble_prompt_with_processor_options_and_diff_provider(
+            &found_files,
+            &DefaultFileProcessor,
+            &diff_options("dummy-branch"),
+            &diff_provider,
         )
-        .expect("Failed to write dummy git script");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&dummy_git).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&dummy_git, perms).unwrap();
-        }
-        let original_path = env::var("PATH").unwrap();
-        let new_path = format!("{}:{}", dummy_dir.path().to_str().unwrap(), original_path);
-        env::set_var("PATH", new_path);
-
-        let output = assemble_prompt(&found_files, "ignored").expect("assemble_prompt failed");
+        .expect("assemble_prompt_with_processor_options_and_diff_provider failed");
 
         let marker_count = output.lines().filter(|l| l.contains("// TODO: -")).count();
         assert!(
@@ -568,9 +520,6 @@ esac
             "Unexpected marker count: {}",
             marker_count
         );
-
-        env::remove_var("DIFF_WITH_BRANCH");
-        env::set_var("PATH", original_path);
     }
 
     // --- Tests using dependency injection and mocks ---
@@ -613,6 +562,23 @@ esac
             _todo_file_basename: Option<&str>,
         ) -> anyhow::Result<String> {
             Err(anyhow::anyhow!("Simulated processing failure"))
+        }
+    }
+
+    struct MockDiffProvider {
+        result: Result<Option<String>, String>,
+    }
+
+    impl DiffProvider for MockDiffProvider {
+        fn diff_for_file(&self, _file_path: &str, _branch: &str) -> Result<Option<String>, String> {
+            self.result.clone()
+        }
+    }
+
+    fn diff_options(branch: &str) -> AssemblyOptions {
+        AssemblyOptions {
+            todo_file_basename: None,
+            diff_branch: Some(branch.to_string()),
         }
     }
 
