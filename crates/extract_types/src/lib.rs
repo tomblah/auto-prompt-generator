@@ -124,10 +124,7 @@ pub struct ExtractTypesOptions {
 }
 
 pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> {
-    let options = ExtractTypesOptions {
-        targeted: std::env::var("TARGETED").is_ok(),
-    };
-    extract_types_from_file_with_options(swift_file, &options)
+    extract_types_from_file_with_options(swift_file, &ExtractTypesOptions::default())
 }
 
 pub fn extract_types_from_file_with_options<P: AsRef<Path>>(
@@ -314,6 +311,12 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_types_returns_error_for_missing_file() {
+        let result = extract_types_from_file("missing.swift");
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_extract_types_extracts_capitalized_words() -> Result<()> {
         let mut swift_file = NamedTempFile::new()?;
         writeln!(
@@ -435,6 +438,47 @@ mod tests {
 
     #[test]
     fn test_extract_types_targeted_mode() -> Result<()> {
+        let swift_content = r#"
+            class OuterType {}
+            func testFunction() {
+                class InnerType {}
+                // TODO: - Perform action
+            }
+        "#;
+        let mut swift_file = NamedTempFile::new()?;
+        write!(swift_file, "{}", swift_content)?;
+        let result = extract_types_from_file_with_options(
+            swift_file.path(),
+            &ExtractTypesOptions { targeted: true },
+        )?;
+        // In targeted mode, from the function block:
+        // - "class InnerType {}" produces "InnerType"
+        // - The trigger comment yields "Perform" (ignoring "action" since it's lowercase)
+        let expected = "InnerType\nPerform";
+        assert_eq!(result.trim(), expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_extract_types_targeted_mode_no_enclosing_block() -> Result<()> {
+        let swift_content = r#"
+            class OuterType {}
+            // TODO: - Some todo
+        "#;
+        let mut swift_file = NamedTempFile::new()?;
+        write!(swift_file, "{}", swift_content)?;
+        let result = extract_types_from_file_with_options(
+            swift_file.path(),
+            &ExtractTypesOptions { targeted: true },
+        )?;
+        // Expect "OuterType" and "Some"
+        let expected = "OuterType\nSome";
+        assert_eq!(result.trim(), expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_extract_types_default_ignores_targeted_env() -> Result<()> {
         env::set_var("TARGETED", "1");
         let swift_content = r#"
             class OuterType {}
@@ -446,30 +490,33 @@ mod tests {
         let mut swift_file = NamedTempFile::new()?;
         write!(swift_file, "{}", swift_content)?;
         let result = extract_types_from_file(swift_file.path())?;
-        // In targeted mode, from the function block:
-        // - "class InnerType {}" produces "InnerType"
-        // - The trigger comment yields "Perform" (ignoring "action" since it's lowercase)
-        let expected = "InnerType\nPerform";
+        let expected = "InnerType\nOuterType\nPerform";
         assert_eq!(result.trim(), expected);
         env::remove_var("TARGETED");
         Ok(())
     }
 
     #[test]
-    fn test_extract_types_targeted_mode_no_enclosing_block() -> Result<()> {
-        env::set_var("TARGETED", "1");
-        let swift_content = r#"
-            class OuterType {}
-            // TODO: - Some todo
-        "#;
-        let mut swift_file = NamedTempFile::new()?;
-        write!(swift_file, "{}", swift_content)?;
-        let result = extract_types_from_file(swift_file.path())?;
-        // Expect "OuterType" and "Some"
-        let expected = "OuterType\nSome";
-        assert_eq!(result.trim(), expected);
-        env::remove_var("TARGETED");
-        Ok(())
+    fn test_extract_enclosing_block_skips_todo_inside_markers() {
+        let content = "\
+// v\n\
+func markedFunction() {\n\
+    let value = MarkedType()\n\
+    // TODO: - Ignore marked block\n\
+}\n\
+// ^";
+
+        assert!(extract_enclosing_block_from_content(content).is_none());
+    }
+
+    #[test]
+    fn test_extract_inner_block_returns_none_for_unclosed_block() {
+        let content = "\
+func testFunction() {\n\
+    class InnerType {}\n\
+    // TODO: - Missing close\n";
+
+        assert!(extract_inner_block_from_content(content).is_none());
     }
 }
 
