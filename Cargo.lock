@@ -344,6 +344,7 @@ dependencies = [
 name = "find_referencing_files"
 version = "0.1.0"
 dependencies = [
+ "lang_support",
  "regex",
  "tempfile",
  "walkdir",

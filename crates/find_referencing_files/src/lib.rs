@@ -1,5 +1,6 @@
 // crates/find_referencing_files/src/lib.rs
 
+use lang_support::for_extension;
 use regex::Regex;
 use std::fs;
 use std::path::Component;
@@ -37,8 +38,6 @@ pub fn find_files_referencing(
     let pattern = format!(r"\b{}\b", regex::escape(type_name));
     let re = Regex::new(&pattern)?;
 
-    // Allowed file extensions.
-    let allowed_extensions = ["swift", "h", "m", "js"];
     let mut matches = Vec::new();
 
     // Recursively traverse the search_root directory.
@@ -53,7 +52,7 @@ pub fn find_files_referencing(
             Some(e) => e.to_lowercase(),
             None => continue,
         };
-        if !allowed_extensions.contains(&ext.as_str()) {
+        if for_extension(&ext).is_none() {
             continue;
         }
 
@@ -177,6 +176,40 @@ mod tests {
         // Should include the JS file but not the txt file.
         assert!(results_str.contains(&file_js_str));
         assert!(!results_str.contains(&file_txt_str));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_supported_language_extensions_are_searched() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
+        let dir_path = dir.path();
+
+        let supported_files = [
+            dir_path.join("reference.swift"),
+            dir_path.join("reference.h"),
+            dir_path.join("reference.m"),
+            dir_path.join("reference.js"),
+            dir_path.join("reference.jsx"),
+            dir_path.join("reference.mjs"),
+            dir_path.join("reference.cjs"),
+        ];
+        for path in &supported_files {
+            let mut file = fs::File::create(path)?;
+            writeln!(file, "let instance = MySpecialClass()")?;
+        }
+
+        let unsupported_path = dir_path.join("reference.txt");
+        let mut unsupported_file = fs::File::create(&unsupported_path)?;
+        writeln!(unsupported_file, "let instance = MySpecialClass()")?;
+
+        let results = find_files_referencing("MySpecialClass", dir_path.to_str().unwrap())?;
+        let results_str: Vec<String> = results;
+
+        for path in &supported_files {
+            assert!(results_str.contains(&path.to_string_lossy().to_string()));
+        }
+        assert!(!results_str.contains(&unsupported_path.to_string_lossy().to_string()));
 
         Ok(())
     }
