@@ -202,6 +202,56 @@ fn integration_extract_types_explicit_targeted_option_ignores_env() -> Result<()
 }
 
 #[test]
+fn integration_extract_types_explicit_non_targeted_option_ignores_targeted_env() -> Result<()> {
+    env::set_var("TARGETED", "1");
+
+    let swift_content = r#"
+        class OuterType {}
+        func testFunction() {
+            class InnerType {}
+            // TODO: - Perform action
+        }
+    "#;
+    let mut temp_file = NamedTempFile::new()?;
+    write!(temp_file, "{}", swift_content)?;
+
+    let result = extract_types_from_file_with_options(
+        temp_file.path(),
+        &ExtractTypesOptions { targeted: false },
+    )?;
+    let expected = "InnerType\nOuterType\nPerform";
+    assert_eq!(result.trim(), expected);
+
+    env::remove_var("TARGETED");
+    Ok(())
+}
+
+#[test]
+fn integration_extract_types_explicit_targeted_option_works_with_targeted_env() -> Result<()> {
+    env::set_var("TARGETED", "1");
+
+    let swift_content = r#"
+        class OuterType {}
+        func testFunction() {
+            class InnerType {}
+            // TODO: - Perform action
+        }
+    "#;
+    let mut temp_file = NamedTempFile::new()?;
+    write!(temp_file, "{}", swift_content)?;
+
+    let result = extract_types_from_file_with_options(
+        temp_file.path(),
+        &ExtractTypesOptions { targeted: true },
+    )?;
+    let expected = "InnerType\nPerform";
+    assert_eq!(result.trim(), expected);
+
+    env::remove_var("TARGETED");
+    Ok(())
+}
+
+#[test]
 fn integration_extract_types_targeted_mode_no_enclosing_block() -> Result<()> {
     // Set TARGETED so that only the enclosing block is processed.
     env::set_var("TARGETED", "1");
