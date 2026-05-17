@@ -1,5 +1,6 @@
 // crates/find_referencing_files/src/lib.rs
 
+use lang_support::for_extension;
 use regex::Regex;
 use std::fs;
 use std::path::Component;
@@ -37,8 +38,6 @@ pub fn find_files_referencing(
     let pattern = format!(r"\b{}\b", regex::escape(type_name));
     let re = Regex::new(&pattern)?;
 
-    // Allowed file extensions.
-    let allowed_extensions = ["swift", "h", "m", "js"];
     let mut matches = Vec::new();
 
     // Recursively traverse the search_root directory.
@@ -53,7 +52,7 @@ pub fn find_files_referencing(
             Some(e) => e.to_lowercase(),
             None => continue,
         };
-        if !allowed_extensions.contains(&ext.as_str()) {
+        if for_extension(&ext).is_none() {
             continue;
         }
 
@@ -191,6 +190,9 @@ mod tests {
             dir_path.join("reference.h"),
             dir_path.join("reference.m"),
             dir_path.join("reference.js"),
+            dir_path.join("reference.jsx"),
+            dir_path.join("reference.mjs"),
+            dir_path.join("reference.cjs"),
         ];
         for path in &supported_files {
             let mut file = fs::File::create(path)?;
