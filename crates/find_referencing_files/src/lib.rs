@@ -182,6 +182,37 @@ mod tests {
     }
 
     #[test]
+    fn test_supported_language_extensions_are_searched() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
+        let dir_path = dir.path();
+
+        let supported_files = [
+            dir_path.join("reference.swift"),
+            dir_path.join("reference.h"),
+            dir_path.join("reference.m"),
+            dir_path.join("reference.js"),
+        ];
+        for path in &supported_files {
+            let mut file = fs::File::create(path)?;
+            writeln!(file, "let instance = MySpecialClass()")?;
+        }
+
+        let unsupported_path = dir_path.join("reference.txt");
+        let mut unsupported_file = fs::File::create(&unsupported_path)?;
+        writeln!(unsupported_file, "let instance = MySpecialClass()")?;
+
+        let results = find_files_referencing("MySpecialClass", dir_path.to_str().unwrap())?;
+        let results_str: Vec<String> = results;
+
+        for path in &supported_files {
+            assert!(results_str.contains(&path.to_string_lossy().to_string()));
+        }
+        assert!(!results_str.contains(&unsupported_path.to_string_lossy().to_string()));
+
+        Ok(())
+    }
+
+    #[test]
     fn test_excludes_build_directory() -> Result<(), Box<dyn std::error::Error>> {
         // Create a temporary directory.
         let dir = tempdir()?;
