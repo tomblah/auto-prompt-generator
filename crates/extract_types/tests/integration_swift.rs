@@ -128,9 +128,6 @@ fn integration_extract_types_todo_outside_markers() -> Result<()> {
 
 #[test]
 fn integration_extract_types_targeted_mode() -> Result<()> {
-    // Set TARGETED so that only the enclosing block is processed.
-    env::set_var("TARGETED", "1");
-
     // In this Swift content, an outer declaration exists, but the function block (the candidate)
     // contains both an inner type and a trigger comment.
     let swift_content = r#"
@@ -143,7 +140,10 @@ fn integration_extract_types_targeted_mode() -> Result<()> {
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", swift_content)?;
 
-    let result = extract_types_from_file(temp_file.path())?;
+    let result = extract_types_from_file_with_options(
+        temp_file.path(),
+        &ExtractTypesOptions { targeted: true },
+    )?;
     // In targeted mode:
     // - "class InnerType {}" produces "InnerType"
     // - The trigger comment " // TODO: - Perform action" yields tokens ["Perform", "action"]
@@ -152,7 +152,6 @@ fn integration_extract_types_targeted_mode() -> Result<()> {
     let expected = "InnerType\nPerform";
     assert_eq!(result.trim(), expected);
 
-    env::remove_var("TARGETED");
     Ok(())
 }
 
@@ -174,6 +173,28 @@ fn integration_extract_types_without_targeted_env_processes_full_content() -> Re
     let expected = "InnerType\nOuterType\nPerform";
     assert_eq!(result.trim(), expected);
 
+    Ok(())
+}
+
+#[test]
+fn integration_extract_types_default_ignores_targeted_env() -> Result<()> {
+    env::set_var("TARGETED", "1");
+
+    let swift_content = r#"
+        class OuterType {}
+        func testFunction() {
+            class InnerType {}
+            // TODO: - Perform action
+        }
+    "#;
+    let mut temp_file = NamedTempFile::new()?;
+    write!(temp_file, "{}", swift_content)?;
+
+    let result = extract_types_from_file(temp_file.path())?;
+    let expected = "InnerType\nOuterType\nPerform";
+    assert_eq!(result.trim(), expected);
+
+    env::remove_var("TARGETED");
     Ok(())
 }
 
@@ -253,9 +274,6 @@ fn integration_extract_types_explicit_targeted_option_works_with_targeted_env() 
 
 #[test]
 fn integration_extract_types_targeted_mode_no_enclosing_block() -> Result<()> {
-    // Set TARGETED so that only the enclosing block is processed.
-    env::set_var("TARGETED", "1");
-
     // In this content no candidate enclosing block is found.
     let swift_content = r#"
         class OuterType {}
@@ -264,7 +282,10 @@ fn integration_extract_types_targeted_mode_no_enclosing_block() -> Result<()> {
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", swift_content)?;
 
-    let result = extract_types_from_file(temp_file.path())?;
+    let result = extract_types_from_file_with_options(
+        temp_file.path(),
+        &ExtractTypesOptions { targeted: true },
+    )?;
     // Since no candidate block is found, the full content is processed:
     // - "class OuterType {}" produces "OuterType"
     // - The trigger comment " // TODO: - Some todo" yields tokens ["Some", "todo"],
@@ -273,15 +294,11 @@ fn integration_extract_types_targeted_mode_no_enclosing_block() -> Result<()> {
     let expected = "OuterType\nSome";
     assert_eq!(result.trim(), expected);
 
-    env::remove_var("TARGETED");
     Ok(())
 }
 
 #[test]
 fn integration_extract_types_targeted_inner_block_excludes_outer() -> Result<()> {
-    // Set TARGETED so that only the inner block is processed.
-    env::set_var("TARGETED", "1");
-
     // In this Swift content, there's an outer declaration and then inside a function block,
     // an inner block containing both an inner type and a trigger comment.
     // We expect that only the tokens from the inner block are extracted.
@@ -299,7 +316,10 @@ fn integration_extract_types_targeted_inner_block_excludes_outer() -> Result<()>
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", swift_content)?;
 
-    let result = extract_types_from_file(temp_file.path())?;
+    let result = extract_types_from_file_with_options(
+        temp_file.path(),
+        &ExtractTypesOptions { targeted: true },
+    )?;
     // In targeted mode:
     // - "class InnerType {}" produces the token "InnerType"
     // - The trigger comment produces "Do" (ignoring lowercase words)
@@ -308,6 +328,5 @@ fn integration_extract_types_targeted_inner_block_excludes_outer() -> Result<()>
     let expected = "Do\nInnerType";
     assert_eq!(result.trim(), expected);
 
-    env::remove_var("TARGETED");
     Ok(())
 }
