@@ -737,6 +737,69 @@ func outsideFunction() {
 }
 
 #[cfg(test)]
+mod env_var_characterization_tests {
+    use super::*;
+    use std::env;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    /// Characterization: `assemble_prompt_from_env` reads `TODO_FILE_BASENAME` from the
+    /// environment. This behavior is being removed in favor of explicit `AssemblyOptions`.
+    #[test]
+    fn characterize_from_env_reads_todo_file_basename() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "class Dummy {{}}").unwrap();
+        let found_files = vec![file.path().to_path_buf()];
+
+        env::set_var("TODO_FILE_BASENAME", "FromEnv.swift");
+        env::remove_var("DIFF_WITH_BRANCH");
+
+        let output =
+            assemble_prompt_from_env(&found_files).expect("assemble_prompt_from_env failed");
+
+        env::remove_var("TODO_FILE_BASENAME");
+
+        assert!(
+            output.contains("class Dummy"),
+            "File content should be present"
+        );
+    }
+
+    /// Characterization: `assemble_prompt_from_env` reads `DIFF_WITH_BRANCH` from the
+    /// environment. When unset, no diff section is included (unlike `diff_with_branch::run_diff`
+    /// which falls back to "main"). This inconsistency is being removed.
+    #[test]
+    fn characterize_from_env_reads_diff_with_branch() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "class NoDiff {{}}").unwrap();
+        let found_files = vec![file.path().to_path_buf()];
+
+        env::remove_var("DIFF_WITH_BRANCH");
+        env::remove_var("TODO_FILE_BASENAME");
+
+        let output =
+            assemble_prompt_from_env(&found_files).expect("assemble_prompt_from_env failed");
+
+        assert!(
+            !output.contains("The diff for"),
+            "No diff section when DIFF_WITH_BRANCH is unset"
+        );
+    }
+
+    /// Characterization: `AssemblyOptions::from_env` treats absent `DIFF_WITH_BRANCH` as None
+    /// (no diff), while `diff_with_branch::run_diff` treats it as "compare against main".
+    #[test]
+    fn characterize_from_env_absent_means_no_diff() {
+        env::remove_var("DIFF_WITH_BRANCH");
+        env::remove_var("TODO_FILE_BASENAME");
+
+        let opts = AssemblyOptions::from_env();
+        assert!(opts.diff_branch.is_none());
+        assert!(opts.todo_file_basename.is_none());
+    }
+}
+
+#[cfg(test)]
 mod pathbuf_characterization_tests {
     use super::*;
     use std::fs;

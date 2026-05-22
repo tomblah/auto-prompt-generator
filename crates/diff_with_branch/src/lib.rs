@@ -119,6 +119,103 @@ mod tests {
         assert!(result.unwrap().is_none());
     }
 
+    /// Characterization: `run_diff` reads `DIFF_WITH_BRANCH` env var and uses it as the
+    /// comparison target. This behavior is being removed in favor of explicit branch arguments.
+    #[test]
+    fn characterize_run_diff_reads_env_var() {
+        let dir = tempdir().expect("Failed to create temp dir");
+        let temp_path = dir.path();
+        init_git_repo(temp_path);
+
+        let file_path = temp_path.join("envtest.txt");
+        {
+            let mut file = File::create(&file_path).expect("Failed to create file");
+            writeln!(file, "Initial content").expect("Failed to write to file");
+        }
+        Command::new("git")
+            .args(["add", "envtest.txt"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to add file");
+        Command::new("git")
+            .args(["commit", "-m", "Initial commit"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to commit");
+
+        Command::new("git")
+            .args(["checkout", "-b", "old-branch"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to create old-branch");
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to checkout main");
+
+        {
+            let mut file = File::create(&file_path).expect("Failed to open file");
+            writeln!(file, "Modified on main").expect("Failed to write");
+        }
+        Command::new("git")
+            .args(["add", "envtest.txt"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to stage");
+        Command::new("git")
+            .args(["commit", "-m", "Modify on main"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to commit modification");
+
+        // With env var set to old-branch, run_diff compares working tree against old-branch.
+        // Since main advanced, there IS a diff against old-branch.
+        env::set_var("DIFF_WITH_BRANCH", "old-branch");
+        let result = run_diff(&file_path);
+        env::remove_var("DIFF_WITH_BRANCH");
+
+        assert!(result.is_ok());
+        let diff = result.unwrap();
+        assert!(
+            diff.is_some(),
+            "Expected diff against old-branch because main has diverged"
+        );
+    }
+
+    /// Characterization: `run_diff` defaults to comparing against "main" when env var is unset.
+    #[test]
+    fn characterize_run_diff_defaults_to_main() {
+        let dir = tempdir().expect("Failed to create temp dir");
+        let temp_path = dir.path();
+        init_git_repo(temp_path);
+
+        let file_path = temp_path.join("defaulttest.txt");
+        {
+            let mut file = File::create(&file_path).expect("Failed to create file");
+            writeln!(file, "Initial content").expect("Failed to write to file");
+        }
+        Command::new("git")
+            .args(["add", "defaulttest.txt"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to add file");
+        Command::new("git")
+            .args(["commit", "-m", "Initial commit"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to commit");
+
+        env::remove_var("DIFF_WITH_BRANCH");
+        let result = run_diff(&file_path);
+
+        assert!(result.is_ok());
+        assert!(
+            result.unwrap().is_none(),
+            "No diff expected against HEAD on main"
+        );
+    }
+
     #[test]
     fn test_tracked_file_with_diff() {
         let dir = tempdir().expect("Failed to create temp dir");
