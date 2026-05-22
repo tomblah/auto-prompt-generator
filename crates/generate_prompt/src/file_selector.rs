@@ -4,7 +4,7 @@ use anyhow::Result;
 use extract_enclosing_type::extract_enclosing_type;
 use extract_types::{extract_types_from_file_with_options, ExtractTypesOptions};
 use find_definition_files::find_definition_files;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FileSelectionOptions {
@@ -29,19 +29,19 @@ pub struct FileSelectionOptions {
 ///
 /// # Returns
 ///
-/// A vector of file paths (as Strings) that should be included in the final prompt.
+/// A sorted, deduplicated vector of file paths that should be included in the final prompt.
 pub fn determine_files_to_include_with_options(
     file_path: &Path,
     singular: bool,
     search_root: &Path,
     excludes: &[String],
     options: &FileSelectionOptions,
-) -> Result<Vec<String>> {
-    let mut found_files: Vec<String> = Vec::new();
+) -> Result<Vec<PathBuf>> {
+    let mut found_files: Vec<PathBuf> = Vec::new();
 
     if singular {
         println!("Singular mode enabled: only including the TODO file");
-        found_files.push(file_path.to_string_lossy().into_owned());
+        found_files.push(file_path.to_path_buf());
     } else {
         let types = extract_types_from_file_with_options(
             file_path,
@@ -57,22 +57,16 @@ pub fn determine_files_to_include_with_options(
 
         let def_files_set = find_definition_files(&types, search_root)?;
 
-        // Add definition files to the in-memory list.
         for path in def_files_set {
-            found_files.push(path.to_string_lossy().into_owned());
+            found_files.push(path);
         }
 
-        // Append the instruction file.
-        found_files.push(file_path.to_string_lossy().into_owned());
+        found_files.push(file_path.to_path_buf());
 
-        // Apply exclusion filtering.
         if !excludes.is_empty() {
             println!("Excluding files matching: {:?}", excludes);
-            found_files.retain(|line| {
-                let basename = Path::new(line)
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy();
+            found_files.retain(|p| {
+                let basename = p.file_name().unwrap_or_default().to_string_lossy();
                 !excludes.contains(&basename.to_string())
             });
         }
@@ -96,29 +90,21 @@ pub fn determine_files_to_include_with_options(
         } else {
             println!("No enclosing type found; skipping reference search.");
         }
-        // Reapply exclusion filtering.
         if !excludes.is_empty() {
             println!("Excluding files matching: {:?}", excludes);
-            found_files.retain(|line| {
-                let basename = Path::new(line)
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy();
+            found_files.retain(|p| {
+                let basename = p.file_name().unwrap_or_default().to_string_lossy();
                 !excludes.contains(&basename.to_string())
             });
         }
     }
 
-    // Sort and deduplicate.
     found_files.sort();
     found_files.dedup();
     println!("--------------------------------------------------");
     println!("Files (final list):");
     for file in &found_files {
-        let basename = Path::new(file)
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy();
+        let basename = file.file_name().unwrap_or_default().to_string_lossy();
         println!("{}", basename);
     }
 
@@ -156,7 +142,7 @@ mod tests {
         )
         .expect("Failed in singular mode");
         assert_eq!(files.len(), 1);
-        assert_eq!(files[0], instr_path.to_string_lossy());
+        assert_eq!(files[0], instr_path);
     }
 
     /// In non-singular mode (without references), if the instruction file contains a TODO that mentions
@@ -195,8 +181,8 @@ mod tests {
         )
         .expect("Non-singular without references failed");
         // Expect both the instruction file and the definition file.
-        assert!(files.contains(&instr_path.to_string_lossy().into_owned()));
-        assert!(files.contains(&def_path.to_string_lossy().into_owned()));
+        assert!(files.contains(&instr_path));
+        assert!(files.contains(&def_path));
         assert_eq!(files.len(), 2);
     }
 
@@ -242,9 +228,9 @@ mod tests {
 
         env::remove_var("TARGETED");
 
-        assert!(files.contains(&instr_path.to_string_lossy().into_owned()));
-        assert!(files.contains(&outer_def_path.to_string_lossy().into_owned()));
-        assert!(files.contains(&inner_def_path.to_string_lossy().into_owned()));
+        assert!(files.contains(&instr_path));
+        assert!(files.contains(&outer_def_path));
+        assert!(files.contains(&inner_def_path));
     }
 
     #[test]
@@ -287,9 +273,9 @@ mod tests {
         )
         .expect("Explicit targeted selection failed");
 
-        assert!(files.contains(&instr_path.to_string_lossy().into_owned()));
-        assert!(!files.contains(&outer_def_path.to_string_lossy().into_owned()));
-        assert!(files.contains(&inner_def_path.to_string_lossy().into_owned()));
+        assert!(files.contains(&instr_path));
+        assert!(!files.contains(&outer_def_path));
+        assert!(files.contains(&inner_def_path));
     }
 
     /// In non-singular mode with references enabled, if the instruction file declares "RefType"
@@ -333,9 +319,9 @@ mod tests {
         )
         .expect("Non-singular with references failed");
         // Expected: Instruction.swift, Def.swift, and Ref.swift.
-        assert!(files.contains(&instr_path.to_string_lossy().into_owned()));
-        assert!(files.contains(&def_path.to_string_lossy().into_owned()));
-        assert!(files.contains(&ref_path.to_string_lossy().into_owned()));
+        assert!(files.contains(&instr_path));
+        assert!(files.contains(&def_path));
+        assert!(files.contains(&ref_path));
         assert_eq!(files.len(), 3);
     }
 
@@ -356,10 +342,7 @@ mod tests {
         )
         .expect("Missing file should only skip reference lookup");
 
-        assert_eq!(
-            files,
-            vec![missing_instruction.to_string_lossy().into_owned()]
-        );
+        assert_eq!(files, vec![missing_instruction]);
     }
 
     /// Test exclusion filtering in non-singular mode with references enabled.
@@ -406,10 +389,9 @@ mod tests {
         )
         .expect("Exclusion test failed");
         // Expected: Instruction.swift and Ref.swift should be present; Def.swift should be excluded.
-        assert!(files.contains(&instr_path.to_string_lossy().into_owned()));
-        assert!(files.contains(&ref_path.to_string_lossy().into_owned()));
-        assert!(!files.contains(&def_path.to_string_lossy().into_owned()));
-        // Total count should be 2.
+        assert!(files.contains(&instr_path));
+        assert!(files.contains(&ref_path));
+        assert!(!files.contains(&def_path));
         assert_eq!(files.len(), 2);
     }
 }

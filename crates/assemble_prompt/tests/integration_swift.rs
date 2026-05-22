@@ -9,15 +9,6 @@ mod integration_swift {
     use std::process::Command;
     use tempfile::{NamedTempFile, TempDir};
 
-    /// Helper function to read a temporary found_files file into a Vec<String>.
-    fn read_found_files(file_path: &str) -> Vec<String> {
-        fs::read_to_string(file_path)
-            .expect("Failed to read found files list")
-            .lines()
-            .map(|l| l.to_string())
-            .collect()
-    }
-
     /// Test assembling a prompt from a single Swift file.
     #[test]
     fn test_assemble_prompt_single_file() {
@@ -25,19 +16,8 @@ mod integration_swift {
         let mut swift_file = NamedTempFile::new().expect("Failed to create temp Swift file");
         let swift_content = "public class MyClass {\n    func test() {}\n}\n";
         write!(swift_file, "{}", swift_content).expect("Failed to write to Swift file");
-        let swift_path = swift_file.path().to_str().unwrap().to_string();
 
-        // Create a temporary found_files file that contains the Swift file path.
-        let mut found_files_temp =
-            NamedTempFile::new().expect("Failed to create found files temp file");
-        writeln!(found_files_temp, "{}", swift_path).expect("Failed to write to found files file");
-        let found_files_path = found_files_temp
-            .into_temp_path()
-            .keep()
-            .expect("Failed to persist found files list");
-
-        // Read the found files into a vector.
-        let found_files_vec = read_found_files(found_files_path.to_str().unwrap());
+        let found_files_vec = vec![swift_file.path().to_path_buf()];
 
         let file_name = swift_file
             .path()
@@ -81,28 +61,22 @@ mod integration_swift {
         let mut swift_file1 = NamedTempFile::new().expect("Failed to create Swift file 1");
         let swift_content1 = "public struct StructOne {}\n";
         write!(swift_file1, "{}", swift_content1).expect("Failed to write to Swift file 1");
-        let swift_path1 = swift_file1.path().to_str().unwrap().to_string();
 
         let mut swift_file2 = NamedTempFile::new().expect("Failed to create Swift file 2");
         let swift_content2 = "public enum EnumTwo {}\n";
         write!(swift_file2, "{}", swift_content2).expect("Failed to write to Swift file 2");
-        let swift_path2 = swift_file2.path().to_str().unwrap().to_string();
 
-        // Create a temporary found_files file that includes both files and a duplicate of swift_file1.
-        let mut found_files_temp = NamedTempFile::new().expect("Failed to create found files file");
-        writeln!(found_files_temp, "{}", swift_path1).expect("Failed to write to found files file");
-        writeln!(found_files_temp, "{}", swift_path2).expect("Failed to write to found files file");
-        // Duplicate swift_file1.
-        writeln!(found_files_temp, "{}", swift_path1).expect("Failed to write duplicate entry");
-        let found_files_path = found_files_temp
-            .into_temp_path()
-            .keep()
-            .expect("Failed to persist found files list");
+        // Build found_files list including a duplicate of swift_file1, then sort and dedup.
+        let mut found_files_vec: Vec<PathBuf> = vec![
+            swift_file1.path().to_path_buf(),
+            swift_file2.path().to_path_buf(),
+            swift_file1.path().to_path_buf(),
+        ];
+        found_files_vec.sort();
+        found_files_vec.dedup();
 
-        // Read the found files into a vector.
-        let found_files_vec = read_found_files(found_files_path.to_str().unwrap());
-
-        let file_name1 = PathBuf::from(&swift_path1)
+        let file_name1 = swift_file1
+            .path()
             .file_name()
             .unwrap()
             .to_str()
@@ -119,12 +93,14 @@ mod integration_swift {
         .expect("assemble_prompt failed");
 
         // Bind file names.
-        let file_name1_dup = PathBuf::from(&swift_path1)
+        let file_name1_dup = swift_file1
+            .path()
             .file_name()
             .unwrap()
             .to_string_lossy()
             .into_owned();
-        let file_name2 = PathBuf::from(&swift_path2)
+        let file_name2 = swift_file2
+            .path()
             .file_name()
             .unwrap()
             .to_string_lossy()
@@ -169,24 +145,17 @@ mod integration_swift {
         let mut swift_file = NamedTempFile::new().expect("Failed to create Swift file");
         let swift_content = "public class MissingTest {}\n";
         write!(swift_file, "{}", swift_content).expect("Failed to write to Swift file");
-        let swift_path = swift_file.path().to_str().unwrap().to_string();
 
-        // Create a found_files file that includes one valid and one non-existent file.
-        let mut found_files_temp = NamedTempFile::new().expect("Failed to create found files file");
-        writeln!(found_files_temp, "{}", swift_path).expect("Failed to write valid file path");
-        writeln!(found_files_temp, "/path/to/nonexistent/file.swift")
-            .expect("Failed to write non-existent file path");
-        let found_files_path = found_files_temp
-            .into_temp_path()
-            .keep()
-            .expect("Failed to persist found files list");
-
-        let found_files_vec = read_found_files(found_files_path.to_str().unwrap());
+        let found_files_vec: Vec<PathBuf> = vec![
+            swift_file.path().to_path_buf(),
+            PathBuf::from("/path/to/nonexistent/file.swift"),
+        ];
 
         let output = assemble_prompt(&found_files_vec, &AssemblyOptions::default())
             .expect("assemble_prompt failed");
 
-        let file_name = PathBuf::from(&swift_path)
+        let file_name = swift_file
+            .path()
             .file_name()
             .unwrap()
             .to_string_lossy()
@@ -215,8 +184,7 @@ mod integration_swift {
     /// Test that an empty found_files list results in a prompt containing only the fixed instruction.
     #[test]
     fn test_assemble_prompt_empty_found_files() {
-        // Use an empty in-memory found_files list.
-        let found_files: Vec<String> = Vec::new();
+        let found_files: Vec<PathBuf> = Vec::new();
 
         let output = assemble_prompt(&found_files, &AssemblyOptions::default())
             .expect("assemble_prompt failed");
@@ -251,10 +219,8 @@ public func genericFunction<T: Equatable>(param: T) -> T? {
  // TODO: - perform generic task
 "#;
         write!(swift_file, "{}", swift_content).expect("Failed to write to Swift file");
-        let swift_path = swift_file.path().to_str().unwrap().to_string();
 
-        // Build the in-memory found_files list.
-        let found_files = vec![swift_path.clone()];
+        let found_files = vec![swift_file.path().to_path_buf()];
 
         let file_name = swift_file
             .path()
@@ -337,8 +303,7 @@ public func genericFunction<T: Equatable>(param: T) -> T? {
         let modified_content = "public class DiffTest {\n    func newDiff() {}\n}\n";
         fs::write(&swift_file_path, modified_content).expect("Failed to modify Swift file");
 
-        // Build the in-memory found_files list.
-        let found_files = vec![swift_file_path.to_str().unwrap().to_string()];
+        let found_files = vec![swift_file_path.clone()];
 
         let file_basename = swift_file_path
             .file_name()
