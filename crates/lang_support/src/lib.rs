@@ -10,7 +10,9 @@
 //!  * **Thin adapter API** – other crates call `lang_support::for_ext()`
 //!    and forward the work.
 
-use std::path::{Path, PathBuf};
+use std::fs;
+use std::path::{Component, Path, PathBuf};
+use walkdir::WalkDir;
 
 /// Abstracts the minimum the rest of the tool‑chain needs from a language‑
 /// specific helper.
@@ -35,6 +37,50 @@ pub fn for_extension(ext: &str) -> Option<&'static dyn LanguageSupport> {
         "h" | "m" => Some(&objc::OBJC),
         _ => None,
     }
+}
+
+pub struct SourceFile {
+    pub path: PathBuf,
+    pub content: String,
+    pub language: &'static dyn LanguageSupport,
+}
+
+/// Walks a root directory and returns readable files supported by `lang_support`.
+///
+/// Files inside generated/vendor directories are skipped so definition and
+/// reference searches share the same source-file policy.
+pub fn walk_source_files(root: impl AsRef<Path>) -> Vec<SourceFile> {
+    WalkDir::new(root)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file())
+        .filter_map(|entry| {
+            let path = entry.into_path();
+            if has_ignored_component(&path) {
+                return None;
+            }
+
+            let ext = path.extension().and_then(|s| s.to_str())?;
+            let language = for_extension(ext)?;
+            let content = fs::read_to_string(&path).ok()?;
+
+            Some(SourceFile {
+                path,
+                content,
+                language,
+            })
+        })
+        .collect()
+}
+
+fn has_ignored_component(path: &Path) -> bool {
+    path.components().any(|component| match component {
+        Component::Normal(name) => {
+            let name = name.to_string_lossy();
+            name == ".build" || name == "Pods"
+        }
+        _ => false,
+    })
 }
 
 // ---------------------------------------------------------------------------
