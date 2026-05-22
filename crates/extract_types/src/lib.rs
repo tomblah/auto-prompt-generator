@@ -10,44 +10,23 @@ use std::path::Path;
 
 use lang_support::for_extension;
 use substring_marker_snippet_extractor::{
-    file_uses_markers, filter_substring_markers, is_todo_inside_markers,
+    extract_enclosing_block_from_content, file_uses_markers, filter_substring_markers,
+    is_todo_inside_markers,
 };
 use todo_marker::{TODO_MARKER, TODO_MARKER_WS};
 
 /// ---------------------------------------------------------------------------
-///  Regexes that spot candidate declarations (legacy rules)
+///  Regexes for type-level candidate detection (class/enum)
+///
+///  These extend the shared function-level candidate detection in marker_utils
+///  so that enclosing-block extraction for type extraction also recognizes
+///  class and enum declarations.
 /// ---------------------------------------------------------------------------
-static SWIFT_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+(?:<[^>]+>)?\s*\([^)]*\)\s*(?:->\s*\S+)?(?:\s+async)?\s*\{"#,
-    )
-    .unwrap()
-});
-static JS_ASSIGNMENT_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#).unwrap()
-});
-static JS_FUNCTION_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"^\s*(?:async\s+)?function\s+\w+\s*\([^)]*\)\s*\{"#).unwrap());
-static PARSE_CLOUD_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r#"^\s*Parse\.Cloud\.(?:define|beforeSave|afterSave)\s*\(\s*(?:"[^"]+"|[A-Za-z][A-Za-z0-9_.]*)\s*,\s*(?:async\s+)?\([^)]*\)\s*=>\s*\{"#,
-    )
-    .unwrap()
-});
-static OBJC_METHOD_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"^\s*[-+]\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*(?::\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*)*\s*\{"#).unwrap()
-});
 static SWIFT_CLASS_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"^\s*class\s+\w+.*\{"#).unwrap());
 static SWIFT_ENUM_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"^\s*enum\s+\w+.*\{"#).unwrap());
 
-fn is_candidate_line(line: &str) -> bool {
-    SWIFT_FUNCTION_RE.is_match(line)
-        || JS_ASSIGNMENT_RE.is_match(line)
-        || JS_FUNCTION_RE.is_match(line)
-        || PARSE_CLOUD_RE.is_match(line)
-        || OBJC_METHOD_RE.is_match(line)
-        || SWIFT_CLASS_RE.is_match(line)
-        || SWIFT_ENUM_RE.is_match(line)
+fn is_type_candidate_line(line: &str) -> bool {
+    SWIFT_CLASS_RE.is_match(line) || SWIFT_ENUM_RE.is_match(line)
 }
 
 /// ---------------------------------------------------------------------------
@@ -144,7 +123,7 @@ pub fn extract_types_from_file_with_options<P: AsRef<Path>>(
     } else if file_uses_markers(&full_content) {
         let mut filtered = filter_substring_markers(&full_content, "");
         if !filtered.contains(TODO_MARKER) {
-            if let Some(enclosing) = extract_enclosing_block_from_content(&full_content) {
+            if let Some(enclosing) = extract_enclosing_block(&full_content) {
                 filtered.push('\n');
                 filtered.push_str(&enclosing);
             }
@@ -173,50 +152,16 @@ pub fn extract_types_from_file_with_options<P: AsRef<Path>>(
 }
 
 /// ---------------------------------------------------------------------------
-///  Helper: extract enclosing block (unchanged)
+///  Helper: extract enclosing block (delegates to shared implementation)
 /// ---------------------------------------------------------------------------
-fn extract_enclosing_block_from_content(content: &str) -> Option<String> {
+fn extract_enclosing_block(content: &str) -> Option<String> {
     let todo_idx = content
         .lines()
         .position(|line| line.contains(TODO_MARKER_WS))?;
     if is_todo_inside_markers(content, todo_idx) {
         return None;
     }
-
-    let lines: Vec<&str> = content.lines().collect();
-    let mut candidate_index = None;
-    for i in 0..todo_idx {
-        let line = lines[i];
-        let diff_candidate = (line.trim_start().starts_with('-')
-            || line.trim_start().starts_with('+'))
-            && i + 1 < todo_idx
-            && lines[i + 1].contains('{');
-        if is_candidate_line(line) || diff_candidate {
-            candidate_index = Some(i);
-        }
-    }
-    let start_index = candidate_index?;
-    let mut brace_count = 0;
-    let mut found_open = false;
-    let mut extracted_lines = Vec::new();
-    for line in &lines[start_index..] {
-        if !found_open {
-            if line.contains('{') {
-                found_open = true;
-                brace_count += line.matches('{').count();
-                brace_count = brace_count.saturating_sub(line.matches('}').count());
-            }
-            extracted_lines.push(*line);
-        } else {
-            extracted_lines.push(*line);
-            brace_count += line.matches('{').count();
-            brace_count = brace_count.saturating_sub(line.matches('}').count());
-            if brace_count == 0 {
-                break;
-            }
-        }
-    }
-    Some(extracted_lines.join("\n"))
+    extract_enclosing_block_from_content(content, Some(&is_type_candidate_line))
 }
 
 /// ---------------------------------------------------------------------------
@@ -506,7 +451,7 @@ func markedFunction() {\n\
 }\n\
 // ^";
 
-        assert!(extract_enclosing_block_from_content(content).is_none());
+        assert!(extract_enclosing_block(content).is_none());
     }
 
     #[test]
@@ -612,12 +557,6 @@ mod objc_tests {
     use super::*;
 
     #[test]
-    fn test_is_candidate_line_objc_method_single_line() {
-        let objc_line = "- (void)MyObjCMethod {";
-        assert!(is_candidate_line(objc_line));
-    }
-
-    #[test]
     fn test_extract_enclosing_block_with_objc_method_split_lines() {
         let content = "\
 - (void)MyObjCMethod\n\
@@ -627,7 +566,7 @@ mod objc_tests {
 void anotherFunction() {\n\
     // TODO: - Fix issue\n\
 }";
-        let block = extract_enclosing_block_from_content(content);
+        let block = extract_enclosing_block(content);
         assert!(block.is_some());
         let block_str = block.unwrap();
         assert!(block_str.contains("- (void)MyObjCMethod"));
@@ -643,7 +582,7 @@ void anotherFunction() {\n\
 void someFunction() {\n\
     // TODO: - Address bug\n\
 }";
-        let block = extract_enclosing_block_from_content(content);
+        let block = extract_enclosing_block(content);
         assert!(block.is_some());
         let block_str = block.unwrap();
         assert!(block_str.contains("- (void)MyObjCMethod {"));
@@ -655,38 +594,38 @@ mod candidate_detection_tests {
     use super::*;
 
     #[test]
-    fn test_candidate_line_swift_function_async() {
-        let async_func = "func testAsyncFunction(foo: Int) async {";
-        assert!(
-            is_candidate_line(async_func),
-            "Swift async function should be detected as a candidate"
-        );
-    }
-
-    #[test]
-    fn test_candidate_line_swift_class() {
+    fn test_type_candidate_line_swift_class() {
         let swift_class = "class MyInnerClass {";
         assert!(
-            is_candidate_line(swift_class),
-            "Swift class declaration should be detected as a candidate"
+            is_type_candidate_line(swift_class),
+            "Swift class declaration should be detected as a type candidate"
         );
     }
 
     #[test]
-    fn test_candidate_line_swift_enum() {
+    fn test_type_candidate_line_swift_enum() {
         let swift_enum = "enum MyEnum {";
         assert!(
-            is_candidate_line(swift_enum),
-            "Swift enum declaration should be detected as a candidate"
+            is_type_candidate_line(swift_enum),
+            "Swift enum declaration should be detected as a type candidate"
         );
     }
 
     #[test]
-    fn test_candidate_line_non_candidate() {
+    fn test_type_candidate_line_non_candidate() {
         let non_candidate = "let x = 10;";
         assert!(
-            !is_candidate_line(non_candidate),
-            "Non-declaration line should not be detected as a candidate"
+            !is_type_candidate_line(non_candidate),
+            "Non-declaration line should not be detected as a type candidate"
+        );
+    }
+
+    #[test]
+    fn test_type_candidate_line_function_not_matched() {
+        let func = "func testAsyncFunction(foo: Int) async {";
+        assert!(
+            !is_type_candidate_line(func),
+            "Function declarations are handled by the shared marker_utils, not the type predicate"
         );
     }
 }
@@ -709,7 +648,7 @@ mod enclosing_block_characterization_tests {
     // TODO: - Do something in ObjC\n\
     NSLog(@\"End\");\n\
 }";
-        let block = extract_enclosing_block_from_content(content);
+        let block = extract_enclosing_block(content);
         assert!(
             block.is_some(),
             "Should recognize ObjC split-line as a diff candidate"
@@ -730,7 +669,7 @@ class MyEnclosingClass {\n\
     let value = 42\n\
     // TODO: - Implement feature\n\
 }";
-        let block = extract_enclosing_block_from_content(content);
+        let block = extract_enclosing_block(content);
         assert!(
             block.is_some(),
             "extract_types should recognize class as a candidate"
@@ -750,7 +689,7 @@ enum MyState {\n\
     case loaded\n\
     // TODO: - Add error case\n\
 }";
-        let block = extract_enclosing_block_from_content(content);
+        let block = extract_enclosing_block(content);
         assert!(
             block.is_some(),
             "extract_types should recognize enum as a candidate"
@@ -761,9 +700,9 @@ enum MyState {\n\
     }
 
     /// Cross-crate equivalence: for content with only function-level candidates,
-    /// both extract_types's extract_enclosing_block_from_content and
-    /// marker_utils's file-path-based extract_enclosing_block produce the same
-    /// output (when the file has markers and TODO is outside them).
+    /// both extract_types's local wrapper and marker_utils's file-path-based
+    /// extract_enclosing_block produce the same output (when the file has markers
+    /// and TODO is outside them).
     #[test]
     fn test_cross_crate_equivalence_for_function_candidates() {
         let content = "\
@@ -779,7 +718,7 @@ func sharedFunction() {\n\
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "{}", content).unwrap();
 
-        let local_result = extract_enclosing_block_from_content(content);
+        let local_result = extract_enclosing_block(content);
 
         let file_result =
             substring_marker_snippet_extractor::utils::marker_utils::extract_enclosing_block(
@@ -808,7 +747,7 @@ class MyWidget {\n\
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "{}", content).unwrap();
 
-        let local_result = extract_enclosing_block_from_content(content);
+        let local_result = extract_enclosing_block(content);
 
         let file_result =
             substring_marker_snippet_extractor::utils::marker_utils::extract_enclosing_block(
