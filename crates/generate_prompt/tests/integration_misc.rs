@@ -520,7 +520,7 @@ esac
 }
 
 /// --- Test: Diff With Non‑existent Branch ---
-/// When a branch specified by DIFF_WITH_BRANCH does not exist, the program should fail.
+/// When a branch specified by --diff-with does not exist, the program should fail.
 #[test]
 #[cfg(unix)]
 fn test_generate_prompt_diff_with_nonexistent_branch() {
@@ -588,7 +588,7 @@ esac
 }
 
 /// --- Test: Diff With Git Execution Error ---
-/// When git cannot be executed while verifying DIFF_WITH_BRANCH, the program should fail.
+/// When git cannot be executed while verifying the --diff-with branch, the program should fail.
 #[test]
 #[cfg(unix)]
 fn test_generate_prompt_diff_with_git_execution_error() {

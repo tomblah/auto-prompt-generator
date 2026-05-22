@@ -763,21 +763,10 @@ mod integration_diff {
             format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
         );
 
-        // Enable diff reporting by setting DIFF_WITH_BRANCH (using "HEAD" here).
-        env::set_var("DIFF_WITH_BRANCH", "HEAD");
-
-        // Set TODO_FILE_BASENAME so that the diff output is appended.
-        let file_basename = instruction_file_path
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
-        env::set_var("TODO_FILE_BASENAME", &file_basename);
-
-        // Run the generate_prompt binary.
+        // Run the generate_prompt binary with --diff-with flag.
         let mut cmd =
             Command::cargo_bin("generate_prompt").expect("Failed to find generate_prompt binary");
+        cmd.arg("--diff-with").arg("HEAD");
         cmd.assert().success();
 
         // Read the content from our dummy clipboard file.
@@ -910,7 +899,7 @@ public class Dummy {
         );
     }
 
-    /// New integration test that asserts failure when a branch specified by DIFF_WITH_BRANCH is not found.
+    /// Integration test that asserts failure when a branch specified by --diff-with does not exist.
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_diff_with_nonexistent_branch_integration() {
@@ -946,8 +935,6 @@ public class Dummy {
             "GET_INSTRUCTION_FILE",
             instruction_file_path.to_str().unwrap(),
         );
-        // Set DIFF_WITH_BRANCH to a branch that doesn't exist.
-        env::set_var("DIFF_WITH_BRANCH", "nonexistent");
         env::remove_var("DISABLE_PBCOPY");
 
         // Set up dummy pbcopy so that if any output were produced, it would be captured.
@@ -958,9 +945,10 @@ public class Dummy {
             format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
         );
 
-        // Run generate_prompt and assert that it fails with the expected error.
+        // Run generate_prompt with --diff-with pointing to a nonexistent branch.
         let mut cmd =
             Command::cargo_bin("generate_prompt").expect("Failed to find generate_prompt binary");
+        cmd.arg("--diff-with").arg("nonexistent");
         cmd.assert().failure().stderr(predicate::str::contains(
             "Error: Branch 'nonexistent' does not exist.",
         ));

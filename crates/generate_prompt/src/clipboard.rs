@@ -8,6 +8,7 @@ use unescape_newlines::unescape_newlines;
 /// Copies the provided prompt to the clipboard using the `pbcopy` command.
 /// If the environment variable `DISABLE_PBCOPY` is set, the function logs a message and skips copying.
 pub fn copy_to_clipboard(final_prompt: &str) -> Result<()> {
+    // Test seam: DISABLE_PBCOPY skips clipboard interaction during tests.
     if std::env::var("DISABLE_PBCOPY").is_err() {
         let mut pbcopy = Command::new("pbcopy")
             .stdin(Stdio::piped())

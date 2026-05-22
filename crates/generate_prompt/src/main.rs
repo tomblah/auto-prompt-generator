@@ -78,9 +78,7 @@ fn main() -> Result<()> {
         .unwrap_or_default()
         .map(|s| s.to_string())
         .collect();
-    let diff_branch = env::var("DIFF_WITH_BRANCH")
-        .ok()
-        .or_else(|| matches.get_one::<String>("diff_with").cloned());
+    let diff_branch = matches.get_one::<String>("diff_with").cloned();
     let targeted = *matches.get_one::<bool>("tgtd").unwrap();
 
     // 1. Save the current directory and determine the Git root.
@@ -88,6 +86,7 @@ fn main() -> Result<()> {
     println!("--------------------------------------------------");
     println!("Current directory: {}", current_dir.display());
 
+    // Test seam: GET_GIT_ROOT overrides git-root discovery for integration tests.
     let git_root = if let Ok(git_root_override) = env::var("GET_GIT_ROOT") {
         git_root_override
     } else {
