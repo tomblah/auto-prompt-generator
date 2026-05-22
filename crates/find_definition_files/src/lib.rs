@@ -3,10 +3,9 @@
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
 
 use get_search_roots::get_search_roots;
-use lang_support::for_extension;
+use lang_support::walk_source_files;
 
 /// ---------------------------------------------------------------------------
 ///  DefinitionFinder
@@ -38,35 +37,12 @@ impl DefinitionFinder {
         let mut found_files = BTreeSet::new();
 
         for sr in &self.search_roots {
-            for entry in WalkDir::new(sr)
-                .into_iter()
-                .filter_map(Result::ok)
-                .filter(|e| e.file_type().is_file())
-            {
-                let path = entry.path();
-
-                // Skip .build and Pods directories early.
-                if path.components().any(|c| {
-                    let s = c.as_os_str().to_string_lossy();
-                    s == ".build" || s == "Pods"
-                }) {
-                    continue;
-                }
-
-                let ext = match path.extension().and_then(|s| s.to_str()) {
-                    Some(e) => e,
-                    None => continue,
-                };
-
-                let lang = match for_extension(ext) {
-                    Some(lang) => lang,
-                    None => continue,
-                };
-
-                if let Ok(content) = std::fs::read_to_string(path) {
-                    if lang.file_defines_any(&content, &self.types) {
-                        found_files.insert(path.to_path_buf());
-                    }
+            for source_file in walk_source_files(sr) {
+                if source_file
+                    .language
+                    .file_defines_any(&source_file.content, &self.types)
+                {
+                    found_files.insert(source_file.path);
                 }
             }
         }

@@ -327,7 +327,6 @@ dependencies = [
  "get_search_roots",
  "lang_support",
  "tempfile",
- "walkdir",
 ]
 
 [[package]]
@@ -347,7 +346,6 @@ dependencies = [
  "lang_support",
  "regex",
  "tempfile",
- "walkdir",
 ]
 
 [[package]]
@@ -544,6 +542,7 @@ dependencies = [
  "once_cell",
  "regex",
  "tempfile",
+ "walkdir",
 ]
 
 [[package]]
