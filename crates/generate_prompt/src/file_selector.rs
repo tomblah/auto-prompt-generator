@@ -31,7 +31,7 @@ pub struct FileSelectionOptions {
 ///
 /// A vector of file paths (as Strings) that should be included in the final prompt.
 pub fn determine_files_to_include_with_options(
-    file_path: &str,
+    file_path: &Path,
     singular: bool,
     search_root: &Path,
     excludes: &[String],
@@ -41,23 +41,21 @@ pub fn determine_files_to_include_with_options(
 
     if singular {
         println!("Singular mode enabled: only including the TODO file");
-        found_files.push(file_path.to_string());
+        found_files.push(file_path.to_string_lossy().into_owned());
     } else {
-        // Extract types as a newline-separated string.
-        let types_content = extract_types_from_file_with_options(
+        let types = extract_types_from_file_with_options(
             file_path,
             &ExtractTypesOptions {
                 targeted: options.targeted,
             },
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to extract types: {}", e))?;
+        )?;
         println!("Types found:");
-        println!("{}", types_content.trim());
+        for ty in &types {
+            println!("{}", ty);
+        }
         println!("--------------------------------------------------");
 
-        // Find definition files using the extracted types.
-        let def_files_set = find_definition_files(types_content.as_str(), search_root)
-            .map_err(|err| anyhow::anyhow!("Failed to find definition files: {}", err))?;
+        let def_files_set = find_definition_files(&types, search_root)?;
 
         // Add definition files to the in-memory list.
         for path in def_files_set {
@@ -65,7 +63,7 @@ pub fn determine_files_to_include_with_options(
         }
 
         // Append the instruction file.
-        found_files.push(file_path.to_string());
+        found_files.push(file_path.to_string_lossy().into_owned());
 
         // Apply exclusion filtering.
         if !excludes.is_empty() {
@@ -92,11 +90,8 @@ pub fn determine_files_to_include_with_options(
         if !enclosing_type.is_empty() {
             println!("Enclosing type: {}", enclosing_type);
             println!("Searching for files referencing {}", enclosing_type);
-            let referencing_files = find_referencing_files::find_files_referencing(
-                &enclosing_type,
-                search_root.to_str().unwrap(),
-            )
-            .map_err(|e| anyhow::anyhow!("Failed to find referencing files: {}", e))?;
+            let referencing_files =
+                find_referencing_files::find_files_referencing(&enclosing_type, search_root)?;
             found_files.extend(referencing_files);
         } else {
             println!("No enclosing type found; skipping reference search.");
@@ -144,7 +139,7 @@ mod tests {
         // Create a temporary instruction file.
         let mut temp_instr = NamedTempFile::new().unwrap();
         writeln!(temp_instr, "// TODO: - Fix TypeA").unwrap();
-        let instr_path = temp_instr.path().to_str().unwrap().to_string();
+        let instr_path = temp_instr.path().to_path_buf();
 
         // Use the file's parent as search root.
         let search_root = temp_instr.path().parent().unwrap().to_path_buf();
@@ -161,7 +156,7 @@ mod tests {
         )
         .expect("Failed in singular mode");
         assert_eq!(files.len(), 1);
-        assert_eq!(files[0], instr_path);
+        assert_eq!(files[0], instr_path.to_string_lossy());
     }
 
     /// In non-singular mode (without references), if the instruction file contains a TODO that mentions
@@ -189,7 +184,7 @@ mod tests {
         }
 
         let files = determine_files_to_include_with_options(
-            instr_path.to_str().unwrap(),
+            &instr_path,
             false,
             &search_root,
             &[],
@@ -200,8 +195,8 @@ mod tests {
         )
         .expect("Non-singular without references failed");
         // Expect both the instruction file and the definition file.
-        assert!(files.contains(&instr_path.to_str().unwrap().to_string()));
-        assert!(files.contains(&def_path.to_str().unwrap().to_string()));
+        assert!(files.contains(&instr_path.to_string_lossy().into_owned()));
+        assert!(files.contains(&def_path.to_string_lossy().into_owned()));
         assert_eq!(files.len(), 2);
     }
 
@@ -234,7 +229,7 @@ mod tests {
         }
 
         let files = determine_files_to_include_with_options(
-            instr_path.to_str().unwrap(),
+            &instr_path,
             false,
             &search_root,
             &[],
@@ -247,9 +242,9 @@ mod tests {
 
         env::remove_var("TARGETED");
 
-        assert!(files.contains(&instr_path.to_str().unwrap().to_string()));
-        assert!(files.contains(&outer_def_path.to_str().unwrap().to_string()));
-        assert!(files.contains(&inner_def_path.to_str().unwrap().to_string()));
+        assert!(files.contains(&instr_path.to_string_lossy().into_owned()));
+        assert!(files.contains(&outer_def_path.to_string_lossy().into_owned()));
+        assert!(files.contains(&inner_def_path.to_string_lossy().into_owned()));
     }
 
     #[test]
@@ -281,7 +276,7 @@ mod tests {
         }
 
         let files = determine_files_to_include_with_options(
-            instr_path.to_str().unwrap(),
+            &instr_path,
             false,
             &search_root,
             &[],
@@ -292,9 +287,9 @@ mod tests {
         )
         .expect("Explicit targeted selection failed");
 
-        assert!(files.contains(&instr_path.to_str().unwrap().to_string()));
-        assert!(!files.contains(&outer_def_path.to_str().unwrap().to_string()));
-        assert!(files.contains(&inner_def_path.to_str().unwrap().to_string()));
+        assert!(files.contains(&instr_path.to_string_lossy().into_owned()));
+        assert!(!files.contains(&outer_def_path.to_string_lossy().into_owned()));
+        assert!(files.contains(&inner_def_path.to_string_lossy().into_owned()));
     }
 
     /// In non-singular mode with references enabled, if the instruction file declares "RefType"
@@ -327,7 +322,7 @@ mod tests {
         }
 
         let files = determine_files_to_include_with_options(
-            instr_path.to_str().unwrap(),
+            &instr_path,
             false,
             &search_root,
             &[],
@@ -338,9 +333,9 @@ mod tests {
         )
         .expect("Non-singular with references failed");
         // Expected: Instruction.swift, Def.swift, and Ref.swift.
-        assert!(files.contains(&instr_path.to_str().unwrap().to_string()));
-        assert!(files.contains(&def_path.to_str().unwrap().to_string()));
-        assert!(files.contains(&ref_path.to_str().unwrap().to_string()));
+        assert!(files.contains(&instr_path.to_string_lossy().into_owned()));
+        assert!(files.contains(&def_path.to_string_lossy().into_owned()));
+        assert!(files.contains(&ref_path.to_string_lossy().into_owned()));
         assert_eq!(files.len(), 3);
     }
 
@@ -350,7 +345,7 @@ mod tests {
         let missing_instruction = temp_dir.path().join("MissingInstruction.swift");
 
         let files = determine_files_to_include_with_options(
-            missing_instruction.to_str().unwrap(),
+            &missing_instruction,
             true,
             temp_dir.path(),
             &[],
@@ -400,7 +395,7 @@ mod tests {
 
         // Now use include_references = true and exclude "Def.swift".
         let files = determine_files_to_include_with_options(
-            instr_path.to_str().unwrap(),
+            &instr_path,
             false,
             &search_root,
             &["Def.swift".to_string()],
@@ -411,9 +406,9 @@ mod tests {
         )
         .expect("Exclusion test failed");
         // Expected: Instruction.swift and Ref.swift should be present; Def.swift should be excluded.
-        assert!(files.contains(&instr_path.to_str().unwrap().to_string()));
-        assert!(files.contains(&ref_path.to_str().unwrap().to_string()));
-        assert!(!files.contains(&def_path.to_str().unwrap().to_string()));
+        assert!(files.contains(&instr_path.to_string_lossy().into_owned()));
+        assert!(files.contains(&ref_path.to_string_lossy().into_owned()));
+        assert!(!files.contains(&def_path.to_string_lossy().into_owned()));
         // Total count should be 2.
         assert_eq!(files.len(), 2);
     }

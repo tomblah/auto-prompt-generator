@@ -1,9 +1,15 @@
 // crates/extract_types/tests/integration_objc.rs
 
+use std::collections::BTreeSet;
+
 use anyhow::Result;
 use extract_types::extract_types_from_file;
 use std::io::Write;
 use tempfile::NamedTempFile;
+
+fn types(items: &[&str]) -> BTreeSet<String> {
+    items.iter().map(|s| s.to_string()).collect()
+}
 
 #[test]
 fn integration_extract_types_objc_basic() -> Result<()> {
@@ -20,11 +26,8 @@ fn integration_extract_types_objc_basic() -> Result<()> {
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", objc_content)?;
 
-    // Directly get the extracted types as a String.
     let result = extract_types_from_file(temp_file.path())?;
-    // Expect that only "MyClass" is extracted.
-    let expected = "MyClass";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(result, types(&["MyClass"]));
     Ok(())
 }
 
@@ -42,9 +45,7 @@ fn integration_extract_types_objc_bracket_notation() -> Result<()> {
     write!(temp_file, "{}", objc_content)?;
 
     let result = extract_types_from_file(temp_file.path())?;
-    // Expect "CustomType" to be extracted.
-    let expected = "CustomType";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(result, types(&["CustomType"]));
     Ok(())
 }
 
@@ -62,8 +63,7 @@ fn integration_extract_types_objc_no_types() -> Result<()> {
     write!(temp_file, "{}", objc_content)?;
 
     let result = extract_types_from_file(temp_file.path())?;
-    // Expect no types to be extracted.
-    assert!(result.trim().is_empty());
+    assert!(result.is_empty());
     Ok(())
 }
 
@@ -89,9 +89,7 @@ fn integration_extract_types_objc_with_substring_markers() -> Result<()> {
     write!(temp_file, "{}", objc_content)?;
 
     let result = extract_types_from_file(temp_file.path())?;
-    // Expect only "InsideClass" to be extracted.
-    let expected = "InsideClass";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(result, types(&["InsideClass"]));
     Ok(())
 }
 
@@ -106,8 +104,7 @@ fn integration_extract_types_objc_trigger_comment() -> Result<()> {
     write!(temp_file, "{}", objc_content)?;
 
     let result = extract_types_from_file(temp_file.path())?;
-    let expected = "TriggeredObjCType";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(result, types(&["TriggeredObjCType"]));
     Ok(())
 }
 
@@ -134,10 +131,9 @@ fn integration_extract_types_objc_todo_outside_markers() -> Result<()> {
     write!(temp_file, "{}", objc_content)?;
 
     let result = extract_types_from_file(temp_file.path())?;
-
-    // Expected output: both types extracted and sorted alphabetically.
-    // "TypeInsideEnclosingFunction" comes before "TypeInsideMarker" lexicographically.
-    let expected = "TypeInsideEnclosingFunction\nTypeInsideMarker";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(
+        result,
+        types(&["TypeInsideEnclosingFunction", "TypeInsideMarker"])
+    );
     Ok(())
 }

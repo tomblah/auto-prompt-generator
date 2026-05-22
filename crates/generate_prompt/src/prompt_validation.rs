@@ -1,11 +1,12 @@
 // crates/generate_prompt/src/prompt_validation.rs
 
+use anyhow::{anyhow, Result};
 use todo_marker::TODO_MARKER;
 
 /// Validates that the given prompt contains the correct number of markers.
 ///
-/// * When `diff_enabled` is **true**, the prompt must have **2 or 3** marker lines.
-/// * When `diff_enabled` is **false**, the prompt must have **exactly 2** marker lines.
+/// * When `diff_enabled` is **true**, the prompt must have **2 or 3** marker lines.
+/// * When `diff_enabled` is **false**, the prompt must have **exactly 2** marker lines.
 ///
 /// # Arguments
 ///
@@ -15,11 +16,10 @@ use todo_marker::TODO_MARKER;
 /// # Returns
 ///
 /// * `Ok(())` if the marker count is as expected.
-/// * `Err(String)` with an explanatory message if the count is wrong.
-pub fn validate_marker_count(prompt: &str, diff_enabled: bool) -> Result<(), String> {
+/// * `Err` with an explanatory message if the count is wrong.
+pub fn validate_marker_count(prompt: &str, diff_enabled: bool) -> Result<()> {
     let marker = TODO_MARKER;
 
-    // Collect every line containing the marker substring.
     let marker_lines: Vec<&str> = prompt
         .lines()
         .filter(|line| line.contains(marker))
@@ -29,15 +29,17 @@ pub fn validate_marker_count(prompt: &str, diff_enabled: bool) -> Result<(), Str
 
     if diff_enabled {
         if count != 2 && count != 3 {
-            return Err(format!(
+            return Err(anyhow!(
                 "Expected 2 or 3 {} markers (with diff enabled), but found {}.",
-                marker, count
+                marker,
+                count
             ));
         }
     } else if count != 2 {
-        return Err(format!(
+        return Err(anyhow!(
             "Expected exactly 2 {} markers, but found {}.",
-            marker, count
+            marker,
+            count
         ));
     }
 

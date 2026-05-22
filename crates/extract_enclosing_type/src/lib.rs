@@ -5,6 +5,7 @@
 // Swift source file.  Uses a tree‑sitter pass first, then falls back to a regex
 // scan if the parser is unavailable or fails.
 
+use anyhow::{anyhow, Context, Result};
 use regex::Regex;
 use std::fs;
 use std::mem;
@@ -123,11 +124,10 @@ pub fn extract_enclosing_type_with_parser(
 // ---------------------------------------------------------------------------
 
 /// Returns the enclosing type’s name, or (as a last resort) the file’s stem.
-pub fn extract_enclosing_type(file_path: &str) -> Result<String, String> {
+pub fn extract_enclosing_type(file_path: &Path) -> Result<String> {
     let content = fs::read_to_string(file_path)
-        .map_err(|e| format!("Error reading file {}: {}", file_path, e))?;
+        .with_context(|| format!("Error reading file {}", file_path.display()))?;
 
-    // Where in the buffer is the TODO marker?
     let todo_offset = content.find(TODO_MARKER_WS).unwrap_or(content.len());
 
     // 1️⃣  Try the tree‑sitter path first.
@@ -138,8 +138,7 @@ pub fn extract_enclosing_type(file_path: &str) -> Result<String, String> {
     }
 
     // 2️⃣  Regex fallback – scan line by line up to the marker.
-    let re =
-        Regex::new(r"(class|struct|enum)\s+(\w+)").map_err(|e| format!("Regex error: {}", e))?;
+    let re = Regex::new(r"(class|struct|enum)\s+(\w+)").context("Regex error")?;
 
     let mut last_type: Option<String> = None;
     for line in content.lines() {
@@ -157,11 +156,11 @@ pub fn extract_enclosing_type(file_path: &str) -> Result<String, String> {
     if let Some(found) = last_type {
         Ok(found)
     } else {
-        Path::new(file_path)
+        file_path
             .file_stem()
             .and_then(|s| s.to_str())
             .map(|s| s.to_string())
-            .ok_or_else(|| "Unknown".to_string())
+            .ok_or_else(|| anyhow!("Unknown"))
     }
 }
 
@@ -185,7 +184,7 @@ struct HelperStruct {
         fs::write(&file_path, content).unwrap();
 
         // Expect that the last type encountered before the TODO is "HelperStruct".
-        let extracted = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
+        let extracted = extract_enclosing_type(&file_path).unwrap();
         assert_eq!(extracted, "HelperStruct");
     }
 
@@ -202,7 +201,7 @@ func doSomething() {
         fs::write(&file_path, content).unwrap();
 
         // Since no type was found, it should fall back to "FallbackTest".
-        let extracted = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
+        let extracted = extract_enclosing_type(&file_path).unwrap();
         assert_eq!(extracted, "FallbackTest");
     }
 
@@ -221,7 +220,7 @@ struct LateStruct {
         fs::write(&file_path, content).unwrap();
 
         // Should return "EarlyClass" because the type after the TODO is ignored.
-        let extracted = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
+        let extracted = extract_enclosing_type(&file_path).unwrap();
         assert_eq!(extracted, "EarlyClass");
     }
 
@@ -233,7 +232,7 @@ struct LateStruct {
         fs::write(&file_path, content).unwrap();
 
         // With no content, it should fallback to "Empty".
-        let extracted = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
+        let extracted = extract_enclosing_type(&file_path).unwrap();
         assert_eq!(extracted, "Empty");
     }
 
@@ -254,7 +253,7 @@ enum ThirdEnum {
         fs::write(&file_path, content).unwrap();
 
         // Expect the last type ("ThirdEnum") to be returned.
-        let extracted = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
+        let extracted = extract_enclosing_type(&file_path).unwrap();
         assert_eq!(extracted, "ThirdEnum");
     }
 
@@ -265,17 +264,17 @@ enum ThirdEnum {
         let file_path = tmp_dir.path().join("SameLine.swift");
         fs::write(&file_path, content).unwrap();
 
-        let extracted = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
+        let extracted = extract_enclosing_type(&file_path).unwrap();
         // Expect fallback to the file stem "SameLine" rather than "MyClass".
         assert_eq!(extracted, "SameLine");
     }
 
     #[test]
     fn test_nonexistent_file_error() {
-        let file_path = "/path/to/nonexistent/file.swift";
+        let file_path = Path::new("/path/to/nonexistent/file.swift");
         let result = extract_enclosing_type(file_path);
         assert!(result.is_err());
-        let err_msg = result.err().unwrap();
+        let err_msg = result.err().unwrap().to_string();
         assert!(err_msg.contains("Error reading file"));
     }
 
@@ -290,7 +289,7 @@ enum ThirdEnum {
         let file_path = tmp_dir.path().join("InvalidSwift.swift");
         fs::write(&file_path, content).unwrap();
 
-        let extracted = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
+        let extracted = extract_enclosing_type(&file_path).unwrap();
         assert_eq!(extracted, "ShouldNotBeFound");
     }
 
@@ -304,7 +303,7 @@ enum ThirdEnum {
         let file_path = tmp_dir.path().join("NoType.swift");
         fs::write(&file_path, content).unwrap();
 
-        let result = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
+        let result = extract_enclosing_type(&file_path).unwrap();
         // Since no type is found, we expect it to fall back to the file stem ("NoType").
         assert_eq!(result, "NoType");
     }
@@ -320,7 +319,7 @@ enum ThirdEnum {
         let file_path = tmp_dir.path().join("InvalidSwift.swift");
         fs::write(&file_path, content).unwrap();
 
-        let result = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
+        let result = extract_enclosing_type(&file_path).unwrap();
         assert_eq!(result, "ShouldNotBeFound");
     }
 
@@ -342,7 +341,7 @@ enum ThirdEnum {
         fs::write(&file_path, content).unwrap();
 
         // Expect the last type before the marker to be "NestedStruct"
-        let extracted = extract_enclosing_type(file_path.to_str().unwrap()).unwrap();
+        let extracted = extract_enclosing_type(&file_path).unwrap();
         assert_eq!(extracted, "NestedStruct");
     }
 

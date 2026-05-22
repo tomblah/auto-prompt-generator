@@ -43,7 +43,7 @@ mod integration_swift {
         fs::write(&file6_path, "class MyType {}")?;
 
         // Call find_files_referencing on the temporary directory.
-        let mut result = find_files_referencing("MyType", temp_dir.path().to_str().unwrap())?;
+        let mut result = find_files_referencing("MyType", temp_dir.path())?;
         result.sort();
 
         // Expect only file1.swift and file3.js to be returned.
@@ -69,7 +69,7 @@ mod integration_swift {
         let file_path = temp_dir.path().join("file.swift");
         fs::write(&file_path, "class SomeOtherType {}")?;
 
-        let result = find_files_referencing("NonExistentType", temp_dir.path().to_str().unwrap())?;
+        let result = find_files_referencing("NonExistentType", temp_dir.path())?;
         assert!(
             result.is_empty(),
             "Expected no matches for 'NonExistentType'"
@@ -97,7 +97,7 @@ mod integration_swift {
         let file4_path = temp_dir.path().join("d.swift");
         fs::write(&file4_path, "class NotTargetTypology {}")?;
 
-        let mut result = find_files_referencing("TargetType", temp_dir.path().to_str().unwrap())?;
+        let mut result = find_files_referencing("TargetType", temp_dir.path())?;
         result.sort();
 
         let mut expected: Vec<String> = vec![

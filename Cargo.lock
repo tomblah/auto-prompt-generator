@@ -224,6 +224,7 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 name = "diff_with_branch"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "assert_cmd",
  "predicates 2.1.5",
  "tempfile",
@@ -267,6 +268,7 @@ dependencies = [
 name = "extract_enclosing_type"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "regex",
  "tempfile",
  "todo_marker",
@@ -324,6 +326,7 @@ checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 name = "find_definition_files"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "get_search_roots",
  "lang_support",
  "tempfile",
@@ -333,6 +336,7 @@ dependencies = [
 name = "find_prompt_instruction"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "filetime",
  "tempfile",
  "todo_marker",
@@ -343,6 +347,7 @@ dependencies = [
 name = "find_referencing_files"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "lang_support",
  "regex",
  "tempfile",
@@ -393,6 +398,7 @@ dependencies = [
 name = "get_git_root"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "tempfile",
 ]
 
@@ -407,6 +413,7 @@ dependencies = [
 name = "get_search_roots"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "tempfile",
  "walkdir",
 ]
@@ -606,6 +613,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 name = "post_processing"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "todo_marker",
 ]
 

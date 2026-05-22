@@ -3,6 +3,7 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{Arg, Command};
 use std::env;
+use std::path::Path;
 use std::process::{Command as ProcessCommand, Stdio};
 
 // Library dependencies.
@@ -90,9 +91,7 @@ fn main() -> Result<()> {
     let git_root = if let Ok(git_root_override) = env::var("GET_GIT_ROOT") {
         git_root_override
     } else {
-        get_git_root()
-            .map_err(|err| anyhow!("{err}"))
-            .context("Failed to determine Git root")?
+        get_git_root().context("Failed to determine Git root")?
     };
     println!("Git root: {}", git_root);
     println!("--------------------------------------------------");
@@ -114,9 +113,9 @@ fn main() -> Result<()> {
     env::set_current_dir(&git_root).context("Failed to change directory to Git root")?;
 
     // 4. Locate the instruction file.
-    let file_path = instruction_locator::locate_instruction_file(&git_root)
+    let file_path = instruction_locator::locate_instruction_file(Path::new(&git_root))
         .context("Failed to locate the instruction file")?;
-    println!("Found exactly one instruction in {}", file_path);
+    println!("Found exactly one instruction in {}", file_path.display());
     println!("--------------------------------------------------");
 
     // 5. Delegate to the prompt generator module.

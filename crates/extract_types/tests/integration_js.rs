@@ -1,9 +1,15 @@
 // crates/extract_types/tests/integration_js.rs
 
+use std::collections::BTreeSet;
+
 use anyhow::Result;
 use extract_types::extract_types_from_file;
 use std::io::Write;
 use tempfile::NamedTempFile;
+
+fn types(items: &[&str]) -> BTreeSet<String> {
+    items.iter().map(|s| s.to_string()).collect()
+}
 
 #[test]
 #[ignore] // Ignored until full JavaScript support is implemented.
@@ -26,10 +32,8 @@ fn integration_extract_types_javascript_class() -> Result<()> {
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", js_content)?;
 
-    // Directly get the extracted types as a String.
     let result = extract_types_from_file(temp_file.path())?;
-    let expected = "Component\nMyComponent\nReact";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(result, types(&["Component", "MyComponent", "React"]));
     Ok(())
 }
 
@@ -46,11 +50,8 @@ fn integration_extract_types_javascript_no_types() -> Result<()> {
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", js_content)?;
 
-    // Directly get the extracted types as a String.
     let result = extract_types_from_file(temp_file.path())?;
-    // Since there are no tokens starting with an uppercase letter,
-    // we expect no types to be extracted.
-    assert!(result.trim().is_empty());
+    assert!(result.is_empty());
     Ok(())
 }
 
@@ -63,9 +64,7 @@ fn integration_extract_types_javascript_trigger_comment() -> Result<()> {
     let mut temp_file = NamedTempFile::new()?;
     write!(temp_file, "{}", js_content)?;
 
-    // Directly get the extracted types as a String.
     let result = extract_types_from_file(temp_file.path())?;
-    let expected = "TriggeredType";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(result, types(&["TriggeredType"]));
     Ok(())
 }

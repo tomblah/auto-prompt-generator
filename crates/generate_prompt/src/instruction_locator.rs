@@ -3,6 +3,7 @@
 use anyhow::{Context, Result};
 use find_prompt_instruction::find_prompt_instruction_in_dir;
 use std::env;
+use std::path::{Path, PathBuf};
 
 /// Locates the TODO instruction file.
 ///
@@ -16,14 +17,13 @@ use std::env;
 ///
 /// # Returns
 ///
-/// A `Result` with the path to the instruction file as a `String` on success.
-pub fn locate_instruction_file(search_dir: &str) -> Result<String> {
+/// A `Result` with the path to the instruction file as a `PathBuf` on success.
+pub fn locate_instruction_file(search_dir: &Path) -> Result<PathBuf> {
     if let Ok(instruction_override) = env::var("GET_INSTRUCTION_FILE") {
-        Ok(instruction_override)
+        Ok(PathBuf::from(instruction_override))
     } else {
-        let instruction_path_buf = find_prompt_instruction_in_dir(search_dir, false)
-            .context("Failed to locate the TODO instruction")?;
-        Ok(instruction_path_buf.to_string_lossy().into_owned())
+        find_prompt_instruction_in_dir(search_dir, false)
+            .context("Failed to locate the TODO instruction")
     }
 }
 
@@ -40,8 +40,8 @@ mod tests {
     #[test]
     fn test_locate_instruction_file_with_override() {
         env::set_var("GET_INSTRUCTION_FILE", "/tmp/override_instruction.txt");
-        let result = locate_instruction_file("/dummy/path").unwrap();
-        assert_eq!(result, "/tmp/override_instruction.txt");
+        let result = locate_instruction_file(Path::new("/dummy/path")).unwrap();
+        assert_eq!(result, PathBuf::from("/tmp/override_instruction.txt"));
         env::remove_var("GET_INSTRUCTION_FILE");
     }
 
@@ -55,7 +55,7 @@ mod tests {
         writeln!(file, "// TODO: - Do something important").unwrap();
 
         // For testing, we'll override the find function by creating a minimal file structure.
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false).unwrap();
-        assert!(Path::new(&result).exists());
+        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        assert!(result.exists());
     }
 }
