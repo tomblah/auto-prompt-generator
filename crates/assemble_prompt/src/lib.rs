@@ -8,7 +8,7 @@ use anyhow::Result;
 use diff_with_branch::run_diff_against;
 use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use unescape_newlines::unescape_newlines;
 
 const FIXED_INSTRUCTION: &str = "Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen";
@@ -29,18 +29,20 @@ impl AssemblyOptions {
 }
 
 /// Public API: assembles the final prompt from the found files and explicit options.
-pub fn assemble_prompt(found_files: &[String], options: &AssemblyOptions) -> Result<String> {
+///
+/// Callers are responsible for sorting and deduplicating `found_files`.
+pub fn assemble_prompt(found_files: &[PathBuf], options: &AssemblyOptions) -> Result<String> {
     assemble_prompt_with_options(found_files, options)
 }
 
 /// Compatibility helper for callers that intentionally source assembly options from the process
 /// environment.
-pub fn assemble_prompt_from_env(found_files: &[String]) -> Result<String> {
+pub fn assemble_prompt_from_env(found_files: &[PathBuf]) -> Result<String> {
     assemble_prompt_with_options(found_files, &AssemblyOptions::from_env())
 }
 
 pub fn assemble_prompt_with_options(
-    found_files: &[String],
+    found_files: &[PathBuf],
     options: &AssemblyOptions,
 ) -> Result<String> {
     assemble_prompt_with_processor_and_options(found_files, &DefaultFileProcessor, options)
@@ -60,14 +62,14 @@ impl DiffProvider for GitDiffProvider {
 
 #[cfg(test)]
 fn assemble_prompt_with_processor_from_env<P: FileProcessor>(
-    found_files: &[String],
+    found_files: &[PathBuf],
     processor: &P,
 ) -> Result<String> {
     assemble_prompt_with_processor_and_options(found_files, processor, &AssemblyOptions::from_env())
 }
 
 fn assemble_prompt_with_processor_and_options<P: FileProcessor>(
-    found_files: &[String],
+    found_files: &[PathBuf],
     processor: &P,
     options: &AssemblyOptions,
 ) -> Result<String> {
@@ -80,7 +82,7 @@ fn assemble_prompt_with_processor_and_options<P: FileProcessor>(
 }
 
 fn assemble_prompt_with_processor_options_and_diff_provider<P, D>(
-    found_files: &[String],
+    found_files: &[PathBuf],
     processor: &P,
     options: &AssemblyOptions,
     diff_provider: &D,
@@ -89,35 +91,33 @@ where
     P: FileProcessor,
     D: DiffProvider,
 {
-    // Sort and deduplicate the list.
-    let mut files = found_files.to_vec();
-    files.sort();
-    files.dedup();
-
     let mut final_prompt = String::new();
     let todo_file_basename = options.todo_file_basename.as_deref().unwrap_or("");
 
-    // Process each file in the deduplicated list.
-    for file_path in files {
-        if !Path::new(&file_path).exists() {
-            eprintln!("Warning: file {} does not exist, skipping", file_path);
+    for file_path in found_files {
+        if !file_path.exists() {
+            eprintln!(
+                "Warning: file {} does not exist, skipping",
+                file_path.display()
+            );
             continue;
         }
-        let basename = Path::new(&file_path)
+        let display_path = file_path.display().to_string();
+        let basename = file_path
             .file_name()
             .and_then(|s| s.to_str())
-            .unwrap_or(&file_path)
+            .unwrap_or(&display_path)
             .to_string();
 
         let processed_content =
-            match process_file_with_processor(processor, &file_path, Some(todo_file_basename)) {
+            match process_file_with_processor(processor, file_path, Some(todo_file_basename)) {
                 Ok(content) => content,
                 Err(err) => {
                     eprintln!(
                         "Error processing {}: {}. Falling back to raw file contents.",
-                        file_path, err
+                        display_path, err
                     );
-                    fs::read_to_string(&file_path).unwrap_or_default()
+                    fs::read_to_string(file_path).unwrap_or_default()
                 }
             };
 
@@ -126,14 +126,12 @@ where
             basename, processed_content
         ));
 
-        // If a diff branch is set, append a diff report using the diff_with_branch crate.
         if let Some(diff_branch) = options.diff_branch.as_deref() {
-            let diff_output = match diff_provider.diff_for_file(Path::new(&file_path), diff_branch)
-            {
+            let diff_output = match diff_provider.diff_for_file(file_path, diff_branch) {
                 Ok(Some(diff)) => diff,
                 Ok(None) => String::new(),
                 Err(err) => {
-                    eprintln!("Error running diff on {}: {}", file_path, err);
+                    eprintln!("Error running diff on {}: {}", display_path, err);
                     String::new()
                 }
             };
@@ -148,10 +146,8 @@ where
         final_prompt.push_str("\n--------------------------------------------------\n");
     }
 
-    // Append the fixed instruction.
     final_prompt.push_str(&format!("\n\n{}", FIXED_INSTRUCTION));
 
-    // Unescape literal "\n" sequences.
     let final_prompt = unescape_newlines(&final_prompt);
     Ok(final_prompt)
 }
@@ -167,27 +163,22 @@ mod tests {
 
     #[test]
     fn test_fixed_instruction_appended() {
-        // Create a temporary source file.
         let mut file1 = NamedTempFile::new().unwrap();
         writeln!(file1, "class Dummy {{}}").unwrap();
-        let file1_path = file1.path().to_str().unwrap().to_string();
 
-        env::remove_var("DIFF_WITH_BRANCH"); // ensure diff is not added
+        env::remove_var("DIFF_WITH_BRANCH");
 
-        // Build the in-memory list.
-        let found_files = vec![file1_path];
+        let found_files = vec![file1.path().to_path_buf()];
 
         let output = assemble_prompt(&found_files, &AssemblyOptions::default())
             .expect("assemble_prompt failed");
 
-        // Verify that the output contains the file header and the fixed instruction.
         assert!(output.contains("The contents of"));
         assert!(output.trim().ends_with(FIXED_INSTRUCTION));
     }
 
     #[test]
     fn test_formatting_output_with_fixed_instruction() {
-        // Create two temporary source files.
         let mut file1 = NamedTempFile::new().expect("Failed to create file1");
         let file1_content = "class MyClass {\n    // TODO: - Do something important\n}\n";
         file1
@@ -202,17 +193,13 @@ mod tests {
             .expect("Failed to write file2");
         let file2_path = file2.path().to_owned();
 
-        // Build an in-memory list that includes file1, file2 and a duplicate of file1.
-        let found_files = vec![
-            file1_path.to_string_lossy().into_owned(),
-            file2_path.to_string_lossy().into_owned(),
-            file1_path.to_string_lossy().into_owned(),
-        ];
+        let mut found_files = vec![file1_path.clone(), file2_path.clone()];
+        found_files.sort();
+        found_files.dedup();
 
         let output = assemble_prompt(&found_files, &AssemblyOptions::default())
             .expect("assemble_prompt failed");
 
-        // Verify that headers for both files are present.
         assert!(output.contains(&format!(
             "The contents of {} is as follows:",
             file1_path.file_name().unwrap().to_string_lossy()
@@ -221,7 +208,6 @@ mod tests {
             "The contents of {} is as follows:",
             file2_path.file_name().unwrap().to_string_lossy()
         )));
-        // Verify that file contents and the fixed instruction are included.
         assert!(output.contains("class MyClass {"));
         assert!(output.contains("struct MyStruct {}"));
         assert!(output.contains(FIXED_INSTRUCTION));
@@ -234,7 +220,7 @@ mod tests {
 
         let mut file = NamedTempFile::new().expect("Failed to create file");
         writeln!(file, "struct StableOutput {{}}").expect("Failed to write file");
-        let found_files = vec![file.path().to_string_lossy().into_owned()];
+        let found_files = vec![file.path().to_path_buf()];
         let dynamic_instruction = "dynamic instruction must stay out of assembly";
 
         let output = assemble_prompt(&found_files, &AssemblyOptions::default())
@@ -245,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn test_files_are_sorted_and_deduplicated_before_rendering() {
+    fn test_files_are_rendered_in_order_given() {
         env::remove_var("DIFF_WITH_BRANCH");
 
         let dir = tempdir().expect("Failed to create temp dir");
@@ -254,11 +240,7 @@ mod tests {
         fs::write(&a_path, "struct A {}\n").expect("Failed to write a.swift");
         fs::write(&b_path, "struct B {}\n").expect("Failed to write b.swift");
 
-        let found_files = vec![
-            b_path.to_string_lossy().into_owned(),
-            a_path.to_string_lossy().into_owned(),
-            b_path.to_string_lossy().into_owned(),
-        ];
+        let found_files = vec![a_path.clone(), b_path.clone()];
 
         let output = assemble_prompt(&found_files, &AssemblyOptions::default())
             .expect("assemble_prompt failed");
@@ -281,7 +263,6 @@ mod tests {
 
     #[test]
     fn test_process_files_with_substring_markers() {
-        // Create a temporary Swift file with substring markers.
         let mut marked_file = NamedTempFile::new().expect("Failed to create MarkedFile.swift");
         let marked_content = "\
 import Foundation
@@ -299,13 +280,11 @@ func publicFunction() {
             .expect("Failed to write marked file");
         let marked_file_path = marked_file.path().to_owned();
 
-        // Build the in-memory list.
-        let found_files = vec![marked_file_path.to_string_lossy().into_owned()];
+        let found_files = vec![marked_file_path.clone()];
 
         let output = assemble_prompt(&found_files, &AssemblyOptions::default())
             .expect("assemble_prompt failed");
 
-        // Verify that the header is present and only the marked content is included.
         assert!(output.contains(&format!(
             "The contents of {} is as follows:",
             marked_file_path.file_name().unwrap().to_string_lossy()
@@ -317,7 +296,6 @@ func publicFunction() {
 
     #[test]
     fn test_extracts_enclosing_function_context_for_todo_outside_markers() {
-        // Create a temporary JS file with markers and a TODO outside them.
         let mut file_js = NamedTempFile::new().expect("Failed to create TestFile.js");
         let js_content = "\
 const someExampleConstant = 42;
@@ -357,7 +335,7 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
                 .to_string(),
         );
 
-        let found_files = vec![file_js_path.to_string_lossy().into_owned()];
+        let found_files = vec![file_js_path.clone()];
 
         let output = assemble_prompt_from_env(&found_files).expect("assemble_prompt failed");
 
@@ -375,24 +353,22 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
 
     #[test]
     fn test_missing_file_in_found_files() {
-        let found_files = vec!["/path/to/nonexistent/file.swift".to_string()];
+        let found_files = vec![PathBuf::from("/path/to/nonexistent/file.swift")];
 
         let output = assemble_prompt(&found_files, &AssemblyOptions::default())
             .expect("assemble_prompt failed");
 
-        // Since the file doesn't exist, its header should not be included.
         assert!(!output.contains("file.swift"));
         assert!(output.contains(FIXED_INSTRUCTION));
     }
 
     #[test]
     fn test_empty_found_files_list() {
-        let found_files: Vec<String> = Vec::new();
+        let found_files: Vec<PathBuf> = Vec::new();
 
         let output = assemble_prompt(&found_files, &AssemblyOptions::default())
             .expect("assemble_prompt failed");
 
-        // With an empty list, the prompt should consist only of the fixed instruction.
         assert!(output.trim().ends_with(FIXED_INSTRUCTION));
     }
 
@@ -400,7 +376,7 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
     fn test_diff_with_branch_no_diff_output() {
         let mut file = NamedTempFile::new().unwrap();
         file.write_all(b"class NoDiff {}").unwrap();
-        let found_files = vec![file.path().to_string_lossy().into_owned()];
+        let found_files = vec![file.path().to_path_buf()];
         let diff_provider = MockDiffProvider {
             output: None,
             error_msg: None,
@@ -422,7 +398,7 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
     fn test_diff_lookup_error_is_omitted_from_prompt() {
         let mut file = NamedTempFile::new().unwrap();
         file.write_all(b"class DiffError {}").unwrap();
-        let found_files = vec![file.path().to_string_lossy().into_owned()];
+        let found_files = vec![file.path().to_path_buf()];
         let diff_provider = MockDiffProvider {
             output: None,
             error_msg: Some("git failed".to_string()),
@@ -454,9 +430,8 @@ func outsideFunction() {
 }
 ";
         file.write_all(content.as_bytes()).unwrap();
-        let file_path = file.path().to_owned();
 
-        let found_files = vec![file_path.to_string_lossy().into_owned()];
+        let found_files = vec![file.path().to_path_buf()];
 
         let output = assemble_prompt(&found_files, &AssemblyOptions::default())
             .expect("assemble_prompt failed");
@@ -468,8 +443,7 @@ func outsideFunction() {
     fn test_diff_inclusion() {
         let mut file_diff = NamedTempFile::new().unwrap();
         writeln!(file_diff, "class DummyDiff {{}}").unwrap();
-        let file_diff_path = file_diff.path().to_str().unwrap().to_string();
-        let found_files = vec![file_diff_path];
+        let found_files = vec![file_diff.path().to_path_buf()];
         let diff_provider = MockDiffProvider {
             output: Some("Dummy diff output for file".to_string()),
             error_msg: None,
@@ -496,9 +470,8 @@ func outsideFunction() {
         let mut file_diff = NamedTempFile::new().expect("Failed to create FileDiff.swift");
         let diff_content = "class NoDiff {}";
         file_diff.write_all(diff_content.as_bytes()).unwrap();
-        let file_diff_path = file_diff.path().to_owned();
 
-        let found_files = vec![file_diff_path.to_string_lossy().into_owned()];
+        let found_files = vec![file_diff.path().to_path_buf()];
         let diff_provider = MockDiffProvider {
             output: Some("Dummy diff output for file".to_string()),
             error_msg: None,
@@ -529,8 +502,7 @@ func outsideFunction() {
                 Some code here\n\
                 // TODO: - Marker Two\n";
         writeln!(file, "{}", file_content).unwrap();
-        let file_path = file.path().to_str().unwrap().to_string();
-        let found_files = vec![file_path];
+        let found_files = vec![file.path().to_path_buf()];
         let diff_provider = MockDiffProvider {
             output: Some("Diff output".to_string()),
             error_msg: None,
@@ -629,8 +601,7 @@ func outsideFunction() {
     fn test_assemble_prompt_with_mock_processor_success() {
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, "raw content").unwrap();
-        let file_path = file.path().to_str().unwrap().to_string();
-        let found_files = vec![file_path];
+        let found_files = vec![file.path().to_path_buf()];
 
         let mock_processor = MockFileProcessor {
             return_value: "mock processed content".to_string(),
@@ -648,8 +619,7 @@ func outsideFunction() {
     fn test_env_todo_file_basename_is_passed_to_processor() {
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, "raw content").unwrap();
-        let file_path = file.path().to_str().unwrap().to_string();
-        let found_files = vec![file_path];
+        let found_files = vec![file.path().to_path_buf()];
 
         env::set_var("TODO_FILE_BASENAME", "Instruction.swift");
 
@@ -666,8 +636,7 @@ func outsideFunction() {
     fn test_explicit_todo_file_basename_is_passed_to_processor() {
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, "raw content").unwrap();
-        let file_path = file.path().to_str().unwrap().to_string();
-        let found_files = vec![file_path];
+        let found_files = vec![file.path().to_path_buf()];
         let options = AssemblyOptions {
             todo_file_basename: Some("Instruction.swift".to_string()),
             diff_branch: None,
@@ -689,8 +658,7 @@ func outsideFunction() {
     fn test_explicit_todo_file_basename_ignores_env() {
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, "raw content").unwrap();
-        let file_path = file.path().to_str().unwrap().to_string();
-        let found_files = vec![file_path];
+        let found_files = vec![file.path().to_path_buf()];
         let options = AssemblyOptions {
             todo_file_basename: Some("ExplicitInstruction.swift".to_string()),
             diff_branch: None,
@@ -715,7 +683,7 @@ func outsideFunction() {
     fn test_explicit_diff_branch_ignores_env() {
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, "class ExplicitDiff {{}}").unwrap();
-        let found_files = vec![file.path().to_string_lossy().into_owned()];
+        let found_files = vec![file.path().to_path_buf()];
         let options = AssemblyOptions {
             todo_file_basename: None,
             diff_branch: Some("explicit-branch".to_string()),
@@ -741,8 +709,7 @@ func outsideFunction() {
     fn test_diff_output_requires_diff_with_branch_env() {
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, "class NoDiff {{}}").unwrap();
-        let file_path = file.path().to_str().unwrap().to_string();
-        let found_files = vec![file_path];
+        let found_files = vec![file.path().to_path_buf()];
 
         env::remove_var("DIFF_WITH_BRANCH");
 
@@ -756,14 +723,12 @@ func outsideFunction() {
     fn test_assemble_prompt_with_mock_processor_failure() {
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, "fallback content").unwrap();
-        let file_path = file.path().to_str().unwrap().to_string();
-        let found_files = vec![file_path];
+        let found_files = vec![file.path().to_path_buf()];
 
         let failing_processor = FailingMockProcessor;
 
         let output = assemble_prompt_with_processor_from_env(&found_files, &failing_processor)
             .expect("assemble_prompt_with_processor failed with failing processor");
-        // Since processing fails, it should fall back to reading the raw file content.
         assert!(
             output.contains("fallback content"),
             "Output should fallback to raw file content"
@@ -781,30 +746,6 @@ mod pathbuf_characterization_tests {
     /// file paths are supplied as `String` from `PathBuf::to_string_lossy` or
     /// from `PathBuf::display`. This locks down the current behavior before
     /// migrating the API to accept `&[PathBuf]`.
-    #[test]
-    fn test_string_path_representations_produce_identical_output() {
-        let dir = tempdir().expect("Failed to create temp dir");
-        let a_path = dir.path().join("Alpha.swift");
-        let b_path = dir.path().join("Beta.swift");
-        fs::write(&a_path, "class Alpha {}\n").expect("write Alpha");
-        fs::write(&b_path, "struct Beta {}\n").expect("write Beta");
-
-        let via_lossy = vec![
-            a_path.to_string_lossy().into_owned(),
-            b_path.to_string_lossy().into_owned(),
-        ];
-        let via_display = vec![a_path.display().to_string(), b_path.display().to_string()];
-
-        let opts = AssemblyOptions::default();
-        let out_lossy = assemble_prompt(&via_lossy, &opts).expect("assemble via lossy");
-        let out_display = assemble_prompt(&via_display, &opts).expect("assemble via display");
-
-        assert_eq!(
-            out_lossy, out_display,
-            "Both path-string representations must produce identical prompts"
-        );
-    }
-
     /// Characterizes that the assembly output contains file basenames (not full
     /// paths) in headers, the file content, and the fixed instruction.
     #[test]
@@ -813,7 +754,7 @@ mod pathbuf_characterization_tests {
         let file_path = dir.path().join("Widget.swift");
         fs::write(&file_path, "class Widget { var x = 1 }\n").expect("write Widget");
 
-        let found_files = vec![file_path.to_string_lossy().into_owned()];
+        let found_files = vec![file_path];
         let output = assemble_prompt(&found_files, &AssemblyOptions::default())
             .expect("assemble_prompt failed");
 
@@ -831,21 +772,17 @@ mod pathbuf_characterization_tests {
         );
     }
 
-    /// Characterizes that sort/dedup in assembly produces a deterministic
-    /// ordering by full path string.
+    /// Characterizes that files are rendered in the order given by the caller.
+    /// The caller (file_selector) is now responsible for sorting and deduplication.
     #[test]
-    fn test_sort_dedup_produces_deterministic_order() {
+    fn test_renders_in_caller_provided_order() {
         let dir = tempdir().expect("Failed to create temp dir");
-        let z_path = dir.path().join("Zulu.swift");
         let a_path = dir.path().join("Alpha.swift");
-        fs::write(&z_path, "class Zulu {}\n").expect("write Zulu");
+        let z_path = dir.path().join("Zulu.swift");
         fs::write(&a_path, "class Alpha {}\n").expect("write Alpha");
+        fs::write(&z_path, "class Zulu {}\n").expect("write Zulu");
 
-        let found_files = vec![
-            z_path.to_string_lossy().into_owned(),
-            a_path.to_string_lossy().into_owned(),
-            z_path.to_string_lossy().into_owned(),
-        ];
+        let found_files = vec![a_path, z_path];
 
         let output = assemble_prompt(&found_files, &AssemblyOptions::default())
             .expect("assemble_prompt failed");
@@ -857,10 +794,5 @@ mod pathbuf_characterization_tests {
             .find("The contents of Zulu.swift")
             .expect("Zulu header");
         assert!(alpha_pos < zulu_pos, "Alpha must appear before Zulu");
-        assert_eq!(
-            output.matches("The contents of Zulu.swift").count(),
-            1,
-            "Duplicates must be removed"
-        );
     }
 }

@@ -50,10 +50,7 @@ mod integration_js {
         result.sort();
 
         // We expect only file1.js and file3.js to be returned.
-        let mut expected: Vec<String> = vec![
-            file1_path.to_string_lossy().into_owned(),
-            file3_path.to_string_lossy().into_owned(),
-        ];
+        let mut expected = vec![file1_path, file3_path];
         expected.sort();
 
         assert_eq!(
@@ -69,7 +66,6 @@ mod integration_js {
     fn test_find_referencing_files_no_matches_js() -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir = tempdir()?;
 
-        // Create a JavaScript file that does not reference "NonExistentJSClass".
         let file_path = temp_dir.path().join("file.js");
         fs::write(
             &file_path,
@@ -91,7 +87,6 @@ mod integration_js {
     {
         let temp_dir = tempdir()?;
 
-        // Create several JavaScript files that reference "TargetJS".
         let file1_path = temp_dir.path().join("a.js");
         fs::write(&file1_path, "class TargetJS {} \n// usage: new TargetJS();")?;
 
@@ -101,18 +96,13 @@ mod integration_js {
         let file3_path = temp_dir.path().join("c.js");
         fs::write(&file3_path, "function doSomething() { return TargetJS; }")?;
 
-        // Create a file that contains "NotTargetJSExtra" which should not match.
         let file4_path = temp_dir.path().join("d.js");
         fs::write(&file4_path, "let dummy = 'NotTargetJSExtra';")?;
 
         let mut result = find_files_referencing("TargetJS", temp_dir.path())?;
         result.sort();
 
-        let mut expected: Vec<String> = vec![
-            file1_path.to_string_lossy().into_owned(),
-            file2_path.to_string_lossy().into_owned(),
-            file3_path.to_string_lossy().into_owned(),
-        ];
+        let mut expected = vec![file1_path, file2_path, file3_path];
         expected.sort();
 
         assert_eq!(

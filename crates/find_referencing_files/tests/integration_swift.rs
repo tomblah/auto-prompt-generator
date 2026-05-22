@@ -47,10 +47,7 @@ mod integration_swift {
         result.sort();
 
         // Expect only file1.swift and file3.js to be returned.
-        let mut expected: Vec<String> = vec![
-            file1_path.to_string_lossy().into_owned(),
-            file3_path.to_string_lossy().into_owned(),
-        ];
+        let mut expected = vec![file1_path, file3_path];
         expected.sort();
 
         assert_eq!(
@@ -65,7 +62,6 @@ mod integration_swift {
     fn test_find_referencing_files_no_matches() -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir = tempdir()?;
 
-        // Create a Swift file that does not reference "NonExistentType".
         let file_path = temp_dir.path().join("file.swift");
         fs::write(&file_path, "class SomeOtherType {}")?;
 
@@ -83,7 +79,6 @@ mod integration_swift {
     fn test_find_referencing_files_multiple_references() -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir = tempdir()?;
 
-        // Create several files with allowed extensions that reference "TargetType".
         let file1_path = temp_dir.path().join("a.swift");
         fs::write(&file1_path, "class TargetType {}\n// usage: TargetType")?;
 
@@ -93,18 +88,13 @@ mod integration_swift {
         let file3_path = temp_dir.path().join("c.m");
         fs::write(&file3_path, "extern TargetType *obj;")?;
 
-        // Create a file that contains "NotTargetTypology" which should not match.
         let file4_path = temp_dir.path().join("d.swift");
         fs::write(&file4_path, "class NotTargetTypology {}")?;
 
         let mut result = find_files_referencing("TargetType", temp_dir.path())?;
         result.sort();
 
-        let mut expected: Vec<String> = vec![
-            file1_path.to_string_lossy().into_owned(),
-            file2_path.to_string_lossy().into_owned(),
-            file3_path.to_string_lossy().into_owned(),
-        ];
+        let mut expected = vec![file1_path, file2_path, file3_path];
         expected.sort();
 
         assert_eq!(
