@@ -92,3 +92,54 @@ mod swift;
 
 // Re‑export the trait so callers can `use lang_support::LanguageSupport;`
 pub use self::LanguageSupport as _;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn ignored_component_policy_matches_source_searches() {
+        assert!(has_ignored_component(Path::new("Root/.build/File.swift")));
+        assert!(has_ignored_component(Path::new("Root/Pods/File.swift")));
+        assert!(!has_ignored_component(Path::new("Root/Sources/File.swift")));
+    }
+
+    #[test]
+    fn walk_source_files_returns_supported_readable_files() {
+        let dir = tempdir().expect("Failed to create temp dir");
+        let root = dir.path();
+
+        fs::write(root.join("Model.swift"), "class Model {}\n").expect("Failed to write Swift");
+        fs::write(root.join("Component.jsx"), "class Component {}\n").expect("Failed to write JSX");
+        fs::write(root.join("README.txt"), "class Ignored {}\n").expect("Failed to write text");
+
+        let build_dir = root.join(".build");
+        fs::create_dir(&build_dir).expect("Failed to create .build");
+        fs::write(build_dir.join("Generated.swift"), "class Generated {}\n")
+            .expect("Failed to write generated file");
+
+        let files = walk_source_files(root);
+        let names: BTreeSet<_> = files
+            .iter()
+            .map(|source_file| {
+                source_file
+                    .path
+                    .file_name()
+                    .expect("Expected filename")
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+
+        assert_eq!(
+            names,
+            BTreeSet::from(["Component.jsx".to_string(), "Model.swift".to_string()])
+        );
+        assert!(files.iter().any(|source_file| source_file
+            .language
+            .file_defines_any(&source_file.content, &["Model".to_string()])));
+    }
+}

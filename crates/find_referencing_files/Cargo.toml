@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 lang_support = { path = "../lang_support" }
 regex = { workspace = true }
-walkdir = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

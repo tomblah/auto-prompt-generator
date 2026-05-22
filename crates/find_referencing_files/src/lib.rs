@@ -1,10 +1,7 @@
 // crates/find_referencing_files/src/lib.rs
 
-use lang_support::for_extension;
+use lang_support::walk_source_files;
 use regex::Regex;
-use std::fs;
-use std::path::Component;
-use walkdir::WalkDir;
 
 /// Searches the given directory (and its subdirectories) for files with allowed
 /// extensions that contain the given type name as a whole word.
@@ -40,42 +37,9 @@ pub fn find_files_referencing(
 
     let mut matches = Vec::new();
 
-    // Recursively traverse the search_root directory.
-    for entry in WalkDir::new(search_root).into_iter().filter_map(Result::ok) {
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let path = entry.path();
-
-        // Check if the file has one of the allowed extensions.
-        let ext = match path.extension().and_then(|s| s.to_str()) {
-            Some(e) => e.to_lowercase(),
-            None => continue,
-        };
-        if for_extension(&ext).is_none() {
-            continue;
-        }
-
-        // Skip files that are in directories named "Pods" or ".build".
-        if path.components().any(|comp| match comp {
-            Component::Normal(os_str) => {
-                let s = os_str.to_string_lossy();
-                s == "Pods" || s == ".build"
-            }
-            _ => false,
-        }) {
-            continue;
-        }
-
-        // Read the file contents.
-        let content = match fs::read_to_string(path) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-
-        // If the file contains the type name (as a whole word), add its path to the list.
-        if re.is_match(&content) {
-            matches.push(path.display().to_string());
+    for source_file in walk_source_files(search_root) {
+        if re.is_match(&source_file.content) {
+            matches.push(source_file.path.display().to_string());
         }
     }
 
