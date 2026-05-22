@@ -349,3 +349,57 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod pathbuf_characterization_tests {
+    use super::*;
+    use std::fs;
+    use std::io::Write;
+    use std::path::PathBuf;
+    use tempfile::tempdir;
+
+    /// Characterizes that returned path strings round-trip correctly to
+    /// `PathBuf` and back, matching the original temp-file paths. This locks
+    /// down the current `.display().to_string()` contract before migrating the
+    /// return type to `Vec<PathBuf>`.
+    #[test]
+    fn test_returned_paths_roundtrip_to_pathbuf() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let file_path = dir.path().join("Roundtrip.swift");
+        let mut f = fs::File::create(&file_path)?;
+        writeln!(f, "class RoundtripType {{}}")?;
+
+        let results = find_files_referencing("RoundtripType", dir.path())?;
+        assert_eq!(results.len(), 1);
+
+        let returned_pathbuf = PathBuf::from(&results[0]);
+        assert_eq!(
+            returned_pathbuf, file_path,
+            "String path must round-trip to the original PathBuf"
+        );
+
+        Ok(())
+    }
+
+    /// Characterizes that multiple matching files are all returned with paths
+    /// that can be converted to `PathBuf` and compared with the originals.
+    #[test]
+    fn test_multiple_results_roundtrip_to_pathbuf() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let paths: Vec<PathBuf> =
+            vec![dir.path().join("First.swift"), dir.path().join("Second.js")];
+        for p in &paths {
+            let mut f = fs::File::create(p)?;
+            writeln!(f, "let x = SharedType()")?;
+        }
+
+        let results = find_files_referencing("SharedType", dir.path())?;
+        let result_pathbufs: Vec<PathBuf> = results.iter().map(PathBuf::from).collect();
+
+        for p in &paths {
+            assert!(result_pathbufs.contains(p), "Expected {:?} in results", p);
+        }
+
+        Ok(())
+    }
+}

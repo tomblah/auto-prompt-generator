@@ -770,3 +770,97 @@ func outsideFunction() {
         );
     }
 }
+
+#[cfg(test)]
+mod pathbuf_characterization_tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    /// Characterizes that `assemble_prompt` produces identical output whether
+    /// file paths are supplied as `String` from `PathBuf::to_string_lossy` or
+    /// from `PathBuf::display`. This locks down the current behavior before
+    /// migrating the API to accept `&[PathBuf]`.
+    #[test]
+    fn test_string_path_representations_produce_identical_output() {
+        let dir = tempdir().expect("Failed to create temp dir");
+        let a_path = dir.path().join("Alpha.swift");
+        let b_path = dir.path().join("Beta.swift");
+        fs::write(&a_path, "class Alpha {}\n").expect("write Alpha");
+        fs::write(&b_path, "struct Beta {}\n").expect("write Beta");
+
+        let via_lossy = vec![
+            a_path.to_string_lossy().into_owned(),
+            b_path.to_string_lossy().into_owned(),
+        ];
+        let via_display = vec![a_path.display().to_string(), b_path.display().to_string()];
+
+        let opts = AssemblyOptions::default();
+        let out_lossy = assemble_prompt(&via_lossy, &opts).expect("assemble via lossy");
+        let out_display = assemble_prompt(&via_display, &opts).expect("assemble via display");
+
+        assert_eq!(
+            out_lossy, out_display,
+            "Both path-string representations must produce identical prompts"
+        );
+    }
+
+    /// Characterizes that the assembly output contains file basenames (not full
+    /// paths) in headers, the file content, and the fixed instruction.
+    #[test]
+    fn test_output_structure_uses_basenames_and_content() {
+        let dir = tempdir().expect("Failed to create temp dir");
+        let file_path = dir.path().join("Widget.swift");
+        fs::write(&file_path, "class Widget { var x = 1 }\n").expect("write Widget");
+
+        let found_files = vec![file_path.to_string_lossy().into_owned()];
+        let output = assemble_prompt(&found_files, &AssemblyOptions::default())
+            .expect("assemble_prompt failed");
+
+        assert!(
+            output.contains("The contents of Widget.swift is as follows:"),
+            "Header must use basename"
+        );
+        assert!(
+            output.contains("class Widget { var x = 1 }"),
+            "File content must be included"
+        );
+        assert!(
+            output.contains(FIXED_INSTRUCTION),
+            "Fixed instruction must be appended"
+        );
+    }
+
+    /// Characterizes that sort/dedup in assembly produces a deterministic
+    /// ordering by full path string.
+    #[test]
+    fn test_sort_dedup_produces_deterministic_order() {
+        let dir = tempdir().expect("Failed to create temp dir");
+        let z_path = dir.path().join("Zulu.swift");
+        let a_path = dir.path().join("Alpha.swift");
+        fs::write(&z_path, "class Zulu {}\n").expect("write Zulu");
+        fs::write(&a_path, "class Alpha {}\n").expect("write Alpha");
+
+        let found_files = vec![
+            z_path.to_string_lossy().into_owned(),
+            a_path.to_string_lossy().into_owned(),
+            z_path.to_string_lossy().into_owned(),
+        ];
+
+        let output = assemble_prompt(&found_files, &AssemblyOptions::default())
+            .expect("assemble_prompt failed");
+
+        let alpha_pos = output
+            .find("The contents of Alpha.swift")
+            .expect("Alpha header");
+        let zulu_pos = output
+            .find("The contents of Zulu.swift")
+            .expect("Zulu header");
+        assert!(alpha_pos < zulu_pos, "Alpha must appear before Zulu");
+        assert_eq!(
+            output.matches("The contents of Zulu.swift").count(),
+            1,
+            "Duplicates must be removed"
+        );
+    }
+}
