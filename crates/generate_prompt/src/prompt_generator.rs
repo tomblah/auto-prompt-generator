@@ -84,12 +84,9 @@ pub fn generate_prompt_with_options(
         &assembled_prompt,
         diff_enabled,
         instruction_content.trim(),
-    )
-    .map_err(|err| anyhow!("Error during post-processing: {err}"))?;
+    )?;
 
-    // Validate the marker count.
-    crate::prompt_validation::validate_marker_count(&final_prompt, diff_enabled)
-        .map_err(|err| anyhow!("Prompt marker validation failed: {err}"))?;
+    crate::prompt_validation::validate_marker_count(&final_prompt, diff_enabled)?;
 
     println!("--------------------------------------------------");
     println!("Success:\n");

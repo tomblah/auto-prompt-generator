@@ -1,5 +1,6 @@
 // crates/find_referencing_files/src/lib.rs
 
+use anyhow::Result;
 use lang_support::walk_source_files;
 use regex::Regex;
 
@@ -27,10 +28,7 @@ use regex::Regex;
 ///     println!("{}", file);
 /// }
 /// ```
-pub fn find_files_referencing(
-    type_name: &str,
-    search_root: &str,
-) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+pub fn find_files_referencing(type_name: &str, search_root: &str) -> Result<Vec<String>> {
     // Build a regex that matches the type name as a whole word.
     let pattern = format!(r"\b{}\b", regex::escape(type_name));
     let re = Regex::new(&pattern)?;
@@ -54,7 +52,7 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn test_find_files_referencing_basic() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_find_files_referencing_basic() -> anyhow::Result<()> {
         // Create a temporary directory.
         let dir = tempdir()?;
         let dir_path = dir.path();
@@ -83,7 +81,7 @@ mod tests {
     }
 
     #[test]
-    fn test_excludes_directories() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_excludes_directories() -> anyhow::Result<()> {
         // Create a temporary directory.
         let dir = tempdir()?;
         let dir_path = dir.path();
@@ -115,7 +113,7 @@ mod tests {
     }
 
     #[test]
-    fn test_allowed_extensions() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_allowed_extensions() -> anyhow::Result<()> {
         // Create a temporary directory.
         let dir = tempdir()?;
         let dir_path = dir.path();
@@ -145,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn test_supported_language_extensions_are_searched() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_supported_language_extensions_are_searched() -> anyhow::Result<()> {
         let dir = tempdir()?;
         let dir_path = dir.path();
 
@@ -179,7 +177,7 @@ mod tests {
     }
 
     #[test]
-    fn test_excludes_build_directory() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_excludes_build_directory() -> anyhow::Result<()> {
         // Create a temporary directory.
         let dir = tempdir()?;
         let dir_path = dir.path();
@@ -211,7 +209,7 @@ mod tests {
     }
 
     #[test]
-    fn test_whole_word_matching() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_whole_word_matching() -> anyhow::Result<()> {
         // Create a temporary directory.
         let dir = tempdir()?;
         let dir_path = dir.path();
@@ -241,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn test_case_insensitive_extension() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_case_insensitive_extension() -> anyhow::Result<()> {
         // Create a temporary directory.
         let dir = tempdir()?;
         let dir_path = dir.path();
@@ -278,7 +276,7 @@ mod tests {
     }
 
     #[test]
-    fn test_file_with_missing_extension() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_file_with_missing_extension() -> anyhow::Result<()> {
         // Create a temporary directory.
         let dir = tempdir()?;
         let dir_path = dir.path();
@@ -309,7 +307,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn test_unreadable_file() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_unreadable_file() -> anyhow::Result<()> {
         use std::os::unix::fs::PermissionsExt;
         // Create a temporary directory.
         let dir = tempdir()?;

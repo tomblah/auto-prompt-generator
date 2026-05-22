@@ -46,13 +46,13 @@ pub fn assemble_prompt_with_options(
 }
 
 trait DiffProvider {
-    fn diff_for_file(&self, file_path: &str, branch: &str) -> Result<Option<String>, String>;
+    fn diff_for_file(&self, file_path: &str, branch: &str) -> Result<Option<String>>;
 }
 
 struct GitDiffProvider;
 
 impl DiffProvider for GitDiffProvider {
-    fn diff_for_file(&self, file_path: &str, branch: &str) -> Result<Option<String>, String> {
+    fn diff_for_file(&self, file_path: &str, branch: &str) -> Result<Option<String>> {
         run_diff_against(file_path, branch)
     }
 }
@@ -399,7 +399,10 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
         let mut file = NamedTempFile::new().unwrap();
         file.write_all(b"class NoDiff {}").unwrap();
         let found_files = vec![file.path().to_string_lossy().into_owned()];
-        let diff_provider = MockDiffProvider { result: Ok(None) };
+        let diff_provider = MockDiffProvider {
+            output: None,
+            error_msg: None,
+        };
 
         let output = assemble_prompt_with_processor_options_and_diff_provider(
             &found_files,
@@ -419,7 +422,8 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
         file.write_all(b"class DiffError {}").unwrap();
         let found_files = vec![file.path().to_string_lossy().into_owned()];
         let diff_provider = MockDiffProvider {
-            result: Err("git failed".to_string()),
+            output: None,
+            error_msg: Some("git failed".to_string()),
         };
 
         let output = assemble_prompt_with_processor_options_and_diff_provider(
@@ -465,7 +469,8 @@ func outsideFunction() {
         let file_diff_path = file_diff.path().to_str().unwrap().to_string();
         let found_files = vec![file_diff_path];
         let diff_provider = MockDiffProvider {
-            result: Ok(Some("Dummy diff output for file".to_string())),
+            output: Some("Dummy diff output for file".to_string()),
+            error_msg: None,
         };
 
         let output = assemble_prompt_with_processor_options_and_diff_provider(
@@ -493,7 +498,8 @@ func outsideFunction() {
 
         let found_files = vec![file_diff_path.to_string_lossy().into_owned()];
         let diff_provider = MockDiffProvider {
-            result: Ok(Some("Dummy diff output for file".to_string())),
+            output: Some("Dummy diff output for file".to_string()),
+            error_msg: None,
         };
 
         let output = assemble_prompt_with_processor_options_and_diff_provider(
@@ -524,7 +530,8 @@ func outsideFunction() {
         let file_path = file.path().to_str().unwrap().to_string();
         let found_files = vec![file_path];
         let diff_provider = MockDiffProvider {
-            result: Ok(Some("Diff output".to_string())),
+            output: Some("Diff output".to_string()),
+            error_msg: None,
         };
 
         let output = assemble_prompt_with_processor_options_and_diff_provider(
@@ -587,19 +594,24 @@ func outsideFunction() {
     }
 
     struct MockDiffProvider {
-        result: Result<Option<String>, String>,
+        output: Option<String>,
+        error_msg: Option<String>,
     }
 
     impl DiffProvider for MockDiffProvider {
-        fn diff_for_file(&self, _file_path: &str, _branch: &str) -> Result<Option<String>, String> {
-            self.result.clone()
+        fn diff_for_file(&self, _file_path: &str, _branch: &str) -> Result<Option<String>> {
+            if let Some(msg) = &self.error_msg {
+                Err(anyhow::anyhow!("{}", msg))
+            } else {
+                Ok(self.output.clone())
+            }
         }
     }
 
     struct BranchEchoDiffProvider;
 
     impl DiffProvider for BranchEchoDiffProvider {
-        fn diff_for_file(&self, _file_path: &str, branch: &str) -> Result<Option<String>, String> {
+        fn diff_for_file(&self, _file_path: &str, branch: &str) -> Result<Option<String>> {
             Ok(Some(format!("diff against {branch}")))
         }
     }

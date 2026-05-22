@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = { workspace = true }
 get_search_roots = { path = "../get_search_roots" }
 lang_support = { path = "../lang_support" }
 

@@ -90,9 +90,7 @@ fn main() -> Result<()> {
     let git_root = if let Ok(git_root_override) = env::var("GET_GIT_ROOT") {
         git_root_override
     } else {
-        get_git_root()
-            .map_err(|err| anyhow!("{err}"))
-            .context("Failed to determine Git root")?
+        get_git_root().context("Failed to determine Git root")?
     };
     println!("Git root: {}", git_root);
     println!("--------------------------------------------------");

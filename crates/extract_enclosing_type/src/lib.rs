@@ -5,6 +5,7 @@
 // Swift source file.  Uses a tree‑sitter pass first, then falls back to a regex
 // scan if the parser is unavailable or fails.
 
+use anyhow::{anyhow, Context, Result};
 use regex::Regex;
 use std::fs;
 use std::mem;
@@ -123,9 +124,9 @@ pub fn extract_enclosing_type_with_parser(
 // ---------------------------------------------------------------------------
 
 /// Returns the enclosing type’s name, or (as a last resort) the file’s stem.
-pub fn extract_enclosing_type(file_path: &str) -> Result<String, String> {
+pub fn extract_enclosing_type(file_path: &str) -> Result<String> {
     let content = fs::read_to_string(file_path)
-        .map_err(|e| format!("Error reading file {}: {}", file_path, e))?;
+        .with_context(|| format!("Error reading file {}", file_path))?;
 
     // Where in the buffer is the TODO marker?
     let todo_offset = content.find(TODO_MARKER_WS).unwrap_or(content.len());
@@ -138,8 +139,7 @@ pub fn extract_enclosing_type(file_path: &str) -> Result<String, String> {
     }
 
     // 2️⃣  Regex fallback – scan line by line up to the marker.
-    let re =
-        Regex::new(r"(class|struct|enum)\s+(\w+)").map_err(|e| format!("Regex error: {}", e))?;
+    let re = Regex::new(r"(class|struct|enum)\s+(\w+)").context("Regex error")?;
 
     let mut last_type: Option<String> = None;
     for line in content.lines() {
@@ -161,7 +161,7 @@ pub fn extract_enclosing_type(file_path: &str) -> Result<String, String> {
             .file_stem()
             .and_then(|s| s.to_str())
             .map(|s| s.to_string())
-            .ok_or_else(|| "Unknown".to_string())
+            .ok_or_else(|| anyhow!("Unknown"))
     }
 }
 
@@ -275,7 +275,7 @@ enum ThirdEnum {
         let file_path = "/path/to/nonexistent/file.swift";
         let result = extract_enclosing_type(file_path);
         assert!(result.is_err());
-        let err_msg = result.err().unwrap();
+        let err_msg = result.err().unwrap().to_string();
         assert!(err_msg.contains("Error reading file"));
     }
 

@@ -1,5 +1,6 @@
 // crates/post_processing/src/lib.rs
 
+use anyhow::{anyhow, Result};
 use todo_marker::TODO_MARKER;
 
 /// Scrubs extra TODO markers from the given prompt if diff mode is not enabled.
@@ -9,7 +10,7 @@ use todo_marker::TODO_MARKER;
 ///   - The first occurrence of a line exactly matching the supplied primary marker (if present), and
 ///   - The very last line that contains the marker substring.
 ///
-/// If the primary marker isn’t found, an error is returned.
+/// If the primary marker isn't found, an error is returned.
 ///
 /// # Arguments
 ///
@@ -20,38 +21,34 @@ use todo_marker::TODO_MARKER;
 /// # Returns
 ///
 /// A `Result` with the processed prompt as a `String` on success,
-/// or an error message if the primary marker is not found.
+/// or an error if the primary marker is not found.
 pub fn scrub_extra_todo_markers(
     prompt: &str,
     diff_enabled: bool,
     primary_marker: &str,
-) -> Result<String, String> {
-    // If diff mode is enabled, do nothing.
+) -> Result<String> {
     if diff_enabled {
         return Ok(prompt.to_string());
     }
 
-    // Use the workspace‑wide constant instead of a hard‑coded literal.
     let marker = TODO_MARKER;
     let lines: Vec<&str> = prompt.lines().collect();
 
-    // Ensure that the primary marker exists in the prompt.
     let primary_found = lines.iter().any(|line| line.trim() == primary_marker);
     if !primary_found {
-        return Err(format!(
+        return Err(anyhow!(
             "Primary marker '{}' not found in prompt",
             primary_marker
         ));
     }
 
-    // Find the index of the last line that contains the marker substring.
     let last_marker_index = lines
         .iter()
         .enumerate()
         .filter(|(_, line)| line.contains(marker))
         .map(|(i, _)| i)
         .next_back()
-        .ok_or_else(|| "No marker lines found in prompt".to_string())?;
+        .ok_or_else(|| anyhow!("No marker lines found in prompt"))?;
 
     let mut output_lines = Vec::with_capacity(lines.len());
     let mut primary_marker_included = false;
@@ -59,16 +56,12 @@ pub fn scrub_extra_todo_markers(
     for (i, line) in lines.iter().enumerate() {
         if line.contains(marker) {
             if i == last_marker_index {
-                // Always include the last marker line.
                 output_lines.push(*line);
             } else if line.trim() == primary_marker && !primary_marker_included {
-                // Include the first occurrence of the primary marker.
                 output_lines.push(*line);
                 primary_marker_included = true;
             }
-            // Otherwise, skip this marker line.
         } else {
-            // Non‑marker line → keep as‑is.
             output_lines.push(*line);
         }
     }
@@ -119,7 +112,6 @@ Middle code
 End code
 // TODO: - CTA Marker"#;
         let output = scrub_extra_todo_markers(input, true, primary_marker).unwrap();
-        // In diff mode the prompt is returned unmodified.
         assert_eq!(output, input);
     }
 }

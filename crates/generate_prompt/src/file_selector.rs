@@ -49,15 +49,13 @@ pub fn determine_files_to_include_with_options(
             &ExtractTypesOptions {
                 targeted: options.targeted,
             },
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to extract types: {}", e))?;
+        )?;
         println!("Types found:");
         println!("{}", types_content.trim());
         println!("--------------------------------------------------");
 
         // Find definition files using the extracted types.
-        let def_files_set = find_definition_files(types_content.as_str(), search_root)
-            .map_err(|err| anyhow::anyhow!("Failed to find definition files: {}", err))?;
+        let def_files_set = find_definition_files(types_content.as_str(), search_root)?;
 
         // Add definition files to the in-memory list.
         for path in def_files_set {
@@ -95,8 +93,7 @@ pub fn determine_files_to_include_with_options(
             let referencing_files = find_referencing_files::find_files_referencing(
                 &enclosing_type,
                 search_root.to_str().unwrap(),
-            )
-            .map_err(|e| anyhow::anyhow!("Failed to find referencing files: {}", e))?;
+            )?;
             found_files.extend(referencing_files);
         } else {
             println!("No enclosing type found; skipping reference search.");

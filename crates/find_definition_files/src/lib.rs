@@ -1,7 +1,7 @@
 // crates/find_definition_files/src/lib.rs
 
+use anyhow::Result;
 use std::collections::BTreeSet;
-use std::error::Error;
 use std::path::{Path, PathBuf};
 
 use get_search_roots::get_search_roots;
@@ -17,7 +17,7 @@ pub struct DefinitionFinder {
 
 impl DefinitionFinder {
     /// Build from the newline‑separated `types_content`
-    pub fn new_from_str(types_content: &str, root: &Path) -> Result<Self, Box<dyn Error>> {
+    pub fn new_from_str(types_content: &str, root: &Path) -> Result<Self> {
         let types: Vec<String> = types_content
             .lines()
             .map(str::trim)
@@ -52,10 +52,7 @@ impl DefinitionFinder {
 }
 
 /// Public API
-pub fn find_definition_files(
-    types_content: &str,
-    root: &Path,
-) -> Result<BTreeSet<PathBuf>, Box<dyn Error>> {
+pub fn find_definition_files(types_content: &str, root: &Path) -> Result<BTreeSet<PathBuf>> {
     if types_content.trim().is_empty() {
         return Ok(BTreeSet::new());
     }

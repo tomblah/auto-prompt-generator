@@ -1,5 +1,6 @@
 // crates/find_prompt_instruction/src/lib.rs
 
+use anyhow::{anyhow, Context, Result};
 use std::fs;
 use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
@@ -13,8 +14,7 @@ use walkdir::WalkDir;
 ///
 /// Allowed extensions are: `swift`, `h`, `m`, and `js`.
 /// The marker searched for is `todo_marker::TODO_MARKER_WS`.
-pub fn find_prompt_instruction_in_dir(search_dir: &str, verbose: bool) -> io::Result<PathBuf> {
-    // Internally use the finder struct.
+pub fn find_prompt_instruction_in_dir(search_dir: &str, verbose: bool) -> Result<PathBuf> {
     let finder = PromptInstructionFinder::new(search_dir, verbose);
     finder.find()
 }
@@ -38,22 +38,19 @@ impl<'a> PromptInstructionFinder<'a> {
         }
     }
 
-    fn find(&self) -> io::Result<PathBuf> {
-        // Collect matching files using iterator combinators.
+    fn find(&self) -> Result<PathBuf> {
         let matching_files: Vec<PathBuf> = WalkDir::new(self.search_dir)
             .into_iter()
             .filter_map(|entry| entry.ok())
             .filter(|entry| entry.file_type().is_file())
             .map(|entry| entry.into_path())
             .filter(|path| {
-                // Check if the file has an allowed extension.
                 path.extension()
                     .and_then(|s| s.to_str())
                     .map(|ext| self.allowed_extensions.contains(&ext))
                     .unwrap_or(false)
             })
             .filter(|path| {
-                // Open the file and check if any line contains the TODO marker.
                 if let Ok(file) = fs::File::open(path) {
                     let reader = io::BufReader::new(file);
                     reader
@@ -67,13 +64,9 @@ impl<'a> PromptInstructionFinder<'a> {
             .collect();
 
         if matching_files.is_empty() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("No files found containing '{}'", self.todo_marker),
-            ));
+            return Err(anyhow!("No files found containing '{}'", self.todo_marker));
         }
 
-        // Choose the file with the most recent modification time.
         let chosen_file = matching_files
             .iter()
             .max_by(|a, b| {
@@ -86,15 +79,10 @@ impl<'a> PromptInstructionFinder<'a> {
                 mod_a.cmp(&mod_b)
             })
             .cloned()
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::NotFound,
-                    format!("No files found containing '{}'", self.todo_marker),
-                )
-            })?;
+            .ok_or_else(|| anyhow!("No files found containing '{}'", self.todo_marker))?;
 
-        // Check the chosen file: if it has more than one marker, exit with an error.
-        let content = fs::read_to_string(&chosen_file)?;
+        let content = fs::read_to_string(&chosen_file)
+            .with_context(|| format!("Failed to read {}", chosen_file.display()))?;
         let marker_lines: Vec<String> = content
             .lines()
             .filter(|line| line.contains(self.todo_marker))
@@ -102,14 +90,11 @@ impl<'a> PromptInstructionFinder<'a> {
             .collect();
         let marker_count = marker_lines.len();
         if marker_count > 1 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "Ambiguous TODO marker: file {} contains {} markers:\n{}",
-                    chosen_file.display(),
-                    marker_count,
-                    marker_lines.join("\n")
-                ),
+            return Err(anyhow!(
+                "Ambiguous TODO marker: file {} contains {} markers:\n{}",
+                chosen_file.display(),
+                marker_count,
+                marker_lines.join("\n")
             ));
         }
 
@@ -163,13 +148,11 @@ mod tests {
     #[test]
     fn test_no_files_found() {
         let dir = tempdir().unwrap();
-        // Create a file that does not contain the TODO marker.
         let file_path = dir.path().join("dummy.swift");
         fs::write(&file_path, "Some random content without marker").unwrap();
 
         let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false);
         let err = result.expect_err("expected missing TODO marker to return an error");
-        assert_eq!(err.kind(), io::ErrorKind::NotFound);
         assert!(err.to_string().contains(TODO_MARKER_WS));
     }
 
@@ -198,7 +181,6 @@ mod tests {
         let older_file = dir.path().join("older.swift");
         let newer_file = dir.path().join("newer.swift");
 
-        // Write content with the TODO marker into both files.
         fs::write(&older_file, "Content\n// TODO: - Old todo\nMore content").unwrap();
         fs::write(
             &newer_file,
@@ -206,7 +188,6 @@ mod tests {
         )
         .unwrap();
 
-        // Set modification times explicitly: older_file gets an older timestamp.
         let older_time = FileTime::from_unix_time(1000, 0);
         let newer_time = FileTime::from_unix_time(2000, 0);
         set_file_mtime(&older_file, older_time).unwrap();
@@ -216,12 +197,9 @@ mod tests {
         assert_eq!(result, newer_file);
     }
 
-    // --- New tests begin here ---
-
     #[test]
     fn test_extension_filtering() {
         let dir = tempdir().unwrap();
-        // Create a file with a disallowed extension (.txt) that contains the marker.
         let file_path = dir.path().join("ignored.txt");
         fs::write(
             &file_path,
@@ -229,7 +207,6 @@ mod tests {
         )
         .unwrap();
 
-        // Since the file has a .txt extension (not one of the allowed extensions), the function should not pick it.
         let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false);
         assert!(
             result.is_err(),
@@ -240,7 +217,6 @@ mod tests {
     #[test]
     fn test_recursive_search() {
         let dir = tempdir().unwrap();
-        // Create a nested directory structure.
         let nested_dir = dir.path().join("nested/subdir");
         fs::create_dir_all(&nested_dir).unwrap();
         let file_path = nested_dir.join("nested.swift");
@@ -252,23 +228,18 @@ mod tests {
 
     #[test]
     fn test_verbose_output_with_multiple_files() {
-        // Even though we won't capture the verbose output from stderr,
-        // we can ensure that the function returns the correct file.
         let dir = tempdir().unwrap();
         let file1 = dir.path().join("file1.swift");
         let file2 = dir.path().join("file2.swift");
         fs::write(&file1, "Content\n// TODO: - Todo in file1\nMore").unwrap();
         fs::write(&file2, "Other content\n// TODO: - Todo in file2\nExtra").unwrap();
 
-        // Set modification times so that file2 is more recent.
         let older_time = FileTime::from_unix_time(1000, 0);
         let newer_time = FileTime::from_unix_time(2000, 0);
         set_file_mtime(&file1, older_time).unwrap();
         set_file_mtime(&file2, newer_time).unwrap();
 
-        // Call function with verbose output enabled.
         let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), true).unwrap();
-        // Expect that the most recent file is chosen.
         assert_eq!(result, file2);
     }
 
@@ -291,13 +262,11 @@ mod tests {
         fs::write(&file1, "Alpha\n// TODO: - Tie todo 1\nBeta").unwrap();
         fs::write(&file2, "Gamma\n// TODO: - Tie todo 2\nDelta").unwrap();
 
-        // Set both files to have the same modification time.
         let same_time = FileTime::from_unix_time(1500, 0);
         set_file_mtime(&file1, same_time).unwrap();
         set_file_mtime(&file2, same_time).unwrap();
 
         let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false).unwrap();
-        // The result should be one of the two files.
         assert!(
             result == file1 || result == file2,
             "Result should be either tie1.swift or tie2.swift"
@@ -318,29 +287,23 @@ mod tests {
         .unwrap();
         fs::write(&readable, "Valid content\n// TODO: - Readable todo\nFooter").unwrap();
 
-        // Set modification times so that the readable file is more recent.
         let older_time = FileTime::from_unix_time(1000, 0);
         let newer_time = FileTime::from_unix_time(2000, 0);
         set_file_mtime(&unreadable, older_time).unwrap();
         set_file_mtime(&readable, newer_time).unwrap();
 
-        // Make the unreadable file have no read permissions after setting its mtime.
         let mut perms = fs::metadata(&unreadable).unwrap().permissions();
         perms.set_mode(0o000);
         fs::set_permissions(&unreadable, perms).unwrap();
 
         let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false).unwrap();
-        // The unreadable file should be skipped, so the returned file should be the readable one.
         assert_eq!(result, readable);
 
-        // Restore permissions for cleanup.
         let mut perms = fs::metadata(&unreadable).unwrap().permissions();
         perms.set_mode(0o644);
         fs::set_permissions(&unreadable, perms).unwrap();
     }
 }
-
-// --- Additional internal tests for find_prompt_instruction ---
 
 #[cfg(test)]
 mod internal_tests {
@@ -350,10 +313,8 @@ mod internal_tests {
     use std::io::Write;
     use tempfile::{tempdir, NamedTempFile};
 
-    // Test the helper that extracts the first TODO line.
     #[test]
     fn test_extract_first_todo_line_found() {
-        // Create a temporary file with a TODO marker.
         let mut temp_file = NamedTempFile::new().unwrap();
         writeln!(temp_file, "Line one").unwrap();
         writeln!(temp_file, "// TODO: - This is the todo line").unwrap();
@@ -372,7 +333,6 @@ mod internal_tests {
 
     #[test]
     fn test_extract_first_todo_line_not_found() {
-        // Create a file that does not include the marker.
         let mut temp_file = NamedTempFile::new().unwrap();
         writeln!(temp_file, "Line one").unwrap();
         writeln!(temp_file, "Line two without marker").unwrap();
@@ -382,14 +342,12 @@ mod internal_tests {
         assert!(result.is_none(), "Did not expect a TODO line to be found");
     }
 
-    // Directly test the PromptInstructionFinder's internal logic.
     #[test]
     fn test_prompt_instruction_finder_with_multiple_files() {
         let dir = tempdir().unwrap();
         let file1 = dir.path().join("file1.swift");
         let file2 = dir.path().join("file2.swift");
 
-        // Write content with the TODO marker in both files.
         fs::write(&file1, "Some content\n// TODO: - First todo\nMore content").unwrap();
         fs::write(
             &file2,
@@ -397,27 +355,23 @@ mod internal_tests {
         )
         .unwrap();
 
-        // Set explicit modification times so file2 is more recent.
         let ft1 = FileTime::from_unix_time(1000, 0);
         let ft2 = FileTime::from_unix_time(2000, 0);
         set_file_mtime(&file1, ft1).unwrap();
         set_file_mtime(&file2, ft2).unwrap();
 
-        // Create a finder instance manually.
         let finder = PromptInstructionFinder::new(dir.path().to_str().unwrap(), false);
         let chosen_file = finder.find().expect("Expected to find a valid file");
-        // Since file2 is more recent, it should be chosen.
         assert_eq!(
             chosen_file, file2,
             "Expected file2 to be chosen as the most recent file"
         );
     }
 
-    // Test that files with disallowed extensions are ignored.
     #[test]
     fn test_finder_excludes_disallowed_extension() {
         let dir = tempdir().unwrap();
-        let file_txt = dir.path().join("ignored.txt"); // .txt is not an allowed extension.
+        let file_txt = dir.path().join("ignored.txt");
         fs::write(
             &file_txt,
             "Text content\n// TODO: - This should not be picked\nMore text",
@@ -432,7 +386,6 @@ mod internal_tests {
         );
     }
 
-    // (Optional) Test the behavior when a file is unreadable.
     #[cfg(unix)]
     #[test]
     fn test_finder_skips_unreadable_file() {
@@ -444,26 +397,22 @@ mod internal_tests {
         fs::write(&unreadable, "Content\n// TODO: - Unreadable todo\nMore").unwrap();
         fs::write(&readable, "Valid content\n// TODO: - Readable todo\nFooter").unwrap();
 
-        // Set modification times so the readable file is more recent.
         let ft_unreadable = FileTime::from_unix_time(1000, 0);
         let ft_readable = FileTime::from_unix_time(2000, 0);
         set_file_mtime(&unreadable, ft_unreadable).unwrap();
         set_file_mtime(&readable, ft_readable).unwrap();
 
-        // Remove read permissions for the unreadable file after setting its mtime.
         let mut perms = fs::metadata(&unreadable).unwrap().permissions();
         perms.set_mode(0o000);
         fs::set_permissions(&unreadable, perms).unwrap();
 
         let finder = PromptInstructionFinder::new(dir.path().to_str().unwrap(), false);
         let chosen_file = finder.find().expect("Expected to pick a valid file");
-        // Since the unreadable file should be skipped, the readable file is expected.
         assert_eq!(
             chosen_file, readable,
             "Expected the readable file to be chosen"
         );
 
-        // Restore permissions for cleanup.
         let mut perms = fs::metadata(&unreadable).unwrap().permissions();
         perms.set_mode(0o644);
         fs::set_permissions(&unreadable, perms).unwrap();
@@ -475,17 +424,14 @@ mod internal_tests {
         let ambiguous_file = dir.path().join("ambiguous.swift");
         let unambiguous_file = dir.path().join("clean.swift");
 
-        // ambiguous_file (most recent) has two markers.
         fs::write(
             &ambiguous_file,
             "Content\n// TODO: - First marker\nSome intermediate text\n// TODO: - Second marker\nExtra",
         )
         .unwrap();
 
-        // unambiguous_file (older) has one marker.
         fs::write(&unambiguous_file, "Content\n// TODO: - Only marker\nExtra").unwrap();
 
-        // Set modification times: ambiguous_file is more recent.
         let older_time = FileTime::from_unix_time(1000, 0);
         let newer_time = FileTime::from_unix_time(2000, 0);
         set_file_mtime(&unambiguous_file, older_time).unwrap();
@@ -499,12 +445,10 @@ mod internal_tests {
 
         if let Err(e) = result {
             let err_msg = e.to_string();
-            // Check that the error message indicates ambiguity.
             assert!(
                 err_msg.to_lowercase().contains("ambiguous"),
                 "Error message should indicate ambiguity"
             );
-            // Check that both marker lines (trimmed) appear in the error message.
             assert!(
                 err_msg.contains("// TODO: - First marker"),
                 "Expected first marker line in error"
@@ -522,28 +466,24 @@ mod internal_tests {
         let ambiguous_file = dir.path().join("ambiguous.swift");
         let unambiguous_file = dir.path().join("clean.swift");
 
-        // ambiguous_file (older) has two markers.
         fs::write(
             &ambiguous_file,
             "Content\n// TODO: - First marker\nSome text\n// TODO: - Second marker\nExtra",
         )
         .unwrap();
 
-        // unambiguous_file (most recent) has one marker.
         fs::write(
             &unambiguous_file,
             "Other content\n// TODO: - Only marker\nExtra",
         )
         .unwrap();
 
-        // Set modification times: ambiguous_file older, unambiguous_file more recent.
         let older_time = FileTime::from_unix_time(1000, 0);
         let newer_time = FileTime::from_unix_time(2000, 0);
         set_file_mtime(&ambiguous_file, older_time).unwrap();
         set_file_mtime(&unambiguous_file, newer_time).unwrap();
 
         let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false).unwrap();
-        // Even though the older file is ambiguous, the most recent file is unambiguous so it should be chosen.
         assert_eq!(
             result, unambiguous_file,
             "Expected the most recent unambiguous file to be chosen"
