@@ -4,12 +4,19 @@ use anyhow::Result;
 use extract_enclosing_type::extract_enclosing_type;
 use extract_types::{extract_types_from_file_with_options, ExtractTypesOptions};
 use find_definition_files::find_definition_files;
+use log::{debug, info, warn};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FileSelectionOptions {
     pub include_references: bool,
     pub targeted: bool,
+}
+
+#[derive(Debug)]
+pub struct FileSelectionResult {
+    pub files: Vec<PathBuf>,
+    pub types_found: std::collections::BTreeSet<String>,
 }
 
 /// Determines the list of files to include in the prompt based on the given parameters.
@@ -36,11 +43,12 @@ pub fn determine_files_to_include_with_options(
     search_root: &Path,
     excludes: &[String],
     options: &FileSelectionOptions,
-) -> Result<Vec<PathBuf>> {
+) -> Result<FileSelectionResult> {
     let mut found_files: Vec<PathBuf> = Vec::new();
+    let mut types_found = std::collections::BTreeSet::new();
 
     if singular {
-        println!("Singular mode enabled: only including the TODO file");
+        info!("Singular mode enabled: only including the TODO file");
         found_files.push(file_path.to_path_buf());
     } else {
         let types = extract_types_from_file_with_options(
@@ -49,13 +57,14 @@ pub fn determine_files_to_include_with_options(
                 targeted: options.targeted,
             },
         )?;
-        println!("Types found:");
+        debug!("Types found:");
         for ty in &types {
-            println!("{}", ty);
+            debug!("{}", ty);
         }
-        println!("--------------------------------------------------");
+        debug!("--------------------------------------------------");
 
         let def_files_set = find_definition_files(&types, search_root)?;
+        types_found = types;
 
         for path in def_files_set {
             found_files.push(path);
@@ -64,7 +73,7 @@ pub fn determine_files_to_include_with_options(
         found_files.push(file_path.to_path_buf());
 
         if !excludes.is_empty() {
-            println!("Excluding files matching: {:?}", excludes);
+            debug!("Excluding files matching: {:?}", excludes);
             found_files.retain(|p| {
                 let basename = p.file_name().unwrap_or_default().to_string_lossy();
                 !excludes.contains(&basename.to_string())
@@ -73,25 +82,25 @@ pub fn determine_files_to_include_with_options(
     }
 
     if options.include_references {
-        println!("Including files that reference the enclosing type");
+        debug!("Including files that reference the enclosing type");
         let enclosing_type = match extract_enclosing_type(file_path) {
             Ok(ty) => ty,
             Err(err) => {
-                eprintln!("Error extracting enclosing type: {}", err);
+                warn!("Error extracting enclosing type: {}", err);
                 String::new()
             }
         };
         if !enclosing_type.is_empty() {
-            println!("Enclosing type: {}", enclosing_type);
-            println!("Searching for files referencing {}", enclosing_type);
+            debug!("Enclosing type: {}", enclosing_type);
+            debug!("Searching for files referencing {}", enclosing_type);
             let referencing_files =
                 find_referencing_files::find_files_referencing(&enclosing_type, search_root)?;
             found_files.extend(referencing_files);
         } else {
-            println!("No enclosing type found; skipping reference search.");
+            debug!("No enclosing type found; skipping reference search.");
         }
         if !excludes.is_empty() {
-            println!("Excluding files matching: {:?}", excludes);
+            debug!("Excluding files matching: {:?}", excludes);
             found_files.retain(|p| {
                 let basename = p.file_name().unwrap_or_default().to_string_lossy();
                 !excludes.contains(&basename.to_string())
@@ -101,14 +110,17 @@ pub fn determine_files_to_include_with_options(
 
     found_files.sort();
     found_files.dedup();
-    println!("--------------------------------------------------");
-    println!("Files (final list):");
+    debug!("--------------------------------------------------");
+    debug!("Files (final list):");
     for file in &found_files {
         let basename = file.file_name().unwrap_or_default().to_string_lossy();
-        println!("{}", basename);
+        debug!("{}", basename);
     }
 
-    Ok(found_files)
+    Ok(FileSelectionResult {
+        files: found_files,
+        types_found,
+    })
 }
 
 #[cfg(test)]
@@ -130,7 +142,7 @@ mod tests {
         // Use the file's parent as search root.
         let search_root = temp_instr.path().parent().unwrap().to_path_buf();
 
-        let files = determine_files_to_include_with_options(
+        let result = determine_files_to_include_with_options(
             &instr_path,
             true,
             &search_root,
@@ -141,8 +153,8 @@ mod tests {
             },
         )
         .expect("Failed in singular mode");
-        assert_eq!(files.len(), 1);
-        assert_eq!(files[0], instr_path);
+        assert_eq!(result.files.len(), 1);
+        assert_eq!(result.files[0], instr_path);
     }
 
     /// In non-singular mode (without references), if the instruction file contains a TODO that mentions
@@ -169,7 +181,7 @@ mod tests {
             writeln!(f, "class TypeA {{ }}").unwrap();
         }
 
-        let files = determine_files_to_include_with_options(
+        let result = determine_files_to_include_with_options(
             &instr_path,
             false,
             &search_root,
@@ -180,10 +192,9 @@ mod tests {
             },
         )
         .expect("Non-singular without references failed");
-        // Expect both the instruction file and the definition file.
-        assert!(files.contains(&instr_path));
-        assert!(files.contains(&def_path));
-        assert_eq!(files.len(), 2);
+        assert!(result.files.contains(&instr_path));
+        assert!(result.files.contains(&def_path));
+        assert_eq!(result.files.len(), 2);
     }
 
     #[test]
@@ -214,7 +225,7 @@ mod tests {
             writeln!(f, "class InnerType {{ }}").unwrap();
         }
 
-        let files = determine_files_to_include_with_options(
+        let result = determine_files_to_include_with_options(
             &instr_path,
             false,
             &search_root,
@@ -228,9 +239,9 @@ mod tests {
 
         env::remove_var("TARGETED");
 
-        assert!(files.contains(&instr_path));
-        assert!(files.contains(&outer_def_path));
-        assert!(files.contains(&inner_def_path));
+        assert!(result.files.contains(&instr_path));
+        assert!(result.files.contains(&outer_def_path));
+        assert!(result.files.contains(&inner_def_path));
     }
 
     #[test]
@@ -261,7 +272,7 @@ mod tests {
             writeln!(f, "class InnerType {{ }}").unwrap();
         }
 
-        let files = determine_files_to_include_with_options(
+        let result = determine_files_to_include_with_options(
             &instr_path,
             false,
             &search_root,
@@ -273,9 +284,9 @@ mod tests {
         )
         .expect("Explicit targeted selection failed");
 
-        assert!(files.contains(&instr_path));
-        assert!(!files.contains(&outer_def_path));
-        assert!(files.contains(&inner_def_path));
+        assert!(result.files.contains(&instr_path));
+        assert!(!result.files.contains(&outer_def_path));
+        assert!(result.files.contains(&inner_def_path));
     }
 
     /// In non-singular mode with references enabled, if the instruction file declares "RefType"
@@ -307,7 +318,7 @@ mod tests {
             writeln!(f, "let x = RefType()").unwrap();
         }
 
-        let files = determine_files_to_include_with_options(
+        let result = determine_files_to_include_with_options(
             &instr_path,
             false,
             &search_root,
@@ -318,11 +329,10 @@ mod tests {
             },
         )
         .expect("Non-singular with references failed");
-        // Expected: Instruction.swift, Def.swift, and Ref.swift.
-        assert!(files.contains(&instr_path));
-        assert!(files.contains(&def_path));
-        assert!(files.contains(&ref_path));
-        assert_eq!(files.len(), 3);
+        assert!(result.files.contains(&instr_path));
+        assert!(result.files.contains(&def_path));
+        assert!(result.files.contains(&ref_path));
+        assert_eq!(result.files.len(), 3);
     }
 
     #[test]
@@ -330,7 +340,7 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let missing_instruction = temp_dir.path().join("MissingInstruction.swift");
 
-        let files = determine_files_to_include_with_options(
+        let result = determine_files_to_include_with_options(
             &missing_instruction,
             true,
             temp_dir.path(),
@@ -342,7 +352,7 @@ mod tests {
         )
         .expect("Missing file should only skip reference lookup");
 
-        assert_eq!(files, vec![missing_instruction]);
+        assert_eq!(result.files, vec![missing_instruction]);
     }
 
     /// Test exclusion filtering in non-singular mode with references enabled.
@@ -377,7 +387,7 @@ mod tests {
         }
 
         // Now use include_references = true and exclude "Def.swift".
-        let files = determine_files_to_include_with_options(
+        let result = determine_files_to_include_with_options(
             &instr_path,
             false,
             &search_root,
@@ -388,10 +398,9 @@ mod tests {
             },
         )
         .expect("Exclusion test failed");
-        // Expected: Instruction.swift and Ref.swift should be present; Def.swift should be excluded.
-        assert!(files.contains(&instr_path));
-        assert!(files.contains(&ref_path));
-        assert!(!files.contains(&def_path));
-        assert_eq!(files.len(), 2);
+        assert!(result.files.contains(&instr_path));
+        assert!(result.files.contains(&ref_path));
+        assert!(!result.files.contains(&def_path));
+        assert_eq!(result.files.len(), 2);
     }
 }

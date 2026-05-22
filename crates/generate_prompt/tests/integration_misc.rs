@@ -235,18 +235,9 @@ fn test_generate_prompt_include_references_for_swift() {
     let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
     cmd.arg("--include-references");
 
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains(
-            "Including files that reference the enclosing type",
-        ))
-        .stdout(predicate::str::contains("Enclosing type: MyType"))
-        .stdout(predicate::str::contains(
-            "Searching for files referencing MyType",
-        ))
-        .stdout(predicate::str::contains(
-            "Prompt has been copied to clipboard.",
-        ));
+    cmd.assert().success().stdout(predicate::str::contains(
+        "Prompt has been copied to clipboard.",
+    ));
 
     clear_git_root();
 }
@@ -353,7 +344,6 @@ fn test_generate_prompt_exclude() {
 
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Excluding files matching:"))
         .stdout(predicate::str::contains("Definition1.swift"))
         .stdout(predicate::str::contains("Definition2.swift"));
 

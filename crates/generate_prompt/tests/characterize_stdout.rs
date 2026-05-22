@@ -1,4 +1,5 @@
 // crates/generate_prompt/tests/characterize_stdout.rs
+
 //
 // Characterization tests that lock down the diagnostic stdout/stderr output
 // currently emitted by library crates during pipeline execution.

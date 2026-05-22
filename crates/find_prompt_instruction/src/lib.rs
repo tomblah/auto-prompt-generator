@@ -1,6 +1,7 @@
 // crates/find_prompt_instruction/src/lib.rs
 
 use anyhow::{anyhow, Context, Result};
+use log::debug;
 use std::fs;
 use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
@@ -10,12 +11,12 @@ use walkdir::WalkDir;
 
 /// Searches the given directory (and its subdirectories) for files with allowed extensions
 /// that contain the TODO marker. If multiple files are found, returns the one with the most
-/// recent modification time. If verbose is true, logs extra details.
+/// recent modification time. Diagnostic details are emitted via `log::debug!`.
 ///
 /// Allowed extensions come from `lang_support::supported_extensions()`.
 /// The marker searched for is `todo_marker::TODO_MARKER_WS`.
-pub fn find_prompt_instruction_in_dir(search_dir: &Path, verbose: bool) -> Result<PathBuf> {
-    let finder = PromptInstructionFinder::new(search_dir, verbose);
+pub fn find_prompt_instruction_in_dir(search_dir: &Path) -> Result<PathBuf> {
+    let finder = PromptInstructionFinder::new(search_dir);
     finder.find()
 }
 
@@ -23,16 +24,14 @@ pub fn find_prompt_instruction_in_dir(search_dir: &Path, verbose: bool) -> Resul
 
 struct PromptInstructionFinder<'a> {
     search_dir: &'a Path,
-    verbose: bool,
     allowed_extensions: &'static [&'static str],
     todo_marker: &'static str,
 }
 
 impl<'a> PromptInstructionFinder<'a> {
-    fn new(search_dir: &'a Path, verbose: bool) -> Self {
+    fn new(search_dir: &'a Path) -> Self {
         Self {
             search_dir,
-            verbose,
             allowed_extensions: lang_support::supported_extensions(),
             todo_marker: TODO_MARKER_WS,
         }
@@ -98,27 +97,22 @@ impl<'a> PromptInstructionFinder<'a> {
             ));
         }
 
-        if self.verbose {
-            eprintln!("[VERBOSE] {} matching file(s) found.", matching_files.len());
-            if matching_files.len() > 1 {
-                eprintln!("[VERBOSE] Ignoring the following files:");
-                for file in matching_files.iter().filter(|&f| f != &chosen_file) {
-                    let basename = file
-                        .file_name()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("<unknown>");
-                    let todo_line = extract_first_todo_line(file, self.todo_marker)
-                        .unwrap_or_else(|| "<no TODO line found>".to_string());
-                    eprintln!("  - {}: {}", basename, todo_line.trim());
-                    eprintln!("--------------------------------------------------");
-                }
-                eprintln!("[VERBOSE] Chosen file: {}", chosen_file.display());
-            } else {
-                eprintln!(
-                    "[VERBOSE] Only one matching file found: {}",
-                    chosen_file.display()
-                );
+        debug!("{} matching file(s) found.", matching_files.len());
+        if matching_files.len() > 1 {
+            debug!("Ignoring the following files:");
+            for file in matching_files.iter().filter(|&f| f != &chosen_file) {
+                let basename = file
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("<unknown>");
+                let todo_line = extract_first_todo_line(file, self.todo_marker)
+                    .unwrap_or_else(|| "<no TODO line found>".to_string());
+                debug!("  - {}: {}", basename, todo_line.trim());
+                debug!("--------------------------------------------------");
             }
+            debug!("Chosen file: {}", chosen_file.display());
+        } else {
+            debug!("Only one matching file found: {}", chosen_file.display());
         }
 
         Ok(chosen_file)
@@ -151,7 +145,7 @@ mod tests {
         let file_path = dir.path().join("dummy.swift");
         fs::write(&file_path, "Some random content without marker").unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path(), false);
+        let result = find_prompt_instruction_in_dir(dir.path());
         let err = result.expect_err("expected missing TODO marker to return an error");
         assert!(err.to_string().contains(TODO_MARKER_WS));
     }
@@ -159,7 +153,7 @@ mod tests {
     #[test]
     fn test_finder_uses_shared_todo_marker() {
         let dir = tempdir().unwrap();
-        let finder = PromptInstructionFinder::new(dir.path(), false);
+        let finder = PromptInstructionFinder::new(dir.path());
 
         assert_eq!(finder.todo_marker, todo_marker::TODO_MARKER_WS);
     }
@@ -171,7 +165,7 @@ mod tests {
         let content = "Some content\n// TODO: - Fix something\nOther content";
         fs::write(&file_path, content).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path()).unwrap();
         assert_eq!(result, file_path);
     }
 
@@ -193,7 +187,7 @@ mod tests {
         set_file_mtime(&older_file, older_time).unwrap();
         set_file_mtime(&newer_file, newer_time).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path()).unwrap();
         assert_eq!(result, newer_file);
     }
 
@@ -207,7 +201,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path(), false);
+        let result = find_prompt_instruction_in_dir(dir.path());
         assert!(
             result.is_err(),
             "Expected error because no valid files found"
@@ -222,7 +216,7 @@ mod tests {
         let file_path = nested_dir.join("nested.swift");
         fs::write(&file_path, "Header\n// TODO: - Nested todo\nFooter").unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path()).unwrap();
         assert_eq!(result, file_path);
     }
 
@@ -239,7 +233,7 @@ mod tests {
         set_file_mtime(&file1, older_time).unwrap();
         set_file_mtime(&file2, newer_time).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path(), true).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path()).unwrap();
         assert_eq!(result, file2);
     }
 
@@ -249,7 +243,7 @@ mod tests {
         let file_path = dir.path().join("single.swift");
         fs::write(&file_path, "Header\n// TODO: - Single verbose todo\nFooter").unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path(), true).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path()).unwrap();
 
         assert_eq!(result, file_path);
     }
@@ -266,7 +260,7 @@ mod tests {
         set_file_mtime(&file1, same_time).unwrap();
         set_file_mtime(&file2, same_time).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path()).unwrap();
         assert!(
             result == file1 || result == file2,
             "Result should be either tie1.swift or tie2.swift"
@@ -296,7 +290,7 @@ mod tests {
         perms.set_mode(0o000);
         fs::set_permissions(&unreadable, perms).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path()).unwrap();
         assert_eq!(result, readable);
 
         let mut perms = fs::metadata(&unreadable).unwrap().permissions();
@@ -360,7 +354,7 @@ mod internal_tests {
         set_file_mtime(&file1, ft1).unwrap();
         set_file_mtime(&file2, ft2).unwrap();
 
-        let finder = PromptInstructionFinder::new(dir.path(), false);
+        let finder = PromptInstructionFinder::new(dir.path());
         let chosen_file = finder.find().expect("Expected to find a valid file");
         assert_eq!(
             chosen_file, file2,
@@ -378,7 +372,7 @@ mod internal_tests {
         )
         .unwrap();
 
-        let finder = PromptInstructionFinder::new(dir.path(), false);
+        let finder = PromptInstructionFinder::new(dir.path());
         let result = finder.find();
         assert!(
             result.is_err(),
@@ -406,7 +400,7 @@ mod internal_tests {
         perms.set_mode(0o000);
         fs::set_permissions(&unreadable, perms).unwrap();
 
-        let finder = PromptInstructionFinder::new(dir.path(), false);
+        let finder = PromptInstructionFinder::new(dir.path());
         let chosen_file = finder.find().expect("Expected to pick a valid file");
         assert_eq!(
             chosen_file, readable,
@@ -437,7 +431,7 @@ mod internal_tests {
         set_file_mtime(&unambiguous_file, older_time).unwrap();
         set_file_mtime(&ambiguous_file, newer_time).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path(), false);
+        let result = find_prompt_instruction_in_dir(dir.path());
         assert!(
             result.is_err(),
             "Expected error due to multiple markers in most recent file"
@@ -483,7 +477,7 @@ mod internal_tests {
         set_file_mtime(&ambiguous_file, older_time).unwrap();
         set_file_mtime(&unambiguous_file, newer_time).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path()).unwrap();
         assert_eq!(
             result, unambiguous_file,
             "Expected the most recent unambiguous file to be chosen"
@@ -507,7 +501,7 @@ mod extension_characterization_tests {
     fn test_swift_extension_accepted() {
         let dir = tempdir().unwrap();
         let file = write_todo_file(dir.path(), "test.swift");
-        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path()).unwrap();
         assert_eq!(result, file);
     }
 
@@ -515,7 +509,7 @@ mod extension_characterization_tests {
     fn test_h_extension_accepted() {
         let dir = tempdir().unwrap();
         let file = write_todo_file(dir.path(), "test.h");
-        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path()).unwrap();
         assert_eq!(result, file);
     }
 
@@ -523,7 +517,7 @@ mod extension_characterization_tests {
     fn test_m_extension_accepted() {
         let dir = tempdir().unwrap();
         let file = write_todo_file(dir.path(), "test.m");
-        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path()).unwrap();
         assert_eq!(result, file);
     }
 
@@ -531,7 +525,7 @@ mod extension_characterization_tests {
     fn test_js_extension_accepted() {
         let dir = tempdir().unwrap();
         let file = write_todo_file(dir.path(), "test.js");
-        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path()).unwrap();
         assert_eq!(result, file);
     }
 
@@ -539,7 +533,7 @@ mod extension_characterization_tests {
     fn test_txt_extension_rejected() {
         let dir = tempdir().unwrap();
         write_todo_file(dir.path(), "test.txt");
-        let result = find_prompt_instruction_in_dir(dir.path(), false);
+        let result = find_prompt_instruction_in_dir(dir.path());
         assert!(result.is_err());
     }
 
@@ -547,7 +541,7 @@ mod extension_characterization_tests {
     fn test_ts_extension_rejected() {
         let dir = tempdir().unwrap();
         write_todo_file(dir.path(), "test.ts");
-        let result = find_prompt_instruction_in_dir(dir.path(), false);
+        let result = find_prompt_instruction_in_dir(dir.path());
         assert!(result.is_err());
     }
 
@@ -555,7 +549,7 @@ mod extension_characterization_tests {
     fn test_jsx_extension_accepted() {
         let dir = tempdir().unwrap();
         let file = write_todo_file(dir.path(), "test.jsx");
-        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path()).unwrap();
         assert_eq!(result, file);
     }
 
@@ -563,7 +557,7 @@ mod extension_characterization_tests {
     fn test_mjs_extension_accepted() {
         let dir = tempdir().unwrap();
         let file = write_todo_file(dir.path(), "test.mjs");
-        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path()).unwrap();
         assert_eq!(result, file);
     }
 
@@ -571,7 +565,7 @@ mod extension_characterization_tests {
     fn test_cjs_extension_accepted() {
         let dir = tempdir().unwrap();
         let file = write_todo_file(dir.path(), "test.cjs");
-        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path()).unwrap();
         assert_eq!(result, file);
     }
 }

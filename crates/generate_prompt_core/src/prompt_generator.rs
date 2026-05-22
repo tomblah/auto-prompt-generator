@@ -1,6 +1,8 @@
 // crates/generate_prompt_core/src/prompt_generator.rs
 
 use anyhow::{anyhow, Context, Result};
+use log::{debug, info};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use crate::file_selector;
@@ -23,6 +25,7 @@ pub struct GeneratePromptOutput {
     pub instruction_content: String,
     pub search_root: PathBuf,
     pub found_files: Vec<PathBuf>,
+    pub types_found: BTreeSet<String>,
 }
 
 pub fn generate_prompt_with_options(
@@ -47,19 +50,19 @@ pub fn generate_prompt_with_options(
     let base_dir = PathBuf::from(git_root);
 
     let search_root_path = if options.force_global {
-        println!("Force global enabled: using Git root for context");
+        info!("Force global enabled: using Git root for context");
         base_dir.clone()
     } else {
         search_root::determine_search_root(&base_dir, file_path)
     };
-    println!("Search root: {}", search_root_path.display());
+    debug!("Search root: {}", search_root_path.display());
 
     let instruction_content =
         extract_instruction_content(file_path).context("Failed to extract instruction content")?;
-    println!("Instruction content: {}", instruction_content.trim());
-    println!("--------------------------------------------------");
+    debug!("Instruction content: {}", instruction_content.trim());
+    debug!("--------------------------------------------------");
 
-    let found_files = file_selector::determine_files_to_include_with_options(
+    let selection = file_selector::determine_files_to_include_with_options(
         file_path,
         options.singular,
         &search_root_path,
@@ -75,7 +78,7 @@ pub fn generate_prompt_with_options(
         diff_branch: options.diff_branch.clone(),
     };
     let assembled_prompt =
-        assemble_prompt::assemble_prompt_with_options(&found_files, &assembly_options)
+        assemble_prompt::assemble_prompt_with_options(&selection.files, &assembly_options)
             .context("Failed to assemble prompt")?;
 
     let diff_enabled = options.diff_branch.is_some();
@@ -92,7 +95,8 @@ pub fn generate_prompt_with_options(
         final_prompt,
         instruction_content: instruction_content.trim().to_string(),
         search_root: search_root_path,
-        found_files,
+        found_files: selection.files,
+        types_found: selection.types_found,
     })
 }
 

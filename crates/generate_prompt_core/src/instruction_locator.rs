@@ -23,8 +23,7 @@ pub fn locate_instruction_file(search_dir: &Path) -> Result<PathBuf> {
     if let Ok(instruction_override) = env::var("GET_INSTRUCTION_FILE") {
         Ok(PathBuf::from(instruction_override))
     } else {
-        find_prompt_instruction_in_dir(search_dir, false)
-            .context("Failed to locate the TODO instruction")
+        find_prompt_instruction_in_dir(search_dir).context("Failed to locate the TODO instruction")
     }
 }
 
@@ -56,7 +55,7 @@ mod tests {
         writeln!(file, "// TODO: - Do something important").unwrap();
 
         // For testing, we'll override the find function by creating a minimal file structure.
-        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path()).unwrap();
         assert!(result.exists());
     }
 }
