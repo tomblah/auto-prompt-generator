@@ -690,3 +690,138 @@ mod candidate_detection_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod enclosing_block_characterization_tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    /// Characterizes that extract_types recognizes ObjC split-line declarations
+    /// (method signature on one line, `{` on the next) as candidates via the
+    /// diff-candidate heuristic, matching the behavior in marker_utils.
+    #[test]
+    fn test_diff_candidate_objc_split_line() {
+        let content = "\
+- (void)myMethod:(NSString *)arg\n\
+{\n\
+    NSLog(@\"Start\");\n\
+    // TODO: - Do something in ObjC\n\
+    NSLog(@\"End\");\n\
+}";
+        let block = extract_enclosing_block_from_content(content);
+        assert!(
+            block.is_some(),
+            "Should recognize ObjC split-line as a diff candidate"
+        );
+        let block_str = block.unwrap();
+        assert!(block_str.contains("- (void)myMethod:(NSString *)arg"));
+        assert!(block_str.contains("// TODO: - Do something in ObjC"));
+        assert!(block_str.contains("NSLog(@\"End\");"));
+    }
+
+    /// Characterizes that extract_types recognizes class declarations as
+    /// candidates (via SWIFT_CLASS_RE), which marker_utils intentionally does NOT.
+    /// This documents the intentional divergence between the two implementations.
+    #[test]
+    fn test_class_recognized_as_candidate_divergence() {
+        let content = "\
+class MyEnclosingClass {\n\
+    let value = 42\n\
+    // TODO: - Implement feature\n\
+}";
+        let block = extract_enclosing_block_from_content(content);
+        assert!(
+            block.is_some(),
+            "extract_types should recognize class as a candidate"
+        );
+        let block_str = block.unwrap();
+        assert!(block_str.contains("class MyEnclosingClass {"));
+        assert!(block_str.contains("// TODO: - Implement feature"));
+    }
+
+    /// Characterizes that extract_types recognizes enum declarations as
+    /// candidates (via SWIFT_ENUM_RE), which marker_utils intentionally does NOT.
+    #[test]
+    fn test_enum_recognized_as_candidate_divergence() {
+        let content = "\
+enum MyState {\n\
+    case loading\n\
+    case loaded\n\
+    // TODO: - Add error case\n\
+}";
+        let block = extract_enclosing_block_from_content(content);
+        assert!(
+            block.is_some(),
+            "extract_types should recognize enum as a candidate"
+        );
+        let block_str = block.unwrap();
+        assert!(block_str.contains("enum MyState {"));
+        assert!(block_str.contains("// TODO: - Add error case"));
+    }
+
+    /// Cross-crate equivalence: for content with only function-level candidates,
+    /// both extract_types's extract_enclosing_block_from_content and
+    /// marker_utils's file-path-based extract_enclosing_block produce the same
+    /// output (when the file has markers and TODO is outside them).
+    #[test]
+    fn test_cross_crate_equivalence_for_function_candidates() {
+        let content = "\
+Some preamble\n\
+// v\n\
+Header content\n\
+// ^\n\
+func sharedFunction() {\n\
+    let x = 10;\n\
+    // TODO: - Cross-crate test\n\
+    let y = 20;\n\
+}";
+        let mut temp_file = NamedTempFile::new().unwrap();
+        write!(temp_file, "{}", content).unwrap();
+
+        let local_result = extract_enclosing_block_from_content(content);
+
+        let file_result =
+            substring_marker_snippet_extractor::utils::marker_utils::extract_enclosing_block(
+                temp_file.path().to_str().unwrap(),
+            );
+
+        assert_eq!(
+            local_result, file_result,
+            "Both implementations should produce identical output for function candidates"
+        );
+    }
+
+    /// Cross-crate divergence: for content with a class candidate, extract_types
+    /// finds the block but marker_utils does not (since it only matches functions).
+    #[test]
+    fn test_cross_crate_divergence_for_class_candidates() {
+        let content = "\
+Some preamble\n\
+// v\n\
+Header content\n\
+// ^\n\
+class MyWidget {\n\
+    var name: String\n\
+    // TODO: - Add initializer\n\
+}";
+        let mut temp_file = NamedTempFile::new().unwrap();
+        write!(temp_file, "{}", content).unwrap();
+
+        let local_result = extract_enclosing_block_from_content(content);
+
+        let file_result =
+            substring_marker_snippet_extractor::utils::marker_utils::extract_enclosing_block(
+                temp_file.path().to_str().unwrap(),
+            );
+
+        assert!(
+            local_result.is_some(),
+            "extract_types should find the class block"
+        );
+        assert!(
+            file_result.is_none(),
+            "marker_utils should NOT find a class-only candidate"
+        );
+    }
+}
