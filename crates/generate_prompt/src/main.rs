@@ -12,6 +12,13 @@ use get_git_root::get_git_root;
 
 mod clipboard;
 
+fn init_logging(verbose: bool) {
+    if verbose && env::var_os("RUST_LOG").is_none() {
+        env::set_var("RUST_LOG", "debug");
+    }
+    env_logger::init();
+}
+
 fn main() -> Result<()> {
     let matches = Command::new("generate_prompt")
         .version("0.1.0")
@@ -75,6 +82,9 @@ fn main() -> Result<()> {
         .collect();
     let diff_branch = matches.get_one::<String>("diff_with").cloned();
     let targeted = *matches.get_one::<bool>("tgtd").unwrap();
+    let verbose = *matches.get_one::<bool>("verbose").unwrap();
+
+    init_logging(verbose);
 
     let current_dir = env::current_dir().context("Failed to get current directory")?;
     println!("--------------------------------------------------");
@@ -108,6 +118,13 @@ fn main() -> Result<()> {
     println!("Found exactly one instruction in {}", file_path.display());
     println!("--------------------------------------------------");
 
+    if force_global {
+        println!("Force global enabled: using Git root for context");
+    }
+    if singular {
+        println!("Singular mode enabled: only including the TODO file");
+    }
+
     let output = prompt_generator::generate_prompt_with_options(
         &git_root,
         &file_path,
@@ -121,6 +138,21 @@ fn main() -> Result<()> {
         },
     )?;
 
+    println!("Search root: {}", output.search_root.display());
+    println!("Instruction content: {}", output.instruction_content);
+    println!("--------------------------------------------------");
+    if !output.types_found.is_empty() {
+        println!("Types found:");
+        for ty in &output.types_found {
+            println!("{}", ty);
+        }
+        println!("--------------------------------------------------");
+    }
+    println!("Files (final list):");
+    for file in &output.found_files {
+        let basename = file.file_name().unwrap_or_default().to_string_lossy();
+        println!("{}", basename);
+    }
     println!("--------------------------------------------------");
     println!("Success:\n");
     println!("{}", output.instruction_content);

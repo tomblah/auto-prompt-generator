@@ -8,6 +8,7 @@ substring_marker_snippet_extractor = { path = "../substring_marker_snippet_extra
 unescape_newlines = { path = "../unescape_newlines" }
 diff_with_branch = { path = "../diff_with_branch" }
 anyhow = { workspace = true }
+log = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

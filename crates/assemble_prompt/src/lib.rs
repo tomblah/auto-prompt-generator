@@ -6,6 +6,7 @@ pub use file_processor::{process_file_with_processor, DefaultFileProcessor, File
 
 use anyhow::Result;
 use diff_with_branch::run_diff_against;
+use log::warn;
 use std::fs;
 use std::path::{Path, PathBuf};
 use unescape_newlines::unescape_newlines;
@@ -72,10 +73,7 @@ where
 
     for file_path in found_files {
         if !file_path.exists() {
-            eprintln!(
-                "Warning: file {} does not exist, skipping",
-                file_path.display()
-            );
+            warn!("file {} does not exist, skipping", file_path.display());
             continue;
         }
         let display_path = file_path.display().to_string();
@@ -89,7 +87,7 @@ where
             match process_file_with_processor(processor, file_path, Some(todo_file_basename)) {
                 Ok(content) => content,
                 Err(err) => {
-                    eprintln!(
+                    warn!(
                         "Error processing {}: {}. Falling back to raw file contents.",
                         display_path, err
                     );
@@ -107,7 +105,7 @@ where
                 Ok(Some(diff)) => diff,
                 Ok(None) => String::new(),
                 Err(err) => {
-                    eprintln!("Error running diff on {}: {}", display_path, err);
+                    warn!("Error running diff on {}: {}", display_path, err);
                     String::new()
                 }
             };

@@ -17,7 +17,7 @@ mod integration_js {
             "function example() {}\n// TODO: - Fix the bug in JS code\nconsole.log('Hello');";
         fs::write(&file_path, content).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path(), false)
+        let result = find_prompt_instruction_in_dir(dir.path())
             .expect("Expected to find a JS file with a TODO marker");
         assert_eq!(result, file_path);
     }
@@ -41,7 +41,7 @@ mod integration_js {
         set_file_mtime(&file1, ft1).unwrap();
         set_file_mtime(&file2, ft2).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path(), false)
+        let result = find_prompt_instruction_in_dir(dir.path())
             .expect("Expected to choose the most recently modified JS file");
         assert_eq!(result, file2);
     }
@@ -54,7 +54,7 @@ mod integration_js {
         let content = "function example() {}\n// This file has no marker\n";
         fs::write(&file_path, content).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path(), false);
+        let result = find_prompt_instruction_in_dir(dir.path());
         assert!(
             result.is_err(),
             "Expected an error when no JS file contains the TODO marker"
@@ -69,7 +69,7 @@ mod integration_js {
         let content = "Some text\n// TODO: - This should be ignored in JS context\nMore text";
         fs::write(&file_path, content).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path(), false);
+        let result = find_prompt_instruction_in_dir(dir.path());
         assert!(
             result.is_err(),
             "Expected error because files with disallowed extensions should be ignored"
@@ -84,7 +84,7 @@ mod integration_js {
         let content = "function test() {}\n// TODO: - Verbose JS fix\n";
         fs::write(&file_path, content).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path(), true)
+        let result = find_prompt_instruction_in_dir(dir.path())
             .expect("Expected to find a JS file even with verbose enabled");
         assert_eq!(result, file_path);
     }

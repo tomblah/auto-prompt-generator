@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 clap = { workspace = true, features = ["derive"] } 
 anyhow = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
 generate_prompt_core = { path = "../generate_prompt_core" }
 get_git_root = { path = "../get_git_root" }
 unescape_newlines = { path = "../unescape_newlines" }
