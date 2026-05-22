@@ -374,14 +374,26 @@ name = "generate_prompt"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "assemble_prompt",
  "assert_cmd",
  "assert_fs",
  "clap",
+ "filetime",
+ "generate_prompt_core",
+ "get_git_root",
+ "predicates 2.1.5",
+ "tempfile",
+ "unescape_newlines",
+]
+
+[[package]]
+name = "generate_prompt_core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assemble_prompt",
  "extract_enclosing_type",
  "extract_instruction_content",
  "extract_types",
- "filetime",
  "find_definition_files",
  "find_prompt_instruction",
  "find_referencing_files",
@@ -389,10 +401,8 @@ dependencies = [
  "get_package_root",
  "get_search_roots",
  "post_processing",
- "predicates 2.1.5",
  "tempfile",
  "todo_marker",
- "unescape_newlines",
 ]
 
 [[package]]

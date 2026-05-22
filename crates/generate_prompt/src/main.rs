@@ -6,15 +6,11 @@ use std::env;
 use std::path::Path;
 use std::process::{Command as ProcessCommand, Stdio};
 
-// Library dependencies.
+use generate_prompt_core::instruction_locator;
+use generate_prompt_core::prompt_generator::{self, GeneratePromptOptions};
 use get_git_root::get_git_root;
 
 mod clipboard;
-mod file_selector;
-mod instruction_locator;
-mod prompt_generator;
-mod prompt_validation;
-mod search_root;
 
 fn main() -> Result<()> {
     let matches = Command::new("generate_prompt")
@@ -60,7 +56,6 @@ fn main() -> Result<()> {
                 .action(clap::ArgAction::SetTrue)
                 .default_value("false"),
         )
-        // New flag for targeted type extraction.
         .arg(
             Arg::new("tgtd")
                 .long("tgtd")
@@ -81,7 +76,6 @@ fn main() -> Result<()> {
     let diff_branch = matches.get_one::<String>("diff_with").cloned();
     let targeted = *matches.get_one::<bool>("tgtd").unwrap();
 
-    // 1. Save the current directory and determine the Git root.
     let current_dir = env::current_dir().context("Failed to get current directory")?;
     println!("--------------------------------------------------");
     println!("Current directory: {}", current_dir.display());
@@ -95,7 +89,6 @@ fn main() -> Result<()> {
     println!("Git root: {}", git_root);
     println!("--------------------------------------------------");
 
-    // 2. If a diff branch is specified, verify it exists.
     if let Some(diff_branch) = &diff_branch {
         let verify_status = ProcessCommand::new("git")
             .args(["rev-parse", "--verify", diff_branch])
@@ -108,20 +101,17 @@ fn main() -> Result<()> {
         }
     }
 
-    // 3. Change directory to the Git root.
     env::set_current_dir(&git_root).context("Failed to change directory to Git root")?;
 
-    // 4. Locate the instruction file.
     let file_path = instruction_locator::locate_instruction_file(Path::new(&git_root))
         .context("Failed to locate the instruction file")?;
     println!("Found exactly one instruction in {}", file_path.display());
     println!("--------------------------------------------------");
 
-    // 5. Delegate to the prompt generator module.
-    prompt_generator::generate_prompt_with_options(
+    let output = prompt_generator::generate_prompt_with_options(
         &git_root,
         &file_path,
-        &prompt_generator::GeneratePromptOptions {
+        &GeneratePromptOptions {
             singular,
             force_global,
             include_references,
@@ -130,6 +120,14 @@ fn main() -> Result<()> {
             targeted,
         },
     )?;
+
+    println!("--------------------------------------------------");
+    println!("Success:\n");
+    println!("{}", output.instruction_content);
+    println!("--------------------------------------------------\n");
+    println!("Prompt has been copied to clipboard.");
+
+    clipboard::copy_to_clipboard(&output.final_prompt)?;
 
     Ok(())
 }
