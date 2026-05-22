@@ -37,15 +37,10 @@ pub fn generate_prompt_with_options(
         ));
     }
 
-    // Determine package scope.
-    let base_dir = if options.force_global {
-        println!("Force global enabled: using Git root for context");
-        PathBuf::from(git_root)
-    } else {
-        PathBuf::from(git_root)
-    };
+    let base_dir = PathBuf::from(git_root);
 
     let search_root_path = if options.force_global {
+        println!("Force global enabled: using Git root for context");
         base_dir.clone()
     } else {
         search_root::determine_search_root(&base_dir, file_path)

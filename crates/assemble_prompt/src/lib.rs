@@ -6,7 +6,6 @@ pub use file_processor::{process_file_with_processor, DefaultFileProcessor, File
 
 use anyhow::Result;
 use diff_with_branch::run_diff_against;
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use unescape_newlines::unescape_newlines;
@@ -19,26 +18,11 @@ pub struct AssemblyOptions {
     pub diff_branch: Option<String>,
 }
 
-impl AssemblyOptions {
-    fn from_env() -> Self {
-        Self {
-            todo_file_basename: env::var("TODO_FILE_BASENAME").ok(),
-            diff_branch: env::var("DIFF_WITH_BRANCH").ok(),
-        }
-    }
-}
-
 /// Public API: assembles the final prompt from the found files and explicit options.
 ///
 /// Callers are responsible for sorting and deduplicating `found_files`.
 pub fn assemble_prompt(found_files: &[PathBuf], options: &AssemblyOptions) -> Result<String> {
     assemble_prompt_with_options(found_files, options)
-}
-
-/// Compatibility helper for callers that intentionally source assembly options from the process
-/// environment.
-pub fn assemble_prompt_from_env(found_files: &[PathBuf]) -> Result<String> {
-    assemble_prompt_with_options(found_files, &AssemblyOptions::from_env())
 }
 
 pub fn assemble_prompt_with_options(
@@ -58,14 +42,6 @@ impl DiffProvider for GitDiffProvider {
     fn diff_for_file(&self, file_path: &Path, branch: &str) -> Result<Option<String>> {
         run_diff_against(file_path, branch)
     }
-}
-
-#[cfg(test)]
-fn assemble_prompt_with_processor_from_env<P: FileProcessor>(
-    found_files: &[PathBuf],
-    processor: &P,
-) -> Result<String> {
-    assemble_prompt_with_processor_and_options(found_files, processor, &AssemblyOptions::from_env())
 }
 
 fn assemble_prompt_with_processor_and_options<P: FileProcessor>(
@@ -326,18 +302,19 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
             .expect("Failed to write JS file");
         let file_js_path = file_js.path().to_owned();
 
-        env::set_var(
-            "TODO_FILE_BASENAME",
-            file_js_path
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .to_string(),
-        );
+        let todo_basename = file_js_path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
 
         let found_files = vec![file_js_path.clone()];
+        let options = AssemblyOptions {
+            todo_file_basename: Some(todo_basename),
+            diff_branch: None,
+        };
 
-        let output = assemble_prompt_from_env(&found_files).expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, &options).expect("assemble_prompt failed");
 
         assert!(output.contains(&format!(
             "The contents of {} is as follows:",
@@ -347,8 +324,6 @@ Parse.Cloud.define(\"getDashboardData\", async (request) => {
         assert!(output.contains("// TODO: - helllo"));
         assert!(output.contains("// Enclosing function context:"));
         assert!(!output.contains("const someExampleConstant = 42;"));
-
-        env::remove_var("TODO_FILE_BASENAME");
     }
 
     #[test]
@@ -607,8 +582,12 @@ func outsideFunction() {
             return_value: "mock processed content".to_string(),
         };
 
-        let output = assemble_prompt_with_processor_from_env(&found_files, &mock_processor)
-            .expect("assemble_prompt_with_processor failed with mock processor");
+        let output = assemble_prompt_with_processor_and_options(
+            &found_files,
+            &mock_processor,
+            &AssemblyOptions::default(),
+        )
+        .expect("assemble_prompt_with_processor failed with mock processor");
         assert!(
             output.contains("mock processed content"),
             "Output should include the mock content"
@@ -616,20 +595,24 @@ func outsideFunction() {
     }
 
     #[test]
-    fn test_env_todo_file_basename_is_passed_to_processor() {
+    fn test_todo_file_basename_is_passed_to_processor() {
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, "raw content").unwrap();
         let found_files = vec![file.path().to_path_buf()];
 
-        env::set_var("TODO_FILE_BASENAME", "Instruction.swift");
+        let options = AssemblyOptions {
+            todo_file_basename: Some("Instruction.swift".to_string()),
+            diff_branch: None,
+        };
 
-        let output =
-            assemble_prompt_with_processor_from_env(&found_files, &TodoBasenameEchoProcessor)
-                .expect("assemble_prompt_with_processor failed with echo processor");
+        let output = assemble_prompt_with_processor_and_options(
+            &found_files,
+            &TodoBasenameEchoProcessor,
+            &options,
+        )
+        .expect("assemble_prompt_with_processor failed with echo processor");
 
         assert!(output.contains("todo basename: Instruction.swift"));
-
-        env::remove_var("TODO_FILE_BASENAME");
     }
 
     #[test]
@@ -706,14 +689,13 @@ func outsideFunction() {
     }
 
     #[test]
-    fn test_diff_output_requires_diff_with_branch_env() {
+    fn test_no_diff_output_when_diff_branch_is_none() {
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, "class NoDiff {{}}").unwrap();
         let found_files = vec![file.path().to_path_buf()];
 
-        env::remove_var("DIFF_WITH_BRANCH");
-
-        let output = assemble_prompt_from_env(&found_files).expect("assemble_prompt failed");
+        let output = assemble_prompt(&found_files, &AssemblyOptions::default())
+            .expect("assemble_prompt failed");
 
         assert!(!output.contains("The diff for"));
         assert!(!output.contains("against branch"));
@@ -727,8 +709,12 @@ func outsideFunction() {
 
         let failing_processor = FailingMockProcessor;
 
-        let output = assemble_prompt_with_processor_from_env(&found_files, &failing_processor)
-            .expect("assemble_prompt_with_processor failed with failing processor");
+        let output = assemble_prompt_with_processor_and_options(
+            &found_files,
+            &failing_processor,
+            &AssemblyOptions::default(),
+        )
+        .expect("assemble_prompt_with_processor failed with failing processor");
         assert!(
             output.contains("fallback content"),
             "Output should fallback to raw file content"
@@ -737,27 +723,25 @@ func outsideFunction() {
 }
 
 #[cfg(test)]
-mod env_var_characterization_tests {
+mod explicit_options_tests {
     use super::*;
-    use std::env;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
-    /// Characterization: `assemble_prompt_from_env` reads `TODO_FILE_BASENAME` from the
-    /// environment. This behavior is being removed in favor of explicit `AssemblyOptions`.
+    /// Verifies that explicit AssemblyOptions with todo_file_basename works correctly
+    /// (replacement for env-var-driven path).
     #[test]
-    fn characterize_from_env_reads_todo_file_basename() {
+    fn test_explicit_todo_file_basename_assembles_content() {
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, "class Dummy {{}}").unwrap();
         let found_files = vec![file.path().to_path_buf()];
 
-        env::set_var("TODO_FILE_BASENAME", "FromEnv.swift");
-        env::remove_var("DIFF_WITH_BRANCH");
+        let options = AssemblyOptions {
+            todo_file_basename: Some("FromExplicit.swift".to_string()),
+            diff_branch: None,
+        };
 
-        let output =
-            assemble_prompt_from_env(&found_files).expect("assemble_prompt_from_env failed");
-
-        env::remove_var("TODO_FILE_BASENAME");
+        let output = assemble_prompt(&found_files, &options).expect("assemble_prompt failed");
 
         assert!(
             output.contains("class Dummy"),
@@ -765,35 +749,27 @@ mod env_var_characterization_tests {
         );
     }
 
-    /// Characterization: `assemble_prompt_from_env` reads `DIFF_WITH_BRANCH` from the
-    /// environment. When unset, no diff section is included (unlike `diff_with_branch::run_diff`
-    /// which falls back to "main"). This inconsistency is being removed.
+    /// Verifies that AssemblyOptions::default() means no diff section
+    /// (replacement for env-var absence semantics).
     #[test]
-    fn characterize_from_env_reads_diff_with_branch() {
+    fn test_default_options_means_no_diff() {
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, "class NoDiff {{}}").unwrap();
         let found_files = vec![file.path().to_path_buf()];
 
-        env::remove_var("DIFF_WITH_BRANCH");
-        env::remove_var("TODO_FILE_BASENAME");
-
-        let output =
-            assemble_prompt_from_env(&found_files).expect("assemble_prompt_from_env failed");
+        let output = assemble_prompt(&found_files, &AssemblyOptions::default())
+            .expect("assemble_prompt failed");
 
         assert!(
             !output.contains("The diff for"),
-            "No diff section when DIFF_WITH_BRANCH is unset"
+            "No diff section with default options"
         );
     }
 
-    /// Characterization: `AssemblyOptions::from_env` treats absent `DIFF_WITH_BRANCH` as None
-    /// (no diff), while `diff_with_branch::run_diff` treats it as "compare against main".
+    /// Verifies that AssemblyOptions::default() has None for both fields.
     #[test]
-    fn characterize_from_env_absent_means_no_diff() {
-        env::remove_var("DIFF_WITH_BRANCH");
-        env::remove_var("TODO_FILE_BASENAME");
-
-        let opts = AssemblyOptions::from_env();
+    fn test_default_options_fields_are_none() {
+        let opts = AssemblyOptions::default();
         assert!(opts.diff_branch.is_none());
         assert!(opts.todo_file_basename.is_none());
     }

@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 ///
 /// A `Result` with the path to the instruction file as a `PathBuf` on success.
 pub fn locate_instruction_file(search_dir: &Path) -> Result<PathBuf> {
+    // Test seam: GET_INSTRUCTION_FILE overrides file discovery for integration tests.
     if let Ok(instruction_override) = env::var("GET_INSTRUCTION_FILE") {
         Ok(PathBuf::from(instruction_override))
     } else {
