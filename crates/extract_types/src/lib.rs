@@ -11,9 +11,8 @@ use std::path::Path;
 use lang_support::for_extension;
 use substring_marker_snippet_extractor::{
     extract_enclosing_block_from_content, file_uses_markers, filter_substring_markers,
-    is_todo_inside_markers,
 };
-use todo_marker::{TODO_MARKER, TODO_MARKER_WS};
+use todo_marker::{is_todo_inside_markers, TODO_MARKER, TODO_MARKER_WS};
 
 /// ---------------------------------------------------------------------------
 ///  Regexes for type-level candidate detection (class/enum)

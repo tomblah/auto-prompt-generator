@@ -9,8 +9,6 @@ use regex::Regex;
 use std::fs;
 use std::path::Path;
 
-use todo_marker::TODO_MARKER_WS;
-
 // ---------------------------------------------------------------------------
 //  Public API – marker filtering
 // ---------------------------------------------------------------------------
@@ -72,32 +70,7 @@ pub fn file_uses_markers(content: &str) -> bool {
     has_open && has_close
 }
 
-/// Zero‑based index of the first line that contains the *workspace‑wide*
-/// TODO marker (`// TODO: - `).  `None` if not present.
-pub fn todo_index(content: &str) -> Option<usize> {
-    content
-        .lines()
-        .position(|line| line.contains(TODO_MARKER_WS))
-}
-
-/// Returns `true` if the TODO marker already lives *inside* an active
-/// substring‑marker block.
-pub fn is_todo_inside_markers(content: &str, todo_idx: usize) -> bool {
-    let lines: Vec<&str> = content.lines().collect();
-    let mut marker_depth = 0;
-    for (i, line) in lines.iter().enumerate() {
-        let trimmed = line.trim();
-        if trimmed == "// v" {
-            marker_depth += 1;
-        } else if trimmed == "// ^" && marker_depth > 0 {
-            marker_depth -= 1;
-        }
-        if i == todo_idx {
-            break;
-        }
-    }
-    marker_depth > 0
-}
+use todo_marker::{is_todo_inside_markers, todo_index};
 
 /// ---------------------------------------------------------------------------
 ///  Candidate‑line regexes (same set used elsewhere)
@@ -238,45 +211,6 @@ Line after";
     fn test_file_uses_markers_false() {
         let content = "Some text\n// v\nmarker content\nMore text";
         assert!(!file_uses_markers(content));
-    }
-
-    #[test]
-    fn test_todo_index() {
-        let content = "Line1\nLine2 // TODO: - Fix issue\nLine3";
-        let idx = todo_index(content);
-        assert!(idx.is_some());
-        let lines: Vec<&str> = content.lines().collect();
-        let index = idx.unwrap();
-        assert!(lines[index].contains("// TODO: -"));
-    }
-
-    #[test]
-    fn test_is_todo_inside_markers_true() {
-        let content = "\
-Line1
-// v
-// TODO: - inside markers
-// ^
-Line after";
-        // TODO is on line 2 (0-indexed)
-        let idx = todo_index(content).unwrap();
-        let result = is_todo_inside_markers(content, idx);
-        assert!(result);
-    }
-
-    #[test]
-    fn test_is_todo_inside_markers_false() {
-        let content = "\
-Line1
-// TODO: - outside markers
-// v
-Marker start
-// ^
-More text";
-        // TODO is on line 1 (0-indexed)
-        let idx = todo_index(content).unwrap();
-        let result = is_todo_inside_markers(content, idx);
-        assert!(!result);
     }
 
     #[test]
