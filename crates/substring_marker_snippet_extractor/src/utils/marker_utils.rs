@@ -134,16 +134,20 @@ fn is_candidate_line(line: &str) -> bool {
 //  Extract the enclosing block around the TODO marker
 // ---------------------------------------------------------------------------
 
-pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
-    let content = fs::read_to_string(file_path).ok()?;
-    if !file_uses_markers(&content) {
-        return None;
-    }
-
-    let todo_idx = todo_index(&content)?;
-    if is_todo_inside_markers(&content, todo_idx) {
-        return None;
-    }
+/// Extracts the enclosing block around the TODO marker from file content.
+///
+/// Scans lines before the TODO marker for the last candidate line (function,
+/// cloud function, ObjC method, or diff-candidate heuristic). An optional
+/// `additional_candidate` predicate allows callers to extend which lines count
+/// as candidates (e.g. class/enum declarations for type extraction).
+///
+/// Returns the brace-delimited block starting from that candidate, or `None`
+/// if no candidate is found.
+pub fn extract_enclosing_block_from_content(
+    content: &str,
+    additional_candidate: Option<&dyn Fn(&str) -> bool>,
+) -> Option<String> {
+    let todo_idx = todo_index(content)?;
 
     let lines: Vec<&str> = content.lines().collect();
     let mut candidate_index = None;
@@ -153,7 +157,8 @@ pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
             || line.trim_start().starts_with('+'))
             && i + 1 < todo_idx
             && lines[i + 1].contains('{');
-        if is_candidate_line(line) || diff_candidate {
+        let extra_match = additional_candidate.as_ref().is_some_and(|pred| pred(line));
+        if is_candidate_line(line) || diff_candidate || extra_match {
             candidate_index = Some(i);
         }
     }
@@ -182,6 +187,22 @@ pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
     }
 
     Some(extracted_lines.join("\n"))
+}
+
+/// File-path-based wrapper: reads the file, checks marker/TODO gating, then
+/// delegates to `extract_enclosing_block_from_content`.
+pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
+    let content = fs::read_to_string(file_path).ok()?;
+    if !file_uses_markers(&content) {
+        return None;
+    }
+
+    let todo_idx = todo_index(&content)?;
+    if is_todo_inside_markers(&content, todo_idx) {
+        return None;
+    }
+
+    extract_enclosing_block_from_content(&content, None)
 }
 
 #[cfg(test)]

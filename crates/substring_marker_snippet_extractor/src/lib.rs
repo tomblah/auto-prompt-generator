@@ -24,5 +24,6 @@ pub mod utils;
 
 pub use processor::{process_file_with_processor, DefaultFileProcessor, FileProcessor};
 pub use utils::marker_utils::{
-    file_uses_markers, filter_substring_markers, is_todo_inside_markers,
+    extract_enclosing_block_from_content, file_uses_markers, filter_substring_markers,
+    is_todo_inside_markers,
 };
