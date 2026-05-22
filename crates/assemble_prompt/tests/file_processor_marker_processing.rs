@@ -1,10 +1,9 @@
-// crates/substring_marker_snippet_extractor/tests/public_marker_processing.rs
+// crates/assemble_prompt/tests/file_processor_marker_processing.rs
 
 use std::io::Write;
 
-use substring_marker_snippet_extractor::{
-    filter_substring_markers, process_file_with_processor, DefaultFileProcessor,
-};
+use assemble_prompt::{process_file_with_processor, DefaultFileProcessor};
+use substring_marker_snippet_extractor::filter_substring_markers;
 use tempfile::NamedTempFile;
 
 #[test]

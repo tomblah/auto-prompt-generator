@@ -1,10 +1,10 @@
-// crates/substring_marker_snippet_extractor/src/processor/file_processor.rs
+// crates/assemble_prompt/src/file_processor.rs
 
 use anyhow::Result;
 use std::fs;
 use std::path::Path;
 
-use crate::utils::marker_utils::{
+use substring_marker_snippet_extractor::{
     extract_enclosing_block, file_uses_markers, filter_substring_markers,
 };
 
@@ -21,7 +21,6 @@ impl FileProcessor for DefaultFileProcessor {
     fn process_file(&self, file_path: &Path, todo_file_basename: Option<&str>) -> Result<String> {
         let file_content = fs::read_to_string(file_path)?;
 
-        // Use marker filtering if markers are present.
         let processed_content = if file_content.lines().any(|line| line.trim() == "// v") {
             filter_substring_markers(&file_content, "// ...")
         } else {
@@ -31,7 +30,6 @@ impl FileProcessor for DefaultFileProcessor {
         let file_basename = file_path.file_name().and_then(|s| s.to_str()).unwrap_or("");
         let mut combined_content = processed_content;
 
-        // Append the enclosing context if markers are used and the basename matches.
         if file_uses_markers(&file_content) {
             if let Some(expected_basename) = todo_file_basename {
                 if file_basename == expected_basename {
@@ -78,7 +76,6 @@ mod tests {
 
     #[test]
     fn test_default_processor_success() {
-        // When there are no markers, the processor should simply return the raw content.
         let raw_content = "fn main() {\n    println!(\"Hello, world!\");\n}\n";
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "{}", raw_content).unwrap();
@@ -102,9 +99,6 @@ mod tests {
 
     #[test]
     fn test_default_processor_with_markers() {
-        // Create a temporary file with a candidate declaration (using Swift syntax),
-        // markers, and a TODO. Using `concat!` ensures that the literal is not affected
-        // by source code indentation.
         let content = concat!(
             "Some preamble text\n",
             "func myFunction() {\n",
@@ -117,18 +111,12 @@ mod tests {
             "Trailing text\n",
             "// TODO: - Do something"
         );
-        // Expected behavior:
-        // 1. The marker filtering produces the following output:
         let expected_filtered = "\n\n// ...\n\nignored text\n\n\n// ...\n\n\n\n";
-        // 2. The extract_enclosing_block function should extract the candidate declaration
-        //    exactly as it appears in the file:
         let expected_context = "func myFunction() {\nlet x = 10;\n}";
-        // 3. The processor appends the context, prefixed by the header.
         let expected_context_appended =
             format!("// Enclosing function context:\n{}", expected_context);
         let expected = format!("{}{}", expected_filtered, expected_context_appended);
 
-        // Create an isolated temporary file for this test.
         let mut temp_file = tempfile::NamedTempFile::new().unwrap();
         use std::io::Write;
         write!(temp_file, "{}", content).unwrap();

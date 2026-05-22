@@ -3,27 +3,19 @@
 /*!
 # substring_marker_snippet_extractor
 
-This crate provides functionality for extracting and processing code snippets
-from source files based on substring markers. It includes:
+Marker-filtering and enclosing-block extraction for the prompt-generation
+pipeline. Substring markers (`// v` … `// ^`) delimit the region of a source
+file that should be included in a prompt, and the enclosing-block helpers find
+the surrounding function/class/enum for additional context.
 
-- **Marker Utilities:** Functions to filter content between markers, determine if
-  markers are used, locate TODO markers, and extract enclosing code blocks.
-- **File Processing:** A trait-based API for processing files with a default
-  implementation that uses the marker utilities.
-
-The crate is organized into two primary modules:
-- `utils::marker_utils`: Contains helper functions for handling marker-related logic.
-- `processor`: Defines the `FileProcessor` trait and provides a default implementation.
-
-This modular design facilitates reuse of common marker processing logic and
-encourages a clear separation of concerns.
+The `FileProcessor` trait and its default implementation have moved to the
+`assemble_prompt` crate (their sole consumer). TODO-position analysis helpers
+(`todo_index`, `is_todo_inside_markers`) now live in the `todo_marker` crate.
 */
 
-pub mod processor;
 pub mod utils;
 
-pub use processor::{process_file_with_processor, DefaultFileProcessor, FileProcessor};
 pub use utils::marker_utils::{
-    extract_enclosing_block_from_content, file_uses_markers, filter_substring_markers,
-    is_todo_inside_markers,
+    extract_enclosing_block, extract_enclosing_block_from_content, file_uses_markers,
+    filter_substring_markers,
 };

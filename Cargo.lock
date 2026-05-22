@@ -75,6 +75,7 @@ dependencies = [
  "assert_cmd",
  "diff_with_branch",
  "predicates 2.1.5",
+ "rand",
  "substring_marker_snippet_extractor",
  "tempfile",
  "unescape_newlines",
@@ -855,7 +856,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "once_cell",
- "rand",
  "regex",
  "tempfile",
  "todo_marker",

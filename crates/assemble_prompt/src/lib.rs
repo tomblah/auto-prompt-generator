@@ -1,13 +1,14 @@
 // crates/assemble_prompt/src/lib.rs
 
+mod file_processor;
+
+pub use file_processor::{process_file_with_processor, DefaultFileProcessor, FileProcessor};
+
 use anyhow::Result;
 use diff_with_branch::run_diff_against;
 use std::env;
 use std::fs;
 use std::path::Path;
-use substring_marker_snippet_extractor::{
-    process_file_with_processor, DefaultFileProcessor, FileProcessor,
-};
 use unescape_newlines::unescape_newlines;
 
 const FIXED_INSTRUCTION: &str = "Can you do the TODO:- in the above code? But ignoring all FIXMEs and other TODOs...i.e. only do the one and only one TODO that is marked by \"// TODO: - \", i.e. ignore things like \"// TODO: example\" because it doesn't have the hyphen";
