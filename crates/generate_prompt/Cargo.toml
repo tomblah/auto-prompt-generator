@@ -6,19 +6,9 @@ edition = "2021"
 [dependencies]
 clap = { workspace = true, features = ["derive"] } 
 anyhow = { workspace = true }
-get_package_root = { path = "../get_package_root" }
-extract_instruction_content = { path = "../extract_instruction_content" }
-get_search_roots = { path = "../get_search_roots" }
+generate_prompt_core = { path = "../generate_prompt_core" }
 get_git_root = { path = "../get_git_root" }
-find_prompt_instruction = { path = "../find_prompt_instruction" }
-extract_types = { path = "../extract_types" }
 unescape_newlines = { path = "../unescape_newlines" }
-extract_enclosing_type = { path = "../extract_enclosing_type" }
-find_referencing_files = { path = "../find_referencing_files" }
-assemble_prompt = { path = "../assemble_prompt" }
-find_definition_files = { path = "../find_definition_files" }
-post_processing = { path = "../post_processing" }
-todo_marker = { path = "../todo_marker" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

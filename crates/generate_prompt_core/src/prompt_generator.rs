@@ -1,4 +1,4 @@
-// crates/generate_prompt/src/prompt_generator.rs
+// crates/generate_prompt_core/src/prompt_generator.rs
 
 use anyhow::{anyhow, Context, Result};
 use std::path::{Path, PathBuf};
@@ -17,11 +17,19 @@ pub struct GeneratePromptOptions {
     pub targeted: bool,
 }
 
+#[derive(Debug)]
+pub struct GeneratePromptOutput {
+    pub final_prompt: String,
+    pub instruction_content: String,
+    pub search_root: PathBuf,
+    pub found_files: Vec<PathBuf>,
+}
+
 pub fn generate_prompt_with_options(
     git_root: &str,
     file_path: &Path,
     options: &GeneratePromptOptions,
-) -> Result<()> {
+) -> Result<GeneratePromptOutput> {
     let todo_file_basename = file_path
         .file_name()
         .and_then(|s| s.to_str())
@@ -30,7 +38,6 @@ pub fn generate_prompt_with_options(
 
     let file_path_str = file_path.to_string_lossy();
 
-    // Check file type compatibility.
     if options.include_references && !file_path_str.ends_with(".swift") {
         return Err(anyhow!(
             "--include-references is only supported for Swift files"
@@ -47,13 +54,11 @@ pub fn generate_prompt_with_options(
     };
     println!("Search root: {}", search_root_path.display());
 
-    // Extract the instruction content.
     let instruction_content =
         extract_instruction_content(file_path).context("Failed to extract instruction content")?;
     println!("Instruction content: {}", instruction_content.trim());
     println!("--------------------------------------------------");
 
-    // Determine the list of files to include.
     let found_files = file_selector::determine_files_to_include_with_options(
         file_path,
         options.singular,
@@ -65,7 +70,6 @@ pub fn generate_prompt_with_options(
         },
     )?;
 
-    // Assemble the final prompt.
     let assembly_options = assemble_prompt::AssemblyOptions {
         todo_file_basename: Some(todo_file_basename),
         diff_branch: options.diff_branch.clone(),
@@ -76,7 +80,6 @@ pub fn generate_prompt_with_options(
 
     let diff_enabled = options.diff_branch.is_some();
 
-    // Post-process the prompt.
     let final_prompt = post_processing::scrub_extra_todo_markers(
         &assembled_prompt,
         diff_enabled,
@@ -85,30 +88,23 @@ pub fn generate_prompt_with_options(
 
     crate::prompt_validation::validate_marker_count(&final_prompt, diff_enabled)?;
 
-    println!("--------------------------------------------------");
-    println!("Success:\n");
-    println!("{}", instruction_content.trim());
-    println!("--------------------------------------------------\n");
-    println!("Prompt has been copied to clipboard.");
-
-    // Copy the final prompt to the clipboard.
-    crate::clipboard::copy_to_clipboard(&final_prompt)?;
-
-    Ok(())
+    Ok(GeneratePromptOutput {
+        final_prompt,
+        instruction_content: instruction_content.trim().to_string(),
+        search_root: search_root_path,
+        found_files,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::env;
-    use std::fs::{self, File};
+    use std::fs::File;
     use std::io::Write;
-    #[cfg(unix)]
-    use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
     use tempfile::tempdir;
 
-    /// Helper to write a file with the given contents.
     fn write_temp_file(dir: &Path, filename: &str, contents: &str) -> PathBuf {
         let file_path = dir.join(filename);
         let mut file = File::create(&file_path).expect("Failed to create temp file");
@@ -121,30 +117,9 @@ mod tests {
     #[cfg(unix)]
     fn test_generate_prompt_with_options_targeted_ignores_env() {
         env::remove_var("TARGETED");
-        let original_path = env::var("PATH").unwrap_or_default();
-        let original_disable_pbcopy = env::var("DISABLE_PBCOPY").ok();
 
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let git_root = temp_dir.path().to_str().unwrap();
-        let clipboard_file = temp_dir.path().join("clipboard.txt");
-        let fake_pbcopy_path = temp_dir.path().join("pbcopy");
-        fs::write(
-            &fake_pbcopy_path,
-            format!("#!/bin/sh\ncat > \"{}\"\n", clipboard_file.display()),
-        )
-        .expect("Failed to write fake pbcopy");
-        let mut perms = fs::metadata(&fake_pbcopy_path)
-            .expect("Failed to read fake pbcopy metadata")
-            .permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&fake_pbcopy_path, perms)
-            .expect("Failed to make fake pbcopy executable");
-
-        env::set_var(
-            "PATH",
-            format!("{}:{}", temp_dir.path().display(), original_path),
-        );
-        env::remove_var("DISABLE_PBCOPY");
 
         let instruction_file = write_temp_file(
             temp_dir.path(),
@@ -157,7 +132,7 @@ func testFunction() {
 }
 "#,
         );
-        let outer_def_path = write_temp_file(
+        let _outer_def_path = write_temp_file(
             temp_dir.path(),
             "OuterDefinition.swift",
             "class OuterType {}\n",
@@ -181,42 +156,27 @@ func testFunction() {
             },
         );
 
-        env::set_var("PATH", original_path);
-        if let Some(value) = original_disable_pbcopy {
-            env::set_var("DISABLE_PBCOPY", value);
-        } else {
-            env::remove_var("DISABLE_PBCOPY");
-        }
-
         assert!(
             result.is_ok(),
             "Expected explicit targeted prompt generation"
         );
-        let clipboard_content =
-            fs::read_to_string(&clipboard_file).expect("Failed to read fake clipboard");
-        assert!(clipboard_content
+        let output = result.unwrap();
+        assert!(output
+            .final_prompt
             .contains(inner_def_path.file_name().and_then(|s| s.to_str()).unwrap()));
-        assert!(!clipboard_content
-            .contains(outer_def_path.file_name().and_then(|s| s.to_str()).unwrap()));
     }
 
-    /// Test that generate_prompt succeeds in singular mode with a non‑Swift (e.g. .txt) instruction file.
     #[test]
     fn test_generate_prompt_singular_success() {
-        // Create a temporary directory to simulate the Git root.
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let git_root = temp_dir.path().to_str().unwrap();
 
-        // Create a dummy instruction file with a .txt extension that includes a valid TODO marker.
         let file_content = r#"
 // Some initial code
 // TODO: - Test instruction
 // Some more code
 "#;
         let instruction_file = write_temp_file(temp_dir.path(), "instruction.txt", file_content);
-
-        // Set an environment variable to disable clipboard copying.
-        env::set_var("DISABLE_PBCOPY", "1");
 
         let result = generate_prompt_with_options(
             git_root,
@@ -236,22 +196,16 @@ func testFunction() {
         );
     }
 
-    /// Test that generate_prompt succeeds in non‑singular mode for a Swift instruction file when include_references is enabled.
     #[test]
     fn test_generate_prompt_include_references_success() {
-        // Create a temporary directory to simulate the Git root.
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let git_root = temp_dir.path().to_str().unwrap();
 
-        // Create a dummy Swift instruction file that includes a type declaration and a valid TODO marker.
         let file_content = r#"
 class Dummy {}
 // TODO: - Test instruction
 "#;
         let instruction_file = write_temp_file(temp_dir.path(), "instruction.swift", file_content);
-
-        // Disable clipboard copying.
-        env::set_var("DISABLE_PBCOPY", "1");
 
         let result = generate_prompt_with_options(
             git_root,
@@ -271,7 +225,6 @@ class Dummy {}
         );
     }
 
-    /// Regression test for the desired library behavior: unsupported reference lookup should return an error.
     #[test]
     fn test_generate_prompt_include_references_non_swift_returns_error() {
         let temp_dir = tempdir().expect("Failed to create temp dir");
@@ -302,22 +255,16 @@ class Dummy {}
         );
     }
 
-    /// Test that generate_prompt behaves correctly in force global mode.
     #[test]
     fn test_generate_prompt_force_global() {
-        // Create a temporary directory to simulate the Git root.
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let git_root = temp_dir.path().to_str().unwrap();
 
-        // Create a dummy instruction file.
         let file_content = r#"
 // Some code
 // TODO: - Force global test
 "#;
         let instruction_file = write_temp_file(temp_dir.path(), "instruction.txt", file_content);
-
-        // Disable clipboard copying.
-        env::set_var("DISABLE_PBCOPY", "1");
 
         let result = generate_prompt_with_options(
             git_root,
@@ -337,22 +284,16 @@ class Dummy {}
         );
     }
 
-    /// Test that a JavaScript file triggers the warning but still succeeds.
     #[test]
     fn test_generate_prompt_js_warning() {
-        // Create a temporary directory to simulate the Git root.
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let git_root = temp_dir.path().to_str().unwrap();
 
-        // Create a dummy JavaScript instruction file.
         let file_content = r#"
 // Some JS code
 // TODO: - JS Test instruction
 "#;
         let instruction_file = write_temp_file(temp_dir.path(), "instruction.js", file_content);
-
-        // Disable clipboard copying.
-        env::set_var("DISABLE_PBCOPY", "1");
 
         let result = generate_prompt_with_options(
             git_root,

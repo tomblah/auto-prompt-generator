@@ -1,4 +1,4 @@
-// crates/generate_prompt/src/prompt_validation.rs
+// crates/generate_prompt_core/src/prompt_validation.rs
 
 use anyhow::{anyhow, Result};
 use todo_marker::TODO_MARKER;

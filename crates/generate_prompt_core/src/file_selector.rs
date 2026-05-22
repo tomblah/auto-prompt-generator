@@ -1,4 +1,4 @@
-// crates/generate_prompt/src/file_selector.rs
+// crates/generate_prompt_core/src/file_selector.rs
 
 use anyhow::Result;
 use extract_enclosing_type::extract_enclosing_type;

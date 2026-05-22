@@ -15,6 +15,7 @@ members = [
     "crates/assemble_prompt",
     "crates/post_processing",
     "crates/generate_prompt",
+    "crates/generate_prompt_core",
     "crates/todo_marker",
     "crates/lang_support"
     ]
