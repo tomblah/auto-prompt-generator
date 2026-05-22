@@ -16,18 +16,10 @@ pub struct DefinitionFinder {
 }
 
 impl DefinitionFinder {
-    /// Build from the newline‑separated `types_content`
-    pub fn new_from_str(types_content: &str, root: &Path) -> Result<Self> {
-        let types: Vec<String> = types_content
-            .lines()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(String::from)
-            .collect();
-
+    pub fn new(types: &BTreeSet<String>, root: &Path) -> Result<Self> {
         let search_roots = get_search_roots(root)?;
         Ok(Self {
-            types,
+            types: types.iter().cloned().collect(),
             search_roots,
         })
     }
@@ -52,11 +44,11 @@ impl DefinitionFinder {
 }
 
 /// Public API
-pub fn find_definition_files(types_content: &str, root: &Path) -> Result<BTreeSet<PathBuf>> {
-    if types_content.trim().is_empty() {
+pub fn find_definition_files(types: &BTreeSet<String>, root: &Path) -> Result<BTreeSet<PathBuf>> {
+    if types.is_empty() {
         return Ok(BTreeSet::new());
     }
-    let finder = DefinitionFinder::new_from_str(types_content, root)?;
+    let finder = DefinitionFinder::new(types, root)?;
     Ok(finder.find_files())
 }
 
@@ -66,15 +58,17 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
+    fn types(items: &[&str]) -> BTreeSet<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
     #[test]
     fn test_get_search_roots_when_root_is_package() {
         let dir = tempdir().unwrap();
-        // Create a Package.swift file in the temporary directory.
         let package_path = dir.path().join("Package.swift");
         fs::write(&package_path, "swift package content").unwrap();
 
         let roots = get_search_roots(dir.path()).unwrap();
-        // When the root is a Swift package, get_search_roots should return only the root.
         assert_eq!(roots.len(), 1);
         assert_eq!(roots[0], dir.path());
     }
@@ -84,15 +78,9 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        // Create a types file containing a type name.
-        let types_file_path = root.join("types.txt");
-        fs::write(&types_file_path, "MyType\n").unwrap();
-
-        // Create a file that contains a valid definition: "class MyType" (Swift file).
         let good_file_path = root.join("good.swift");
         fs::write(&good_file_path, "import Foundation\nclass MyType {}\n").unwrap();
 
-        // Create a file that does not contain any matching definition.
         let bad_file_path = root.join("bad.swift");
         fs::write(
             &bad_file_path,
@@ -100,16 +88,13 @@ mod tests {
         )
         .unwrap();
 
-        // Create a file inside an excluded directory ("Pods").
         let excluded_dir = root.join("Pods");
         fs::create_dir_all(&excluded_dir).unwrap();
         let excluded_file_path = excluded_dir.join("excluded.swift");
         fs::write(&excluded_file_path, "class MyType {}\n").unwrap();
 
-        let types_content = fs::read_to_string(&types_file_path).unwrap();
-        let found = find_definition_files(types_content.as_str(), root).expect("Should succeed");
+        let found = find_definition_files(&types(&["MyType"]), root).expect("Should succeed");
 
-        // Only the good_file should be detected.
         assert!(found.contains(&good_file_path));
         assert!(!found.contains(&bad_file_path));
         assert!(!found.contains(&excluded_file_path));
@@ -120,27 +105,19 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        // Create a Swift file in a normal directory.
         let sources_dir = root.join("Sources");
         fs::create_dir_all(&sources_dir).unwrap();
         let normal_file = sources_dir.join("MyType.swift");
         fs::write(&normal_file, "class MyType {}\n").unwrap();
 
-        // Create a Swift file in a .build directory.
         let build_dir = root.join(".build/somepath");
         fs::create_dir_all(&build_dir).unwrap();
         let build_file = build_dir.join("MyType.swift");
         fs::write(&build_file, "class MyType {}\n").unwrap();
 
-        // Create a types file listing the type "MyType".
-        let types_file = root.join("types.txt");
-        fs::write(&types_file, "MyType\n").unwrap();
+        let found =
+            find_definition_files(&types(&["MyType"]), root).expect("find_definition_files failed");
 
-        let types_content = fs::read_to_string(&types_file).unwrap();
-        let found = find_definition_files(types_content.as_str(), root)
-            .expect("find_definition_files failed");
-
-        // The result should include the file in Sources but not the one in .build.
         assert!(found.contains(&normal_file));
         assert!(!found.contains(&build_file));
     }
@@ -150,35 +127,24 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        // Create a directory "Combined" with multiple files.
         let combined_dir = root.join("Combined");
         fs::create_dir_all(&combined_dir).unwrap();
 
-        // File with both TypeOne and TypeTwo definitions.
         let both_file = combined_dir.join("BothTypes.swift");
         fs::write(&both_file, "class TypeOne {}\nstruct TypeTwo {}\n").unwrap();
 
-        // File with only TypeOne definition.
         let only_file = combined_dir.join("OnlyTypeOne.swift");
         fs::write(&only_file, "enum TypeOne {}\n").unwrap();
 
-        // File with an unrelated definition.
         let other_file = combined_dir.join("Other.swift");
         fs::write(&other_file, "protocol OtherType {}\n").unwrap();
 
-        // Create a types file with both TypeOne and TypeTwo.
-        let types_file = combined_dir.join("new_types.txt");
-        fs::write(&types_file, "TypeOne\nTypeTwo\n").unwrap();
-
-        let types_content = fs::read_to_string(&types_file).unwrap();
-        let found = find_definition_files(types_content.as_str(), &combined_dir)
+        let found = find_definition_files(&types(&["TypeOne", "TypeTwo"]), &combined_dir)
             .expect("find_definition_files failed");
 
-        // Expect BothTypes.swift and OnlyTypeOne.swift to be found, but not Other.swift.
         assert!(found.contains(&both_file));
         assert!(found.contains(&only_file));
         assert!(!found.contains(&other_file));
-        // Since the return type is a BTreeSet, files are deduplicated.
         assert_eq!(found.len(), 2);
     }
 
@@ -187,46 +153,33 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        // Create a Swift file in the Sources directory.
         let sources_dir = root.join("Sources");
         fs::create_dir_all(&sources_dir).unwrap();
         let source_file = sources_dir.join("MyType.swift");
         fs::write(&source_file, "class MyType {}\n").unwrap();
 
-        // Create a Swift file in the Pods directory.
         let pods_dir = root.join("Pods");
         fs::create_dir_all(&pods_dir).unwrap();
         let pods_file = pods_dir.join("MyType.swift");
         fs::write(&pods_file, "class MyType {}\n").unwrap();
 
-        // Create a types file.
-        let types_file = root.join("types.txt");
-        fs::write(&types_file, "MyType\n").unwrap();
+        let found =
+            find_definition_files(&types(&["MyType"]), root).expect("find_definition_files failed");
 
-        let types_content = fs::read_to_string(&types_file).unwrap();
-        let found = find_definition_files(types_content.as_str(), root)
-            .expect("find_definition_files failed");
-
-        // The result should include the file in Sources but not the one in Pods.
         assert!(found.contains(&source_file));
         assert!(!found.contains(&pods_file));
     }
 
     #[test]
-    fn test_empty_types_file() {
+    fn test_empty_types() {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        let empty_types_file = root.join("empty.txt");
-        fs::write(&empty_types_file, "").unwrap();
-
-        let types_content = fs::read_to_string(&empty_types_file).unwrap();
-        // With our updated behavior, an empty types file should return an empty set rather than an error.
-        let result = find_definition_files(types_content.as_str(), root)
+        let result = find_definition_files(&BTreeSet::new(), root)
             .expect("find_definition_files should succeed");
         assert!(
             result.is_empty(),
-            "Expected an empty set when types file is empty"
+            "Expected an empty set when types set is empty"
         );
     }
 
@@ -235,19 +188,12 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        // Create a types file containing the type name.
-        let types_file = root.join("types.txt");
-        fs::write(&types_file, "MyType\n").unwrap();
-
-        // Create a file with a valid definition but with a .txt extension.
         let non_swift_file = root.join("definition.txt");
         fs::write(&non_swift_file, "class MyType {}\n").unwrap();
 
-        let types_content = fs::read_to_string(&types_file).unwrap();
-        let found = find_definition_files(types_content.as_str(), root)
-            .expect("find_definition_files failed");
+        let found =
+            find_definition_files(&types(&["MyType"]), root).expect("find_definition_files failed");
 
-        // The non-Swift file should not be included.
         assert!(!found.contains(&non_swift_file));
     }
 
@@ -256,23 +202,15 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        // Create a types file with "MyType".
-        let types_file = root.join("types.txt");
-        fs::write(&types_file, "MyType\n").unwrap();
-
-        // Create one file with the correct case.
         let correct_case = root.join("correct.swift");
         fs::write(&correct_case, "class MyType {}\n").unwrap();
 
-        // Create another file with a lower-case variant.
         let wrong_case = root.join("wrong.swift");
         fs::write(&wrong_case, "class mytype {}\n").unwrap();
 
-        let types_content = fs::read_to_string(&types_file).unwrap();
-        let found = find_definition_files(types_content.as_str(), root)
-            .expect("find_definition_files failed");
+        let found =
+            find_definition_files(&types(&["MyType"]), root).expect("find_definition_files failed");
 
-        // Only the file with the correct case should be included.
         assert!(found.contains(&correct_case));
         assert!(!found.contains(&wrong_case));
     }
@@ -282,19 +220,12 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        // Create a types file.
-        let types_file = root.join("types.txt");
-        fs::write(&types_file, "MyType\n").unwrap();
-
-        // Create a file that contains two definitions of "MyType".
         let dup_file = root.join("dup.swift");
         fs::write(&dup_file, "class MyType {}\nclass MyType {}\n").unwrap();
 
-        let types_content = fs::read_to_string(&types_file).unwrap();
-        let found = find_definition_files(types_content.as_str(), root)
-            .expect("find_definition_files failed");
+        let found =
+            find_definition_files(&types(&["MyType"]), root).expect("find_definition_files failed");
 
-        // The file should appear only once.
         let count = found.iter().filter(|&p| *p == dup_file).count();
         assert_eq!(count, 1);
     }
@@ -304,19 +235,12 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        // Create a types file with a type name.
-        let types_file = root.join("types.txt");
-        fs::write(&types_file, "NonExistentType\n").unwrap();
-
-        // Create a Swift file that does not contain the definition.
         let non_match = root.join("non_match.swift");
         fs::write(&non_match, "class SomeOtherType {}\n").unwrap();
 
-        let types_content = fs::read_to_string(&types_file).unwrap();
-        let found = find_definition_files(types_content.as_str(), root)
+        let found = find_definition_files(&types(&["NonExistentType"]), root)
             .expect("find_definition_files failed");
 
-        // Expect an empty set if nothing matches.
         assert!(found.is_empty());
     }
 
@@ -325,13 +249,11 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        // Create a subdirectory "SubPackage" that contains a Package.swift file.
         let subpackage = root.join("SubPackage");
         fs::create_dir_all(&subpackage).unwrap();
         fs::write(subpackage.join("Package.swift"), "swift package content").unwrap();
 
         let roots = get_search_roots(root).unwrap();
-        // Should include both the root and the subpackage directory.
         assert!(roots.contains(&root.to_path_buf()));
         assert!(roots.contains(&subpackage));
         assert_eq!(roots.len(), 2);
@@ -342,17 +264,11 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        // Create a JavaScript file with a valid class definition.
         let js_file = root.join("script.js");
         fs::write(&js_file, "class MyType {}").unwrap();
 
-        // Create a types file that contains "MyType".
-        let types_file = root.join("types.txt");
-        fs::write(&types_file, "MyType\n").unwrap();
-
-        let types_content = fs::read_to_string(&types_file).unwrap();
-        let found = find_definition_files(types_content.as_str(), root)
-            .expect("find_definition_files failed");
+        let found =
+            find_definition_files(&types(&["MyType"]), root).expect("find_definition_files failed");
         assert!(found.contains(&js_file));
     }
 
@@ -361,20 +277,13 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        // Create a file with a protocol definition.
         let protocol_file = root.join("protocol.swift");
         fs::write(&protocol_file, "protocol MyProtocol {}").unwrap();
 
-        // Create a file with a typealias definition.
         let typealias_file = root.join("typealias.swift");
         fs::write(&typealias_file, "typealias MyAlias = Int").unwrap();
 
-        // Create a types file with both keywords.
-        let types_file = root.join("types.txt");
-        fs::write(&types_file, "MyProtocol\nMyAlias\n").unwrap();
-
-        let types_content = fs::read_to_string(&types_file).unwrap();
-        let found = find_definition_files(types_content.as_str(), root)
+        let found = find_definition_files(&types(&["MyProtocol", "MyAlias"]), root)
             .expect("find_definition_files failed");
         assert!(found.contains(&protocol_file));
         assert!(found.contains(&typealias_file));
@@ -387,26 +296,17 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        // Create a file that contains a valid definition.
         let unreadable_file = root.join("unreadable.swift");
         fs::write(&unreadable_file, "class MyType {}").unwrap();
 
-        // Remove read permission.
         let mut perms = fs::metadata(&unreadable_file).unwrap().permissions();
         perms.set_mode(0o000);
         fs::set_permissions(&unreadable_file, perms).unwrap();
 
-        // Create a types file.
-        let types_file = root.join("types.txt");
-        fs::write(&types_file, "MyType\n").unwrap();
-
-        let types_content = fs::read_to_string(&types_file).unwrap();
-        let found = find_definition_files(types_content.as_str(), root)
-            .expect("find_definition_files failed");
-        // The unreadable file should be skipped.
+        let found =
+            find_definition_files(&types(&["MyType"]), root).expect("find_definition_files failed");
         assert!(!found.contains(&unreadable_file));
 
-        // Restore permissions so that the temporary file can be cleaned up.
         let mut perms = fs::metadata(&unreadable_file).unwrap().permissions();
         perms.set_mode(0o644);
         fs::set_permissions(&unreadable_file, perms).unwrap();

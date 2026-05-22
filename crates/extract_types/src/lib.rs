@@ -102,14 +102,14 @@ pub struct ExtractTypesOptions {
     pub targeted: bool,
 }
 
-pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<String> {
+pub fn extract_types_from_file<P: AsRef<Path>>(swift_file: P) -> Result<BTreeSet<String>> {
     extract_types_from_file_with_options(swift_file, &ExtractTypesOptions::default())
 }
 
 pub fn extract_types_from_file_with_options<P: AsRef<Path>>(
     swift_file: P,
     options: &ExtractTypesOptions,
-) -> Result<String> {
+) -> Result<BTreeSet<String>> {
     let full_content = fs::read_to_string(&swift_file)
         .with_context(|| format!("Failed to open file {}", swift_file.as_ref().display()))?;
 
@@ -148,7 +148,7 @@ pub fn extract_types_from_file_with_options<P: AsRef<Path>>(
         }
     }
 
-    Ok(all_types.into_iter().collect::<Vec<_>>().join("\n"))
+    Ok(all_types)
 }
 
 /// ---------------------------------------------------------------------------
@@ -203,9 +203,14 @@ fn extract_inner_block_from_content(content: &str) -> Option<String> {
 mod tests {
     use super::*;
     use anyhow::Result;
+    use std::collections::BTreeSet;
     use std::env;
     use std::io::Write;
     use tempfile::NamedTempFile;
+
+    fn types(items: &[&str]) -> BTreeSet<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
 
     #[test]
     fn test_extract_inner_block_success() {
@@ -251,7 +256,7 @@ mod tests {
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "import foundation\nlet x = 5")?;
         let result = extract_types_from_file(swift_file.path())?;
-        assert!(result.trim().is_empty());
+        assert!(result.is_empty());
         Ok(())
     }
 
@@ -269,8 +274,7 @@ mod tests {
             "import Foundation\nclass MyClass {{}}\nstruct MyStruct {{}}\nenum MyEnum {{}}"
         )?;
         let result = extract_types_from_file(swift_file.path())?;
-        let expected = "MyClass\nMyEnum\nMyStruct";
-        assert_eq!(result.trim(), expected);
+        assert_eq!(result, types(&["MyClass", "MyEnum", "MyStruct"]));
         Ok(())
     }
 
@@ -279,7 +283,7 @@ mod tests {
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "import UIKit\nlet array: [CustomType] = []")?;
         let result = extract_types_from_file(swift_file.path())?;
-        assert_eq!(result.trim(), "CustomType");
+        assert_eq!(result, types(&["CustomType"]));
         Ok(())
     }
 
@@ -290,7 +294,7 @@ mod tests {
         writeln!(swift_file, "struct DuplicateType {{}}")?;
         writeln!(swift_file, "enum DuplicateType {{}}")?;
         let result = extract_types_from_file(swift_file.path())?;
-        assert_eq!(result.trim(), "DuplicateType");
+        assert_eq!(result, types(&["DuplicateType"]));
         Ok(())
     }
 
@@ -299,8 +303,7 @@ mod tests {
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "class MyClass, struct MyStruct; enum MyEnum.")?;
         let result = extract_types_from_file(swift_file.path())?;
-        let expected = "MyClass\nMyEnum\nMyStruct";
-        assert_eq!(result.trim(), expected);
+        assert_eq!(result, types(&["MyClass", "MyEnum", "MyStruct"]));
         Ok(())
     }
 
@@ -309,12 +312,10 @@ mod tests {
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "class My_Class {{}}")?;
         let result = extract_types_from_file(swift_file.path())?;
-        for token in result.lines() {
-            assert_ne!(
-                token, "My_Class",
-                "Found token 'My_Class', which should have been split."
-            );
-        }
+        assert!(
+            !result.contains("My_Class"),
+            "Found token 'My_Class', which should have been split."
+        );
         Ok(())
     }
 
@@ -323,7 +324,7 @@ mod tests {
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "enum MyEnum.")?;
         let result = extract_types_from_file(swift_file.path())?;
-        assert_eq!(result.trim(), "MyEnum");
+        assert_eq!(result, types(&["MyEnum"]));
         Ok(())
     }
 
@@ -332,7 +333,7 @@ mod tests {
         let mut swift_file = NamedTempFile::new()?;
         writeln!(swift_file, "import Foundation\n// TODO: - TriggeredType")?;
         let result = extract_types_from_file(swift_file.path())?;
-        assert_eq!(result.trim(), "TriggeredType");
+        assert_eq!(result, types(&["TriggeredType"]));
         Ok(())
     }
 
@@ -351,9 +352,7 @@ mod tests {
         let mut swift_file = NamedTempFile::new()?;
         write!(swift_file, "{}", swift_content)?;
         let result = extract_types_from_file(swift_file.path())?;
-        // Expect only the content between markers to yield "InsideType"
-        let expected = "InsideType";
-        assert_eq!(result.trim(), expected);
+        assert_eq!(result, types(&["InsideType"]));
         Ok(())
     }
 
@@ -374,10 +373,13 @@ mod tests {
         let mut swift_file = NamedTempFile::new()?;
         write!(swift_file, "{}", swift_content)?;
         let result = extract_types_from_file(swift_file.path())?;
-        // Expected output: both types extracted and sorted alphabetically.
-        // "TypeThatIsInsideEnclosingFunction" comes before "TypeThatIsInsideMarker".
-        let expected = "TypeThatIsInsideEnclosingFunction\nTypeThatIsInsideMarker";
-        assert_eq!(result.trim(), expected);
+        assert_eq!(
+            result,
+            types(&[
+                "TypeThatIsInsideEnclosingFunction",
+                "TypeThatIsInsideMarker"
+            ])
+        );
         Ok(())
     }
 
@@ -396,11 +398,7 @@ mod tests {
             swift_file.path(),
             &ExtractTypesOptions { targeted: true },
         )?;
-        // In targeted mode, from the function block:
-        // - "class InnerType {}" produces "InnerType"
-        // - The trigger comment yields "Perform" (ignoring "action" since it's lowercase)
-        let expected = "InnerType\nPerform";
-        assert_eq!(result.trim(), expected);
+        assert_eq!(result, types(&["InnerType", "Perform"]));
         Ok(())
     }
 
@@ -416,9 +414,7 @@ mod tests {
             swift_file.path(),
             &ExtractTypesOptions { targeted: true },
         )?;
-        // Expect "OuterType" and "Some"
-        let expected = "OuterType\nSome";
-        assert_eq!(result.trim(), expected);
+        assert_eq!(result, types(&["OuterType", "Some"]));
         Ok(())
     }
 
@@ -435,8 +431,7 @@ mod tests {
         let mut swift_file = NamedTempFile::new()?;
         write!(swift_file, "{}", swift_content)?;
         let result = extract_types_from_file(swift_file.path())?;
-        let expected = "InnerType\nOuterType\nPerform";
-        assert_eq!(result.trim(), expected);
+        assert_eq!(result, types(&["InnerType", "OuterType", "Perform"]));
         env::remove_var("TARGETED");
         Ok(())
     }

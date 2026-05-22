@@ -43,19 +43,19 @@ pub fn determine_files_to_include_with_options(
         println!("Singular mode enabled: only including the TODO file");
         found_files.push(file_path.to_string());
     } else {
-        // Extract types as a newline-separated string.
-        let types_content = extract_types_from_file_with_options(
+        let types = extract_types_from_file_with_options(
             file_path,
             &ExtractTypesOptions {
                 targeted: options.targeted,
             },
         )?;
         println!("Types found:");
-        println!("{}", types_content.trim());
+        for ty in &types {
+            println!("{}", ty);
+        }
         println!("--------------------------------------------------");
 
-        // Find definition files using the extracted types.
-        let def_files_set = find_definition_files(types_content.as_str(), search_root)?;
+        let def_files_set = find_definition_files(&types, search_root)?;
 
         // Add definition files to the in-memory list.
         for path in def_files_set {

@@ -1,5 +1,7 @@
 // crates/extract_types/tests/integration_swift.rs
 
+use std::collections::BTreeSet;
+
 use anyhow::Result;
 use extract_types::{
     extract_types_from_file, extract_types_from_file_with_options, ExtractTypesOptions,
@@ -7,6 +9,10 @@ use extract_types::{
 use std::env;
 use std::io::Write;
 use tempfile::NamedTempFile;
+
+fn types(items: &[&str]) -> BTreeSet<String> {
+    items.iter().map(|s| s.to_string()).collect()
+}
 
 #[test]
 fn integration_extract_types_basic() -> Result<()> {
@@ -22,9 +28,7 @@ fn integration_extract_types_basic() -> Result<()> {
     write!(temp_file, "{}", swift_content)?;
 
     let result = extract_types_from_file(temp_file.path())?;
-    // Expected sorted order: MyClass, MyEnum, MyStruct.
-    let expected = "MyClass\nMyEnum\nMyStruct";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(result, types(&["MyClass", "MyEnum", "MyStruct"]));
     Ok(())
 }
 
@@ -39,8 +43,7 @@ fn integration_extract_types_bracket_notation() -> Result<()> {
     write!(temp_file, "{}", swift_content)?;
 
     let result = extract_types_from_file(temp_file.path())?;
-    let expected = "CustomType";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(result, types(&["CustomType"]));
     Ok(())
 }
 
@@ -55,7 +58,7 @@ fn integration_extract_types_no_types() -> Result<()> {
     write!(temp_file, "{}", swift_content)?;
 
     let result = extract_types_from_file(temp_file.path())?;
-    assert!(result.trim().is_empty());
+    assert!(result.is_empty());
     Ok(())
 }
 
@@ -76,9 +79,7 @@ fn integration_extract_types_with_substring_markers() -> Result<()> {
     write!(temp_file, "{}", swift_content)?;
 
     let result = extract_types_from_file(temp_file.path())?;
-    // Expect only the content between markers to yield "InsideType"
-    let expected = "InsideType";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(result, types(&["InsideType"]));
     Ok(())
 }
 
@@ -93,8 +94,7 @@ fn integration_extract_types_trigger_comment() -> Result<()> {
     write!(temp_file, "{}", swift_content)?;
 
     let result = extract_types_from_file(temp_file.path())?;
-    let expected = "TriggeredType";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(result, types(&["TriggeredType"]));
     Ok(())
 }
 
@@ -117,10 +117,13 @@ fn integration_extract_types_todo_outside_markers() -> Result<()> {
     write!(temp_file, "{}", swift_content)?;
 
     let result = extract_types_from_file(temp_file.path())?;
-    // Expected output: both types are extracted and sorted alphabetically.
-    // "TypeThatIsInsideEnclosingFunction" (from the function) and "TypeThatIsInsideMarker" (from the markers)
-    let expected = "TypeThatIsInsideEnclosingFunction\nTypeThatIsInsideMarker";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(
+        result,
+        types(&[
+            "TypeThatIsInsideEnclosingFunction",
+            "TypeThatIsInsideMarker"
+        ])
+    );
     Ok(())
 }
 
@@ -144,13 +147,7 @@ fn integration_extract_types_targeted_mode() -> Result<()> {
         temp_file.path(),
         &ExtractTypesOptions { targeted: true },
     )?;
-    // In targeted mode:
-    // - "class InnerType {}" produces "InnerType"
-    // - The trigger comment " // TODO: - Perform action" yields tokens ["Perform", "action"]
-    //   but only "Perform" qualifies because "action" is lower-case.
-    // Therefore, the expected output is "InnerType\nPerform".
-    let expected = "InnerType\nPerform";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(result, types(&["InnerType", "Perform"]));
 
     Ok(())
 }
@@ -170,8 +167,7 @@ fn integration_extract_types_without_targeted_env_processes_full_content() -> Re
     write!(temp_file, "{}", swift_content)?;
 
     let result = extract_types_from_file(temp_file.path())?;
-    let expected = "InnerType\nOuterType\nPerform";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(result, types(&["InnerType", "OuterType", "Perform"]));
 
     Ok(())
 }
@@ -191,8 +187,7 @@ fn integration_extract_types_default_ignores_targeted_env() -> Result<()> {
     write!(temp_file, "{}", swift_content)?;
 
     let result = extract_types_from_file(temp_file.path())?;
-    let expected = "InnerType\nOuterType\nPerform";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(result, types(&["InnerType", "OuterType", "Perform"]));
 
     env::remove_var("TARGETED");
     Ok(())
@@ -216,8 +211,7 @@ fn integration_extract_types_explicit_targeted_option_ignores_env() -> Result<()
         temp_file.path(),
         &ExtractTypesOptions { targeted: true },
     )?;
-    let expected = "InnerType\nPerform";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(result, types(&["InnerType", "Perform"]));
 
     Ok(())
 }
@@ -240,8 +234,7 @@ fn integration_extract_types_explicit_non_targeted_option_ignores_targeted_env()
         temp_file.path(),
         &ExtractTypesOptions { targeted: false },
     )?;
-    let expected = "InnerType\nOuterType\nPerform";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(result, types(&["InnerType", "OuterType", "Perform"]));
 
     env::remove_var("TARGETED");
     Ok(())
@@ -265,8 +258,7 @@ fn integration_extract_types_explicit_targeted_option_works_with_targeted_env() 
         temp_file.path(),
         &ExtractTypesOptions { targeted: true },
     )?;
-    let expected = "InnerType\nPerform";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(result, types(&["InnerType", "Perform"]));
 
     env::remove_var("TARGETED");
     Ok(())
@@ -286,13 +278,7 @@ fn integration_extract_types_targeted_mode_no_enclosing_block() -> Result<()> {
         temp_file.path(),
         &ExtractTypesOptions { targeted: true },
     )?;
-    // Since no candidate block is found, the full content is processed:
-    // - "class OuterType {}" produces "OuterType"
-    // - The trigger comment " // TODO: - Some todo" yields tokens ["Some", "todo"],
-    //   but only "Some" qualifies because "todo" is lower-case.
-    // Expected sorted order: "OuterType\nSome"
-    let expected = "OuterType\nSome";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(result, types(&["OuterType", "Some"]));
 
     Ok(())
 }
@@ -320,13 +306,7 @@ fn integration_extract_types_targeted_inner_block_excludes_outer() -> Result<()>
         temp_file.path(),
         &ExtractTypesOptions { targeted: true },
     )?;
-    // In targeted mode:
-    // - "class InnerType {}" produces the token "InnerType"
-    // - The trigger comment produces "Do" (ignoring lowercase words)
-    // These tokens are stored in a BTreeSet, so they are sorted alphabetically.
-    // Alphabetically, "Do" comes before "InnerType".
-    let expected = "Do\nInnerType";
-    assert_eq!(result.trim(), expected);
+    assert_eq!(result, types(&["Do", "InnerType"]));
 
     Ok(())
 }
