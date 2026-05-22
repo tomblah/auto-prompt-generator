@@ -14,7 +14,7 @@ use walkdir::WalkDir;
 ///
 /// Allowed extensions are: `swift`, `h`, `m`, and `js`.
 /// The marker searched for is `todo_marker::TODO_MARKER_WS`.
-pub fn find_prompt_instruction_in_dir(search_dir: &str, verbose: bool) -> Result<PathBuf> {
+pub fn find_prompt_instruction_in_dir(search_dir: &Path, verbose: bool) -> Result<PathBuf> {
     let finder = PromptInstructionFinder::new(search_dir, verbose);
     finder.find()
 }
@@ -22,14 +22,14 @@ pub fn find_prompt_instruction_in_dir(search_dir: &str, verbose: bool) -> Result
 // === Private Implementation === //
 
 struct PromptInstructionFinder<'a> {
-    search_dir: &'a str,
+    search_dir: &'a Path,
     verbose: bool,
     allowed_extensions: &'static [&'static str],
     todo_marker: &'static str,
 }
 
 impl<'a> PromptInstructionFinder<'a> {
-    fn new(search_dir: &'a str, verbose: bool) -> Self {
+    fn new(search_dir: &'a Path, verbose: bool) -> Self {
         Self {
             search_dir,
             verbose,
@@ -151,7 +151,7 @@ mod tests {
         let file_path = dir.path().join("dummy.swift");
         fs::write(&file_path, "Some random content without marker").unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false);
+        let result = find_prompt_instruction_in_dir(dir.path(), false);
         let err = result.expect_err("expected missing TODO marker to return an error");
         assert!(err.to_string().contains(TODO_MARKER_WS));
     }
@@ -159,7 +159,7 @@ mod tests {
     #[test]
     fn test_finder_uses_shared_todo_marker() {
         let dir = tempdir().unwrap();
-        let finder = PromptInstructionFinder::new(dir.path().to_str().unwrap(), false);
+        let finder = PromptInstructionFinder::new(dir.path(), false);
 
         assert_eq!(finder.todo_marker, todo_marker::TODO_MARKER_WS);
     }
@@ -171,7 +171,7 @@ mod tests {
         let content = "Some content\n// TODO: - Fix something\nOther content";
         fs::write(&file_path, content).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
         assert_eq!(result, file_path);
     }
 
@@ -193,7 +193,7 @@ mod tests {
         set_file_mtime(&older_file, older_time).unwrap();
         set_file_mtime(&newer_file, newer_time).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
         assert_eq!(result, newer_file);
     }
 
@@ -207,7 +207,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false);
+        let result = find_prompt_instruction_in_dir(dir.path(), false);
         assert!(
             result.is_err(),
             "Expected error because no valid files found"
@@ -222,7 +222,7 @@ mod tests {
         let file_path = nested_dir.join("nested.swift");
         fs::write(&file_path, "Header\n// TODO: - Nested todo\nFooter").unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
         assert_eq!(result, file_path);
     }
 
@@ -239,7 +239,7 @@ mod tests {
         set_file_mtime(&file1, older_time).unwrap();
         set_file_mtime(&file2, newer_time).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), true).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path(), true).unwrap();
         assert_eq!(result, file2);
     }
 
@@ -249,7 +249,7 @@ mod tests {
         let file_path = dir.path().join("single.swift");
         fs::write(&file_path, "Header\n// TODO: - Single verbose todo\nFooter").unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), true).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path(), true).unwrap();
 
         assert_eq!(result, file_path);
     }
@@ -266,7 +266,7 @@ mod tests {
         set_file_mtime(&file1, same_time).unwrap();
         set_file_mtime(&file2, same_time).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
         assert!(
             result == file1 || result == file2,
             "Result should be either tie1.swift or tie2.swift"
@@ -296,7 +296,7 @@ mod tests {
         perms.set_mode(0o000);
         fs::set_permissions(&unreadable, perms).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
         assert_eq!(result, readable);
 
         let mut perms = fs::metadata(&unreadable).unwrap().permissions();
@@ -360,7 +360,7 @@ mod internal_tests {
         set_file_mtime(&file1, ft1).unwrap();
         set_file_mtime(&file2, ft2).unwrap();
 
-        let finder = PromptInstructionFinder::new(dir.path().to_str().unwrap(), false);
+        let finder = PromptInstructionFinder::new(dir.path(), false);
         let chosen_file = finder.find().expect("Expected to find a valid file");
         assert_eq!(
             chosen_file, file2,
@@ -378,7 +378,7 @@ mod internal_tests {
         )
         .unwrap();
 
-        let finder = PromptInstructionFinder::new(dir.path().to_str().unwrap(), false);
+        let finder = PromptInstructionFinder::new(dir.path(), false);
         let result = finder.find();
         assert!(
             result.is_err(),
@@ -406,7 +406,7 @@ mod internal_tests {
         perms.set_mode(0o000);
         fs::set_permissions(&unreadable, perms).unwrap();
 
-        let finder = PromptInstructionFinder::new(dir.path().to_str().unwrap(), false);
+        let finder = PromptInstructionFinder::new(dir.path(), false);
         let chosen_file = finder.find().expect("Expected to pick a valid file");
         assert_eq!(
             chosen_file, readable,
@@ -437,7 +437,7 @@ mod internal_tests {
         set_file_mtime(&unambiguous_file, older_time).unwrap();
         set_file_mtime(&ambiguous_file, newer_time).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false);
+        let result = find_prompt_instruction_in_dir(dir.path(), false);
         assert!(
             result.is_err(),
             "Expected error due to multiple markers in most recent file"
@@ -483,7 +483,7 @@ mod internal_tests {
         set_file_mtime(&ambiguous_file, older_time).unwrap();
         set_file_mtime(&unambiguous_file, newer_time).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false).unwrap();
+        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
         assert_eq!(
             result, unambiguous_file,
             "Expected the most recent unambiguous file to be chosen"

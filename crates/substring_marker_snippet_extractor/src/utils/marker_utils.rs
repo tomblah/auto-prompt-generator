@@ -7,6 +7,7 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::fs;
+use std::path::Path;
 
 use todo_marker::TODO_MARKER_WS;
 
@@ -191,7 +192,7 @@ pub fn extract_enclosing_block_from_content(
 
 /// File-path-based wrapper: reads the file, checks marker/TODO gating, then
 /// delegates to `extract_enclosing_block_from_content`.
-pub fn extract_enclosing_block(file_path: &str) -> Option<String> {
+pub fn extract_enclosing_block(file_path: &Path) -> Option<String> {
     let content = fs::read_to_string(file_path).ok()?;
     if !file_uses_markers(&content) {
         return None;
@@ -294,7 +295,7 @@ More text
 // TODO: - Do something";
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "{}", content).unwrap();
-        let block = extract_enclosing_block(temp_file.path().to_str().unwrap());
+        let block = extract_enclosing_block(temp_file.path());
         assert!(block.is_some());
         let block_str = block.unwrap();
         assert!(block_str.contains("func myFunction() {"));
@@ -311,7 +312,7 @@ func myFunction() {
 }";
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "{}", content).unwrap();
-        let block = extract_enclosing_block(temp_file.path().to_str().unwrap());
+        let block = extract_enclosing_block(temp_file.path());
         assert!(block.is_none());
     }
 
@@ -333,7 +334,7 @@ Parse.Cloud.beforeSave(\"Message\", async (request) => {
 Footer text that should be omitted";
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "{}", content).unwrap();
-        let block = extract_enclosing_block(temp_file.path().to_str().unwrap());
+        let block = extract_enclosing_block(temp_file.path());
         assert!(block.is_some());
         let block_str = block.unwrap();
         // Verify that the extracted block is the entire Parse.Cloud function
@@ -360,7 +361,7 @@ Parse.Cloud.afterSave(\"Message\", async (request) => {
 Some trailing footer text";
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "{}", content).unwrap();
-        let block = extract_enclosing_block(temp_file.path().to_str().unwrap());
+        let block = extract_enclosing_block(temp_file.path());
         assert!(block.is_some());
         let block_str = block.unwrap();
         assert!(block_str.contains("Parse.Cloud.afterSave(\"Message\", async (request) => {"));
@@ -385,7 +386,7 @@ Parse.Cloud.beforeSave(Parse.User, async (request) => {
 Extra text that should be omitted";
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "{}", content).unwrap();
-        let block = extract_enclosing_block(temp_file.path().to_str().unwrap());
+        let block = extract_enclosing_block(temp_file.path());
         assert!(block.is_some());
         let block_str = block.unwrap();
         assert!(block_str.contains("Parse.Cloud.beforeSave(Parse.User, async (request) => {"));
@@ -410,7 +411,7 @@ Parse.Cloud.afterSave(Parse.User, async (request) => {
 Irrelevant footer";
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "{}", content).unwrap();
-        let block = extract_enclosing_block(temp_file.path().to_str().unwrap());
+        let block = extract_enclosing_block(temp_file.path());
         assert!(block.is_some());
         let block_str = block.unwrap();
         assert!(block_str.contains("Parse.Cloud.afterSave(Parse.User, async (request) => {"));
@@ -442,7 +443,7 @@ Some header info
 }";
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "{}", content).unwrap();
-        let block = extract_enclosing_block(temp_file.path().to_str().unwrap());
+        let block = extract_enclosing_block(temp_file.path());
         assert!(block.is_some());
         let block_str = block.unwrap();
         assert!(block_str.contains("- (void)myMethod:(NSString *)arg {"));
@@ -468,7 +469,7 @@ Header details that are not part of the method
 }";
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "{}", content).unwrap();
-        let block = extract_enclosing_block(temp_file.path().to_str().unwrap());
+        let block = extract_enclosing_block(temp_file.path());
         assert!(block.is_some());
         let block_str = block.unwrap();
         assert!(block_str.contains("- (void)myMethod:(NSString *)arg"));

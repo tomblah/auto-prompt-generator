@@ -16,16 +16,15 @@ use std::path::{Path, PathBuf};
 /// # Returns
 ///
 /// The chosen search root as a `PathBuf`.
-pub fn determine_search_root(base_dir: &Path, file_path: &str) -> PathBuf {
+pub fn determine_search_root(base_dir: &Path, file_path: &Path) -> PathBuf {
     let candidate_roots =
         get_search_roots(base_dir).unwrap_or_else(|_| vec![base_dir.to_path_buf()]);
     if candidate_roots.len() == 1 {
         candidate_roots[0].clone()
     } else {
-        let todo_path = PathBuf::from(file_path);
         candidate_roots
             .into_iter()
-            .filter(|p| todo_path.starts_with(p))
+            .filter(|p| file_path.starts_with(p))
             // Choose the candidate with the maximum number of path components (i.e. the deepest one)
             .max_by_key(|p| p.components().count())
             .unwrap_or_else(|| base_dir.to_path_buf())
@@ -52,7 +51,7 @@ mod tests {
         let file_path = base_dir.join("some_file.txt");
 
         // Since the base directory is itself a Swift package, get_search_roots should return only base_dir.
-        let candidate = determine_search_root(base_dir, file_path.to_str().unwrap());
+        let candidate = determine_search_root(base_dir, &file_path);
         assert_eq!(candidate, base_dir);
     }
 
@@ -77,7 +76,7 @@ mod tests {
 
         // Simulate a TODO file path inside sub1.
         let todo_file = sub1.join("some_file.txt");
-        let candidate = determine_search_root(base_dir, todo_file.to_str().unwrap());
+        let candidate = determine_search_root(base_dir, &todo_file);
         // We expect the candidate to be sub1 (the deeper candidate) rather than the base directory.
         assert_eq!(candidate, sub1);
     }

@@ -46,13 +46,13 @@ pub fn assemble_prompt_with_options(
 }
 
 trait DiffProvider {
-    fn diff_for_file(&self, file_path: &str, branch: &str) -> Result<Option<String>>;
+    fn diff_for_file(&self, file_path: &Path, branch: &str) -> Result<Option<String>>;
 }
 
 struct GitDiffProvider;
 
 impl DiffProvider for GitDiffProvider {
-    fn diff_for_file(&self, file_path: &str, branch: &str) -> Result<Option<String>> {
+    fn diff_for_file(&self, file_path: &Path, branch: &str) -> Result<Option<String>> {
         run_diff_against(file_path, branch)
     }
 }
@@ -127,7 +127,8 @@ where
 
         // If a diff branch is set, append a diff report using the diff_with_branch crate.
         if let Some(diff_branch) = options.diff_branch.as_deref() {
-            let diff_output = match diff_provider.diff_for_file(&file_path, diff_branch) {
+            let diff_output = match diff_provider.diff_for_file(Path::new(&file_path), diff_branch)
+            {
                 Ok(Some(diff)) => diff,
                 Ok(None) => String::new(),
                 Err(err) => {
@@ -599,7 +600,7 @@ func outsideFunction() {
     }
 
     impl DiffProvider for MockDiffProvider {
-        fn diff_for_file(&self, _file_path: &str, _branch: &str) -> Result<Option<String>> {
+        fn diff_for_file(&self, _file_path: &Path, _branch: &str) -> Result<Option<String>> {
             if let Some(msg) = &self.error_msg {
                 Err(anyhow::anyhow!("{}", msg))
             } else {
@@ -611,7 +612,7 @@ func outsideFunction() {
     struct BranchEchoDiffProvider;
 
     impl DiffProvider for BranchEchoDiffProvider {
-        fn diff_for_file(&self, _file_path: &str, branch: &str) -> Result<Option<String>> {
+        fn diff_for_file(&self, _file_path: &Path, branch: &str) -> Result<Option<String>> {
             Ok(Some(format!("diff against {branch}")))
         }
     }

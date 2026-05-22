@@ -717,7 +717,7 @@ func sharedFunction() {\n\
 
         let file_result =
             substring_marker_snippet_extractor::utils::marker_utils::extract_enclosing_block(
-                temp_file.path().to_str().unwrap(),
+                temp_file.path(),
             );
 
         assert_eq!(
@@ -746,7 +746,7 @@ class MyWidget {\n\
 
         let file_result =
             substring_marker_snippet_extractor::utils::marker_utils::extract_enclosing_block(
-                temp_file.path().to_str().unwrap(),
+                temp_file.path(),
             );
 
         assert!(

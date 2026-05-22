@@ -19,17 +19,19 @@ pub struct GeneratePromptOptions {
 
 pub fn generate_prompt_with_options(
     git_root: &str,
-    file_path: &str,
+    file_path: &Path,
     options: &GeneratePromptOptions,
 ) -> Result<()> {
-    let todo_file_basename = Path::new(file_path)
+    let todo_file_basename = file_path
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or("")
         .to_string();
 
+    let file_path_str = file_path.to_string_lossy();
+
     // Check file type compatibility.
-    if options.include_references && !file_path.ends_with(".swift") {
+    if options.include_references && !file_path_str.ends_with(".swift") {
         return Err(anyhow!(
             "--include-references is only supported for Swift files"
         ));
@@ -173,7 +175,7 @@ func testFunction() {
 
         let result = generate_prompt_with_options(
             git_root,
-            instruction_file.to_str().unwrap(),
+            &instruction_file,
             &GeneratePromptOptions {
                 singular: false,
                 force_global: false,
@@ -217,14 +219,13 @@ func testFunction() {
 // Some more code
 "#;
         let instruction_file = write_temp_file(temp_dir.path(), "instruction.txt", file_content);
-        let file_path_str = instruction_file.to_str().unwrap();
 
         // Set an environment variable to disable clipboard copying.
         env::set_var("DISABLE_PBCOPY", "1");
 
         let result = generate_prompt_with_options(
             git_root,
-            file_path_str,
+            &instruction_file,
             &GeneratePromptOptions {
                 singular: true,
                 force_global: false,
@@ -253,14 +254,13 @@ class Dummy {}
 // TODO: - Test instruction
 "#;
         let instruction_file = write_temp_file(temp_dir.path(), "instruction.swift", file_content);
-        let file_path_str = instruction_file.to_str().unwrap();
 
         // Disable clipboard copying.
         env::set_var("DISABLE_PBCOPY", "1");
 
         let result = generate_prompt_with_options(
             git_root,
-            file_path_str,
+            &instruction_file,
             &GeneratePromptOptions {
                 singular: false,
                 force_global: false,
@@ -286,10 +286,9 @@ class Dummy {}
 // TODO: - JS Test instruction
 "#;
         let instruction_file = write_temp_file(temp_dir.path(), "instruction.js", file_content);
-        let file_path_str = instruction_file.to_str().unwrap();
         let result = generate_prompt_with_options(
             git_root,
-            file_path_str,
+            &instruction_file,
             &GeneratePromptOptions {
                 singular: false,
                 force_global: false,
@@ -321,14 +320,13 @@ class Dummy {}
 // TODO: - Force global test
 "#;
         let instruction_file = write_temp_file(temp_dir.path(), "instruction.txt", file_content);
-        let file_path_str = instruction_file.to_str().unwrap();
 
         // Disable clipboard copying.
         env::set_var("DISABLE_PBCOPY", "1");
 
         let result = generate_prompt_with_options(
             git_root,
-            file_path_str,
+            &instruction_file,
             &GeneratePromptOptions {
                 singular: true,
                 force_global: true,
@@ -357,14 +355,13 @@ class Dummy {}
 // TODO: - JS Test instruction
 "#;
         let instruction_file = write_temp_file(temp_dir.path(), "instruction.js", file_content);
-        let file_path_str = instruction_file.to_str().unwrap();
 
         // Disable clipboard copying.
         env::set_var("DISABLE_PBCOPY", "1");
 
         let result = generate_prompt_with_options(
             git_root,
-            file_path_str,
+            &instruction_file,
             &GeneratePromptOptions {
                 singular: false,
                 force_global: false,

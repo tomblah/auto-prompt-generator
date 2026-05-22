@@ -17,7 +17,7 @@ mod integration_swift {
         let content = "public func example() {}\n// TODO: - Fix the bug\nMore text";
         fs::write(&file_path, content).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false)
+        let result = find_prompt_instruction_in_dir(dir.path(), false)
             .expect("Expected to find a file with a TODO marker");
         assert_eq!(result, file_path);
     }
@@ -41,7 +41,7 @@ mod integration_swift {
         set_file_mtime(&file1, ft1).unwrap();
         set_file_mtime(&file2, ft2).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false)
+        let result = find_prompt_instruction_in_dir(dir.path(), false)
             .expect("Expected to choose the most recently modified file");
         assert_eq!(result, file2);
     }
@@ -54,7 +54,7 @@ mod integration_swift {
         let content = "public func example() {}\n// No TODO here\n";
         fs::write(&file_path, content).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false);
+        let result = find_prompt_instruction_in_dir(dir.path(), false);
         assert!(
             result.is_err(),
             "Expected an error when no file contains the TODO marker"
@@ -70,7 +70,7 @@ mod integration_swift {
         let content = "Some text\n// TODO: - This should be ignored\n";
         fs::write(&file_path, content).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false);
+        let result = find_prompt_instruction_in_dir(dir.path(), false);
         assert!(
             result.is_err(),
             "Expected error because files with disallowed extensions are ignored"
@@ -85,7 +85,7 @@ mod integration_swift {
         let content = "func test() {}\n// TODO: - Verbose fix\n";
         fs::write(&file_path, content).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), true)
+        let result = find_prompt_instruction_in_dir(dir.path(), true)
             .expect("Expected to find a file even with verbose enabled");
         assert_eq!(result, file_path);
     }
@@ -120,7 +120,7 @@ Extra text";
         set_file_mtime(&unambiguous_file, older_time).unwrap();
         set_file_mtime(&ambiguous_file, newer_time).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false);
+        let result = find_prompt_instruction_in_dir(dir.path(), false);
         assert!(
             result.is_err(),
             "Expected error due to multiple markers in most recent file"
@@ -173,7 +173,7 @@ Extra text";
         set_file_mtime(&ambiguous_file, older_time).unwrap();
         set_file_mtime(&unambiguous_file, newer_time).unwrap();
 
-        let result = find_prompt_instruction_in_dir(dir.path().to_str().unwrap(), false)
+        let result = find_prompt_instruction_in_dir(dir.path(), false)
             .expect("Expected to select the most recent unambiguous file");
         assert_eq!(
             result, unambiguous_file,

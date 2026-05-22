@@ -1,6 +1,6 @@
 // crates/substring_marker_snippet_extractor/src/processor/file_processor.rs
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use std::fs;
 use std::path::Path;
 
@@ -19,9 +19,6 @@ pub struct DefaultFileProcessor;
 
 impl FileProcessor for DefaultFileProcessor {
     fn process_file(&self, file_path: &Path, todo_file_basename: Option<&str>) -> Result<String> {
-        let file_path_str = file_path
-            .to_str()
-            .ok_or_else(|| anyhow!("Invalid file path"))?;
         let file_content = fs::read_to_string(file_path)?;
 
         // Use marker filtering if markers are present.
@@ -38,7 +35,7 @@ impl FileProcessor for DefaultFileProcessor {
         if file_uses_markers(&file_content) {
             if let Some(expected_basename) = todo_file_basename {
                 if file_basename == expected_basename {
-                    if let Some(context) = extract_enclosing_block(file_path_str) {
+                    if let Some(context) = extract_enclosing_block(file_path) {
                         combined_content.push_str("\n\n// Enclosing function context:\n");
                         combined_content.push_str(&context);
                     }
@@ -62,6 +59,7 @@ pub fn process_file_with_processor<P: AsRef<Path>>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::anyhow;
     use std::io::Write;
     use tempfile::NamedTempFile;
 

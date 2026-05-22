@@ -46,7 +46,7 @@ mod integration_js {
         fs::write(&file6_path, "console.log(MyJSClass);")?;
 
         // Call the function under test.
-        let mut result = find_files_referencing("MyJSClass", temp_dir.path().to_str().unwrap())?;
+        let mut result = find_files_referencing("MyJSClass", temp_dir.path())?;
         result.sort();
 
         // We expect only file1.js and file3.js to be returned.
@@ -76,8 +76,7 @@ mod integration_js {
             "function test() { console.log('No match here'); }",
         )?;
 
-        let result =
-            find_files_referencing("NonExistentJSClass", temp_dir.path().to_str().unwrap())?;
+        let result = find_files_referencing("NonExistentJSClass", temp_dir.path())?;
         assert!(
             result.is_empty(),
             "Expected no matches for 'NonExistentJSClass'"
@@ -106,7 +105,7 @@ mod integration_js {
         let file4_path = temp_dir.path().join("d.js");
         fs::write(&file4_path, "let dummy = 'NotTargetJSExtra';")?;
 
-        let mut result = find_files_referencing("TargetJS", temp_dir.path().to_str().unwrap())?;
+        let mut result = find_files_referencing("TargetJS", temp_dir.path())?;
         result.sort();
 
         let mut expected: Vec<String> = vec![

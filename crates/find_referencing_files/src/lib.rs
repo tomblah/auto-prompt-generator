@@ -3,6 +3,7 @@
 use anyhow::Result;
 use lang_support::walk_source_files;
 use regex::Regex;
+use std::path::Path;
 
 /// Searches the given directory (and its subdirectories) for files with allowed
 /// extensions that contain the given type name as a whole word.
@@ -22,13 +23,14 @@ use regex::Regex;
 ///
 /// ```rust
 /// use find_referencing_files::find_files_referencing;
+/// use std::path::Path;
 ///
-/// let files = find_files_referencing("MyType", "/path/to/search").unwrap();
+/// let files = find_files_referencing("MyType", Path::new("/path/to/search")).unwrap();
 /// for file in files {
 ///     println!("{}", file);
 /// }
 /// ```
-pub fn find_files_referencing(type_name: &str, search_root: &str) -> Result<Vec<String>> {
+pub fn find_files_referencing(type_name: &str, search_root: &Path) -> Result<Vec<String>> {
     // Build a regex that matches the type name as a whole word.
     let pattern = format!(r"\b{}\b", regex::escape(type_name));
     let re = Regex::new(&pattern)?;
@@ -69,7 +71,7 @@ mod tests {
         writeln!(file2, "print(\"Nothing here\")")?;
 
         // Call our function.
-        let results = find_files_referencing("MySpecialClass", dir_path.to_str().unwrap())?;
+        let results = find_files_referencing("MySpecialClass", dir_path)?;
         let results_str: Vec<String> = results;
         let file1_str = file1_path.to_string_lossy().to_string();
         let file2_str = file2_path.to_string_lossy().to_string();
@@ -100,7 +102,7 @@ mod tests {
         writeln!(f2, "class MySpecialClass {{}}")?;
         writeln!(f2, "let instance = MySpecialClass()")?;
 
-        let results = find_files_referencing("MySpecialClass", dir_path.to_str().unwrap())?;
+        let results = find_files_referencing("MySpecialClass", dir_path)?;
         let results_str: Vec<String> = results;
         let root_file_str = root_file.to_string_lossy().to_string();
         let file_in_pods_str = file_in_pods.to_string_lossy().to_string();
@@ -130,7 +132,7 @@ mod tests {
         writeln!(f_js, "class MySpecialClass {{}}")?;
         writeln!(f_js, "let instance = MySpecialClass()")?;
 
-        let results = find_files_referencing("MySpecialClass", dir_path.to_str().unwrap())?;
+        let results = find_files_referencing("MySpecialClass", dir_path)?;
         let results_str: Vec<String> = results;
         let file_js_str = file_js.to_string_lossy().to_string();
         let file_txt_str = file_txt.to_string_lossy().to_string();
@@ -165,7 +167,7 @@ mod tests {
         let mut unsupported_file = fs::File::create(&unsupported_path)?;
         writeln!(unsupported_file, "let instance = MySpecialClass()")?;
 
-        let results = find_files_referencing("MySpecialClass", dir_path.to_str().unwrap())?;
+        let results = find_files_referencing("MySpecialClass", dir_path)?;
         let results_str: Vec<String> = results;
 
         for path in &supported_files {
@@ -196,7 +198,7 @@ mod tests {
         writeln!(f2, "class MySpecialClass {{}}")?;
         writeln!(f2, "let instance = MySpecialClass()")?;
 
-        let results = find_files_referencing("MySpecialClass", dir_path.to_str().unwrap())?;
+        let results = find_files_referencing("MySpecialClass", dir_path)?;
         let results_str: Vec<String> = results;
         let root_file_str = root_file.to_string_lossy().to_string();
         let file_in_build_str = file_in_build.to_string_lossy().to_string();
@@ -226,7 +228,7 @@ mod tests {
         writeln!(f_exact, "class MySpecialClass {{}}")?;
         writeln!(f_exact, "let instance = MySpecialClass()")?;
 
-        let results = find_files_referencing("MySpecialClass", dir_path.to_str().unwrap())?;
+        let results = find_files_referencing("MySpecialClass", dir_path)?;
         let results_str: Vec<String> = results;
         let file_exact_str = file_exact.to_string_lossy().to_string();
         let file_partial_str = file_partial.to_string_lossy().to_string();
@@ -262,7 +264,7 @@ mod tests {
         writeln!(f_lower, "class MySpecialClass {{}}")?;
         writeln!(f_lower, "let instance = MySpecialClass()")?;
 
-        let results = find_files_referencing("MySpecialClass", dir_path.to_str().unwrap())?;
+        let results = find_files_referencing("MySpecialClass", dir_path)?;
         let results_str: Vec<String> = results;
         let file_upper_str = file_upper.to_string_lossy().to_string();
         let file_mixed_str = file_mixed.to_string_lossy().to_string();
@@ -293,7 +295,7 @@ mod tests {
         writeln!(f_allowed, "class MySpecialClass {{}}")?;
         writeln!(f_allowed, "let instance = MySpecialClass()")?;
 
-        let results = find_files_referencing("MySpecialClass", dir_path.to_str().unwrap())?;
+        let results = find_files_referencing("MySpecialClass", dir_path)?;
         let results_str: Vec<String> = results;
         let file_allowed_str = file_allowed.to_string_lossy().to_string();
         let file_no_ext_str = file_no_ext.to_string_lossy().to_string();
@@ -331,7 +333,7 @@ mod tests {
         writeln!(f2, "let instance = MySpecialClass()")?;
 
         // Run find_files_referencing. It should return only the normal file.
-        let results = find_files_referencing("MySpecialClass", dir_path.to_str().unwrap())?;
+        let results = find_files_referencing("MySpecialClass", dir_path)?;
         let results_str: Vec<String> = results;
         let file_normal_str = file_normal.to_string_lossy().to_string();
         let file_unreadable_str = file_unreadable.to_string_lossy().to_string();
