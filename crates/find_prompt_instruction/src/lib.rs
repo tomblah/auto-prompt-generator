@@ -490,3 +490,88 @@ mod internal_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod extension_characterization_tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn write_todo_file(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
+        let path = dir.join(name);
+        fs::write(&path, "Content\n// TODO: - Test instruction\nMore").unwrap();
+        path
+    }
+
+    #[test]
+    fn test_swift_extension_accepted() {
+        let dir = tempdir().unwrap();
+        let file = write_todo_file(dir.path(), "test.swift");
+        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        assert_eq!(result, file);
+    }
+
+    #[test]
+    fn test_h_extension_accepted() {
+        let dir = tempdir().unwrap();
+        let file = write_todo_file(dir.path(), "test.h");
+        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        assert_eq!(result, file);
+    }
+
+    #[test]
+    fn test_m_extension_accepted() {
+        let dir = tempdir().unwrap();
+        let file = write_todo_file(dir.path(), "test.m");
+        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        assert_eq!(result, file);
+    }
+
+    #[test]
+    fn test_js_extension_accepted() {
+        let dir = tempdir().unwrap();
+        let file = write_todo_file(dir.path(), "test.js");
+        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        assert_eq!(result, file);
+    }
+
+    #[test]
+    fn test_txt_extension_rejected() {
+        let dir = tempdir().unwrap();
+        write_todo_file(dir.path(), "test.txt");
+        let result = find_prompt_instruction_in_dir(dir.path(), false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_ts_extension_rejected() {
+        let dir = tempdir().unwrap();
+        write_todo_file(dir.path(), "test.ts");
+        let result = find_prompt_instruction_in_dir(dir.path(), false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_jsx_extension_rejected() {
+        let dir = tempdir().unwrap();
+        write_todo_file(dir.path(), "test.jsx");
+        let result = find_prompt_instruction_in_dir(dir.path(), false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_mjs_extension_rejected() {
+        let dir = tempdir().unwrap();
+        write_todo_file(dir.path(), "test.mjs");
+        let result = find_prompt_instruction_in_dir(dir.path(), false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cjs_extension_rejected() {
+        let dir = tempdir().unwrap();
+        write_todo_file(dir.path(), "test.cjs");
+        let result = find_prompt_instruction_in_dir(dir.path(), false);
+        assert!(result.is_err());
+    }
+}

@@ -412,3 +412,188 @@ Header details that are not part of the method
         assert!(block_str.contains("NSLog(@\"End split\");"));
     }
 }
+
+#[cfg(test)]
+mod candidate_line_characterization_tests {
+    use super::*;
+
+    // --- Swift function candidates ---
+
+    #[test]
+    fn test_swift_plain_func() {
+        assert!(is_candidate_line("func doSomething() {"));
+    }
+
+    #[test]
+    fn test_swift_func_with_params() {
+        assert!(is_candidate_line("func doSomething(x: Int, y: String) {"));
+    }
+
+    #[test]
+    fn test_swift_public_func() {
+        assert!(is_candidate_line("public func doSomething() {"));
+    }
+
+    #[test]
+    fn test_swift_private_func() {
+        assert!(is_candidate_line("private func doSomething() {"));
+    }
+
+    #[test]
+    fn test_swift_internal_func() {
+        assert!(is_candidate_line("internal func doSomething() {"));
+    }
+
+    #[test]
+    fn test_swift_fileprivate_func() {
+        assert!(is_candidate_line("fileprivate func doSomething() {"));
+    }
+
+    #[test]
+    fn test_swift_func_with_return_type() {
+        assert!(is_candidate_line("func doSomething() -> Bool {"));
+    }
+
+    #[test]
+    fn test_swift_func_with_generics() {
+        assert!(is_candidate_line("func doSomething<T>(value: T) {"));
+    }
+
+    #[test]
+    fn test_swift_indented_func() {
+        assert!(is_candidate_line("    func doSomething() {"));
+    }
+
+    // --- JavaScript candidates ---
+
+    #[test]
+    fn test_js_const_function_assignment() {
+        assert!(is_candidate_line("const handler = function() {"));
+    }
+
+    #[test]
+    fn test_js_var_function_assignment() {
+        assert!(is_candidate_line("var handler = function() {"));
+    }
+
+    #[test]
+    fn test_js_let_function_assignment() {
+        assert!(is_candidate_line("let handler = function() {"));
+    }
+
+    #[test]
+    fn test_js_bare_function_assignment() {
+        assert!(is_candidate_line("handler = function() {"));
+    }
+
+    #[test]
+    fn test_js_named_function() {
+        assert!(is_candidate_line("function myFunction() {"));
+    }
+
+    #[test]
+    fn test_js_async_function() {
+        assert!(is_candidate_line("async function myFunction() {"));
+    }
+
+    // --- Parse.Cloud candidates ---
+
+    #[test]
+    fn test_parse_cloud_define_quoted() {
+        assert!(is_candidate_line(
+            "Parse.Cloud.define(\"myFunc\", async (request) => {"
+        ));
+    }
+
+    #[test]
+    fn test_parse_cloud_before_save_quoted() {
+        assert!(is_candidate_line(
+            "Parse.Cloud.beforeSave(\"Message\", async (request) => {"
+        ));
+    }
+
+    #[test]
+    fn test_parse_cloud_after_save_quoted() {
+        assert!(is_candidate_line(
+            "Parse.Cloud.afterSave(\"Message\", async (request) => {"
+        ));
+    }
+
+    #[test]
+    fn test_parse_cloud_before_save_dotted() {
+        assert!(is_candidate_line(
+            "Parse.Cloud.beforeSave(Parse.User, async (request) => {"
+        ));
+    }
+
+    #[test]
+    fn test_parse_cloud_define_sync() {
+        assert!(is_candidate_line(
+            "Parse.Cloud.define(\"myFunc\", (request) => {"
+        ));
+    }
+
+    // --- ObjC candidates ---
+
+    #[test]
+    fn test_objc_instance_method() {
+        assert!(is_candidate_line("- (void)myMethod:(NSString *)arg {"));
+    }
+
+    #[test]
+    fn test_objc_class_method() {
+        assert!(is_candidate_line("+ (instancetype)sharedInstance {"));
+    }
+
+    #[test]
+    fn test_objc_no_params() {
+        assert!(is_candidate_line("- (void)viewDidLoad {"));
+    }
+
+    // --- Negative cases ---
+
+    #[test]
+    fn test_plain_assignment_not_candidate() {
+        assert!(!is_candidate_line("let x = 10;"));
+    }
+
+    #[test]
+    fn test_comment_not_candidate() {
+        assert!(!is_candidate_line("// func doSomething() {"));
+    }
+
+    #[test]
+    fn test_class_declaration_not_candidate() {
+        assert!(!is_candidate_line("class MyClass {"));
+    }
+
+    #[test]
+    fn test_enum_declaration_not_candidate() {
+        assert!(!is_candidate_line("enum MyEnum {"));
+    }
+
+    #[test]
+    fn test_struct_declaration_not_candidate() {
+        assert!(!is_candidate_line("struct MyStruct {"));
+    }
+
+    #[test]
+    fn test_empty_line_not_candidate() {
+        assert!(!is_candidate_line(""));
+    }
+
+    #[test]
+    fn test_import_not_candidate() {
+        assert!(!is_candidate_line("import Foundation"));
+    }
+
+    #[test]
+    fn test_arrow_function_not_candidate() {
+        assert!(!is_candidate_line("const x = () => {"));
+    }
+
+    #[test]
+    fn test_swift_func_missing_brace_not_candidate() {
+        assert!(!is_candidate_line("func doSomething()"));
+    }
+}

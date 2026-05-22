@@ -758,3 +758,68 @@ class MyWidget {\n\
         );
     }
 }
+
+#[cfg(test)]
+mod type_candidate_characterization_tests {
+    use super::*;
+
+    #[test]
+    fn test_swift_class_is_type_candidate() {
+        assert!(is_type_candidate_line("class MyClass {"));
+    }
+
+    #[test]
+    fn test_swift_class_indented() {
+        assert!(is_type_candidate_line("    class MyClass {"));
+    }
+
+    #[test]
+    fn test_swift_class_with_inheritance() {
+        assert!(is_type_candidate_line("class MyClass: BaseClass {"));
+    }
+
+    #[test]
+    fn test_swift_enum_is_type_candidate() {
+        assert!(is_type_candidate_line("enum MyEnum {"));
+    }
+
+    #[test]
+    fn test_swift_enum_indented() {
+        assert!(is_type_candidate_line("    enum MyEnum {"));
+    }
+
+    #[test]
+    fn test_swift_enum_with_raw_type() {
+        assert!(is_type_candidate_line("enum MyEnum: String {"));
+    }
+
+    #[test]
+    fn test_struct_not_type_candidate() {
+        assert!(!is_type_candidate_line("struct MyStruct {"));
+    }
+
+    #[test]
+    fn test_func_not_type_candidate() {
+        assert!(!is_type_candidate_line("func doSomething() {"));
+    }
+
+    #[test]
+    fn test_let_not_type_candidate() {
+        assert!(!is_type_candidate_line("let x = 10;"));
+    }
+
+    #[test]
+    fn test_protocol_not_type_candidate() {
+        assert!(!is_type_candidate_line("protocol MyProtocol {"));
+    }
+
+    #[test]
+    fn test_empty_not_type_candidate() {
+        assert!(!is_type_candidate_line(""));
+    }
+
+    #[test]
+    fn test_class_without_brace_not_type_candidate() {
+        assert!(!is_type_candidate_line("class MyClass"));
+    }
+}
