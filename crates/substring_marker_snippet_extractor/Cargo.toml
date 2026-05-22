@@ -4,10 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+lang_support = { path = "../lang_support" }
 todo_marker = { path = "../todo_marker" }
-regex = { workspace = true }
 anyhow = { workspace = true }
-once_cell = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

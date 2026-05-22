@@ -9,7 +9,6 @@ todo_marker = { path = "../todo_marker" }
 lang_support = { path = "../lang_support" }
 regex = { workspace = true }
 anyhow = { workspace = true }
-once_cell = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

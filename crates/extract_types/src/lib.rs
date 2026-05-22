@@ -1,7 +1,6 @@
 // crates/extract_types/src/lib.rs
 
 use anyhow::{Context, Result};
-use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::BTreeSet;
 use std::fs;
@@ -14,18 +13,8 @@ use substring_marker_snippet_extractor::{
 };
 use todo_marker::{is_todo_inside_markers, TODO_MARKER, TODO_MARKER_WS};
 
-/// ---------------------------------------------------------------------------
-///  Regexes for type-level candidate detection (class/enum)
-///
-///  These extend the shared function-level candidate detection in marker_utils
-///  so that enclosing-block extraction for type extraction also recognizes
-///  class and enum declarations.
-/// ---------------------------------------------------------------------------
-static SWIFT_CLASS_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"^\s*class\s+\w+.*\{"#).unwrap());
-static SWIFT_ENUM_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"^\s*enum\s+\w+.*\{"#).unwrap());
-
 fn is_type_candidate_line(line: &str) -> bool {
-    SWIFT_CLASS_RE.is_match(line) || SWIFT_ENUM_RE.is_match(line)
+    for_extension("swift").is_some_and(|lang| lang.is_type_candidate(line))
 }
 
 /// ---------------------------------------------------------------------------
@@ -756,5 +745,70 @@ class MyWidget {\n\
             file_result.is_none(),
             "marker_utils should NOT find a class-only candidate"
         );
+    }
+}
+
+#[cfg(test)]
+mod type_candidate_characterization_tests {
+    use super::*;
+
+    #[test]
+    fn test_swift_class_is_type_candidate() {
+        assert!(is_type_candidate_line("class MyClass {"));
+    }
+
+    #[test]
+    fn test_swift_class_indented() {
+        assert!(is_type_candidate_line("    class MyClass {"));
+    }
+
+    #[test]
+    fn test_swift_class_with_inheritance() {
+        assert!(is_type_candidate_line("class MyClass: BaseClass {"));
+    }
+
+    #[test]
+    fn test_swift_enum_is_type_candidate() {
+        assert!(is_type_candidate_line("enum MyEnum {"));
+    }
+
+    #[test]
+    fn test_swift_enum_indented() {
+        assert!(is_type_candidate_line("    enum MyEnum {"));
+    }
+
+    #[test]
+    fn test_swift_enum_with_raw_type() {
+        assert!(is_type_candidate_line("enum MyEnum: String {"));
+    }
+
+    #[test]
+    fn test_struct_not_type_candidate() {
+        assert!(!is_type_candidate_line("struct MyStruct {"));
+    }
+
+    #[test]
+    fn test_func_not_type_candidate() {
+        assert!(!is_type_candidate_line("func doSomething() {"));
+    }
+
+    #[test]
+    fn test_let_not_type_candidate() {
+        assert!(!is_type_candidate_line("let x = 10;"));
+    }
+
+    #[test]
+    fn test_protocol_not_type_candidate() {
+        assert!(!is_type_candidate_line("protocol MyProtocol {"));
+    }
+
+    #[test]
+    fn test_empty_not_type_candidate() {
+        assert!(!is_type_candidate_line(""));
+    }
+
+    #[test]
+    fn test_class_without_brace_not_type_candidate() {
+        assert!(!is_type_candidate_line("class MyClass"));
     }
 }

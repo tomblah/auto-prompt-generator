@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 anyhow = { workspace = true }
+lang_support = { path = "../lang_support" }
 todo_marker = { path = "../todo_marker" }
-regex = { workspace = true }
 tree-sitter = { workspace = true }
 tree-sitter-swift = { workspace = true }
 
