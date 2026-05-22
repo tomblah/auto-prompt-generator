@@ -1,7 +1,6 @@
 // crates/extract_types/src/lib.rs
 
 use anyhow::{Context, Result};
-use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::BTreeSet;
 use std::fs;
@@ -14,18 +13,8 @@ use substring_marker_snippet_extractor::{
 };
 use todo_marker::{is_todo_inside_markers, TODO_MARKER, TODO_MARKER_WS};
 
-/// ---------------------------------------------------------------------------
-///  Regexes for type-level candidate detection (class/enum)
-///
-///  These extend the shared function-level candidate detection in marker_utils
-///  so that enclosing-block extraction for type extraction also recognizes
-///  class and enum declarations.
-/// ---------------------------------------------------------------------------
-static SWIFT_CLASS_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"^\s*class\s+\w+.*\{"#).unwrap());
-static SWIFT_ENUM_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"^\s*enum\s+\w+.*\{"#).unwrap());
-
 fn is_type_candidate_line(line: &str) -> bool {
-    SWIFT_CLASS_RE.is_match(line) || SWIFT_ENUM_RE.is_match(line)
+    for_extension("swift").is_some_and(|lang| lang.is_type_candidate(line))
 }
 
 /// ---------------------------------------------------------------------------

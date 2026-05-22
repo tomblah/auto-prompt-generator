@@ -12,7 +12,7 @@ use walkdir::WalkDir;
 /// that contain the TODO marker. If multiple files are found, returns the one with the most
 /// recent modification time. If verbose is true, logs extra details.
 ///
-/// Allowed extensions are: `swift`, `h`, `m`, and `js`.
+/// Allowed extensions come from `lang_support::supported_extensions()`.
 /// The marker searched for is `todo_marker::TODO_MARKER_WS`.
 pub fn find_prompt_instruction_in_dir(search_dir: &Path, verbose: bool) -> Result<PathBuf> {
     let finder = PromptInstructionFinder::new(search_dir, verbose);
@@ -33,7 +33,7 @@ impl<'a> PromptInstructionFinder<'a> {
         Self {
             search_dir,
             verbose,
-            allowed_extensions: &["swift", "h", "m", "js"],
+            allowed_extensions: lang_support::supported_extensions(),
             todo_marker: TODO_MARKER_WS,
         }
     }
@@ -552,26 +552,26 @@ mod extension_characterization_tests {
     }
 
     #[test]
-    fn test_jsx_extension_rejected() {
+    fn test_jsx_extension_accepted() {
         let dir = tempdir().unwrap();
-        write_todo_file(dir.path(), "test.jsx");
-        let result = find_prompt_instruction_in_dir(dir.path(), false);
-        assert!(result.is_err());
+        let file = write_todo_file(dir.path(), "test.jsx");
+        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        assert_eq!(result, file);
     }
 
     #[test]
-    fn test_mjs_extension_rejected() {
+    fn test_mjs_extension_accepted() {
         let dir = tempdir().unwrap();
-        write_todo_file(dir.path(), "test.mjs");
-        let result = find_prompt_instruction_in_dir(dir.path(), false);
-        assert!(result.is_err());
+        let file = write_todo_file(dir.path(), "test.mjs");
+        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        assert_eq!(result, file);
     }
 
     #[test]
-    fn test_cjs_extension_rejected() {
+    fn test_cjs_extension_accepted() {
         let dir = tempdir().unwrap();
-        write_todo_file(dir.path(), "test.cjs");
-        let result = find_prompt_instruction_in_dir(dir.path(), false);
-        assert!(result.is_err());
+        let file = write_todo_file(dir.path(), "test.cjs");
+        let result = find_prompt_instruction_in_dir(dir.path(), false).unwrap();
+        assert_eq!(result, file);
     }
 }

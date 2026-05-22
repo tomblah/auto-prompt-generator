@@ -6,7 +6,6 @@
 // scan if the parser is unavailable or fails.
 
 use anyhow::{anyhow, Context, Result};
-use regex::Regex;
 use std::fs;
 use std::mem;
 use std::path::Path;
@@ -137,18 +136,15 @@ pub fn extract_enclosing_type(file_path: &Path) -> Result<String> {
         }
     }
 
-    // 2️⃣  Regex fallback – scan line by line up to the marker.
-    let re = Regex::new(r"(class|struct|enum)\s+(\w+)").context("Regex error")?;
+    let swift_lang = lang_support::for_extension("swift");
 
     let mut last_type: Option<String> = None;
     for line in content.lines() {
         if line.contains(TODO_MARKER) {
             break;
         }
-        if let Some(caps) = re.captures(line) {
-            if let Some(name) = caps.get(2) {
-                last_type = Some(name.as_str().to_string());
-            }
+        if let Some(name) = swift_lang.and_then(|lang| lang.extract_type_name(line)) {
+            last_type = Some(name);
         }
     }
 

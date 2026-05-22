@@ -27,6 +27,26 @@ pub trait LanguageSupport: Sync + Send {
     fn resolve_dependency_path(&self, _line: &str, _current_dir: &Path) -> Option<PathBuf> {
         None
     }
+
+    /// Returns `true` when `line` looks like a function or method declaration
+    /// that could serve as the "enclosing block" for a TODO marker.
+    fn is_function_candidate(&self, _line: &str) -> bool {
+        false
+    }
+
+    /// Returns `true` when `line` looks like a type declaration (class, enum,
+    /// struct) that could serve as an enclosing block for type extraction.
+    fn is_type_candidate(&self, _line: &str) -> bool {
+        false
+    }
+
+    /// Best-effort extraction of an enclosing type name from a source line.
+    ///
+    /// Returns the name if the line contains a type declaration like
+    /// `class Foo`, `struct Bar`, or `enum Baz`.
+    fn extract_type_name(&self, _line: &str) -> Option<String> {
+        None
+    }
 }
 
 /// Returns the language helper for a given file extension.
@@ -37,6 +57,19 @@ pub fn for_extension(ext: &str) -> Option<&'static dyn LanguageSupport> {
         "h" | "m" => Some(&objc::OBJC),
         _ => None,
     }
+}
+
+/// All file extensions recognised by `for_extension`.
+pub fn supported_extensions() -> &'static [&'static str] {
+    &["swift", "js", "jsx", "mjs", "cjs", "h", "m"]
+}
+
+/// Returns `true` if `line` matches any language's function-candidate pattern.
+///
+/// Use when the file extension is unknown or when checking across all languages.
+pub fn is_function_candidate_any_lang(line: &str) -> bool {
+    static ALL: &[&dyn LanguageSupport] = &[&swift::SWIFT, &javascript::JS, &objc::OBJC];
+    ALL.iter().any(|lang| lang.is_function_candidate(line))
 }
 
 pub struct SourceFile {

@@ -270,7 +270,7 @@ name = "extract_enclosing_type"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "regex",
+ "lang_support",
  "tempfile",
  "todo_marker",
  "tree-sitter",
@@ -293,7 +293,6 @@ dependencies = [
  "anyhow",
  "assert_cmd",
  "lang_support",
- "once_cell",
  "predicates 2.1.5",
  "regex",
  "substring_marker_snippet_extractor",
@@ -339,6 +338,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "filetime",
+ "lang_support",
  "tempfile",
  "todo_marker",
  "walkdir",
@@ -855,8 +855,7 @@ name = "substring_marker_snippet_extractor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "once_cell",
- "regex",
+ "lang_support",
  "tempfile",
  "todo_marker",
 ]

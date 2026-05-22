@@ -4,8 +4,6 @@
 //! *and* the single shared “TODO marker” that drives the prompt‑generation
 //! pipeline.
 
-use once_cell::sync::Lazy;
-use regex::Regex;
 use std::fs;
 use std::path::Path;
 
@@ -72,36 +70,8 @@ pub fn file_uses_markers(content: &str) -> bool {
 
 use todo_marker::{is_todo_inside_markers, todo_index};
 
-/// ---------------------------------------------------------------------------
-///  Candidate‑line regexes (same set used elsewhere)
-/// ---------------------------------------------------------------------------
-static SWIFT_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r#"^\s*(?:(?:public|private|internal|fileprivate)\s+)?func\s+\w+(?:<[^>]+>)?\s*\([^)]*\)\s*(?:->\s*\S+)?\s*\{"#,
-    )
-    .unwrap()
-});
-static JS_ASSIGNMENT_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"^\s*(?:(?:const|var|let)\s+)?\w+\s*=\s*function\s*\([^)]*\)\s*\{"#).unwrap()
-});
-static JS_FUNCTION_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"^\s*(?:async\s+)?function\s+\w+\s*\([^)]*\)\s*\{"#).unwrap());
-static PARSE_CLOUD_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r#"^\s*Parse\.Cloud\.(?:define|beforeSave|afterSave)\s*\(\s*(?:"[^"]+"|[A-Za-z][A-Za-z0-9_.]*)\s*,\s*(?:async\s+)?\([^)]*\)\s*=>\s*\{"#,
-    )
-    .unwrap()
-});
-static OBJC_METHOD_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"^\s*[-+]\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*(?::\s*\([^)]*\)\s*[a-zA-Z_][a-zA-Z0-9_]*)*\s*\{"#).unwrap()
-});
-
 fn is_candidate_line(line: &str) -> bool {
-    SWIFT_FUNCTION_RE.is_match(line)
-        || JS_ASSIGNMENT_RE.is_match(line)
-        || JS_FUNCTION_RE.is_match(line)
-        || PARSE_CLOUD_RE.is_match(line)
-        || OBJC_METHOD_RE.is_match(line)
+    lang_support::is_function_candidate_any_lang(line)
 }
 
 // ---------------------------------------------------------------------------
@@ -357,8 +327,6 @@ Irrelevant footer";
     #[test]
     fn test_objc_method_candidate_line() {
         let objc_line = " - (void)myMethod:(NSString *)arg {";
-        // Verify that the OBJC method regex matches and the candidate line check returns true.
-        assert!(OBJC_METHOD_RE.is_match(objc_line));
         assert!(is_candidate_line(objc_line));
     }
 
