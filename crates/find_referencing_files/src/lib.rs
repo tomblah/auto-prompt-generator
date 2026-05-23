@@ -1,9 +1,27 @@
 // crates/find_referencing_files/src/lib.rs
 
 use anyhow::Result;
-use lang_support::walk_source_files;
+use lang_support::{walk_source_files, SourceFile};
 use regex::Regex;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+
+/// Filters a pre-walked set of source files for those whose content contains
+/// `type_name` as a whole word. Use when the caller has already materialised
+/// the source collection and wants to avoid a redundant filesystem walk.
+pub fn find_files_referencing_from_sources(
+    type_name: &str,
+    sources: &[SourceFile],
+) -> Result<BTreeSet<PathBuf>> {
+    let pattern = format!(r"\b{}\b", regex::escape(type_name));
+    let re = Regex::new(&pattern)?;
+
+    Ok(sources
+        .iter()
+        .filter(|sf| re.is_match(&sf.content))
+        .map(|sf| sf.path.clone())
+        .collect())
+}
 
 /// Searches the given directory (and its subdirectories) for files with allowed
 /// extensions that contain the given type name as a whole word.
@@ -331,6 +349,48 @@ mod pathbuf_characterization_tests {
             assert!(results.contains(p), "Expected {:?} in results", p);
         }
 
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod from_sources_tests {
+    use super::*;
+    use std::fs;
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_from_sources_filters_references() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let match_path = dir.path().join("match.swift");
+        let mut f = fs::File::create(&match_path)?;
+        writeln!(f, "let x = Widget()")?;
+
+        let nomatch_path = dir.path().join("nomatch.swift");
+        let mut f2 = fs::File::create(&nomatch_path)?;
+        writeln!(f2, "let y = 42")?;
+
+        let sources = walk_source_files(dir.path());
+        let results = find_files_referencing_from_sources("Widget", &sources)?;
+
+        assert!(results.contains(&match_path));
+        assert!(!results.contains(&nomatch_path));
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_sources_returns_btreeset() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let path = dir.path().join("ref.swift");
+        let mut f = fs::File::create(&path)?;
+        writeln!(f, "let x = Gadget()")?;
+
+        let sources = walk_source_files(dir.path());
+        let results = find_files_referencing_from_sources("Gadget", &sources)?;
+
+        assert_eq!(results.len(), 1);
+        assert!(results.contains(&path));
         Ok(())
     }
 }

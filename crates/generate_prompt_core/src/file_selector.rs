@@ -3,7 +3,10 @@
 use anyhow::Result;
 use extract_enclosing_type::extract_enclosing_type;
 use extract_types::{extract_types_from_file_with_options, ExtractTypesOptions};
-use find_definition_files::find_definition_files;
+use find_definition_files::find_definition_files_from_sources;
+use find_referencing_files::find_files_referencing_from_sources;
+use get_search_roots::get_search_roots;
+use lang_support::walk_source_files;
 use log::{debug, info, warn};
 use std::path::{Path, PathBuf};
 
@@ -47,6 +50,13 @@ pub fn determine_files_to_include_with_options(
     let mut found_files: Vec<PathBuf> = Vec::new();
     let mut types_found = std::collections::BTreeSet::new();
 
+    let needs_source_walk = !singular || options.include_references;
+    let sources = if needs_source_walk {
+        walk_all_search_roots(search_root)
+    } else {
+        Vec::new()
+    };
+
     if singular {
         info!("Singular mode enabled: only including the TODO file");
         found_files.push(file_path.to_path_buf());
@@ -63,7 +73,7 @@ pub fn determine_files_to_include_with_options(
         }
         debug!("--------------------------------------------------");
 
-        let def_files_set = find_definition_files(&types, search_root)?;
+        let def_files_set = find_definition_files_from_sources(&types, &sources);
         types_found = types;
 
         for path in def_files_set {
@@ -71,14 +81,6 @@ pub fn determine_files_to_include_with_options(
         }
 
         found_files.push(file_path.to_path_buf());
-
-        if !excludes.is_empty() {
-            debug!("Excluding files matching: {:?}", excludes);
-            found_files.retain(|p| {
-                let basename = p.file_name().unwrap_or_default().to_string_lossy();
-                !excludes.contains(&basename.to_string())
-            });
-        }
     }
 
     if options.include_references {
@@ -93,19 +95,19 @@ pub fn determine_files_to_include_with_options(
         if !enclosing_type.is_empty() {
             debug!("Enclosing type: {}", enclosing_type);
             debug!("Searching for files referencing {}", enclosing_type);
-            let referencing_files =
-                find_referencing_files::find_files_referencing(&enclosing_type, search_root)?;
+            let referencing_files = find_files_referencing_from_sources(&enclosing_type, &sources)?;
             found_files.extend(referencing_files);
         } else {
             debug!("No enclosing type found; skipping reference search.");
         }
-        if !excludes.is_empty() {
-            debug!("Excluding files matching: {:?}", excludes);
-            found_files.retain(|p| {
-                let basename = p.file_name().unwrap_or_default().to_string_lossy();
-                !excludes.contains(&basename.to_string())
-            });
-        }
+    }
+
+    if !excludes.is_empty() {
+        debug!("Excluding files matching: {:?}", excludes);
+        found_files.retain(|p| {
+            let basename = p.file_name().unwrap_or_default().to_string_lossy();
+            !excludes.contains(&basename.to_string())
+        });
     }
 
     found_files.sort();
@@ -121,6 +123,30 @@ pub fn determine_files_to_include_with_options(
         files: found_files,
         types_found,
     })
+}
+
+/// Walks all search roots once to produce a single source-file collection.
+///
+/// Mirrors what `find_definition_files` did internally: resolve search roots
+/// via `get_search_roots`, then walk each one. Because `walk_source_files`
+/// recurses and roots may overlap, duplicates are removed by path.
+fn walk_all_search_roots(search_root: &Path) -> Vec<lang_support::SourceFile> {
+    let roots = get_search_roots(search_root).unwrap_or_else(|_| vec![search_root.to_path_buf()]);
+
+    if roots.len() == 1 {
+        return walk_source_files(&roots[0]);
+    }
+
+    let mut seen = std::collections::BTreeSet::new();
+    let mut all = Vec::new();
+    for root in &roots {
+        for sf in walk_source_files(root) {
+            if seen.insert(sf.path.clone()) {
+                all.push(sf);
+            }
+        }
+    }
+    all
 }
 
 #[cfg(test)]
@@ -402,5 +428,224 @@ mod tests {
         assert!(result.files.contains(&ref_path));
         assert!(!result.files.contains(&def_path));
         assert_eq!(result.files.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod walk_unification_characterization_tests {
+    use super::*;
+    use std::fs::File;
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    fn swift_project(
+        types: &[(&str, &str)],
+        instruction: &str,
+        instruction_filename: &str,
+    ) -> (tempfile::TempDir, PathBuf) {
+        let dir = tempdir().unwrap();
+        for (name, content) in types {
+            let path = dir.path().join(name);
+            let mut f = File::create(&path).unwrap();
+            write!(f, "{}", content).unwrap();
+        }
+        let instr_path = dir.path().join(instruction_filename);
+        {
+            let mut f = File::create(&instr_path).unwrap();
+            write!(f, "{}", instruction).unwrap();
+        }
+        (dir, instr_path)
+    }
+
+    #[test]
+    fn char_references_and_definitions_are_merged_sorted_and_deduped() {
+        let (dir, instr_path) = swift_project(
+            &[
+                ("Alpha.swift", "class Alpha {}\nlet x = Beta()\n"),
+                ("Beta.swift", "class Beta {}\n"),
+                ("Gamma.swift", "let y = Alpha()\n"),
+            ],
+            "class Alpha {}\n// TODO: - Fix Alpha\n",
+            "Instruction.swift",
+        );
+
+        let result = determine_files_to_include_with_options(
+            &instr_path,
+            false,
+            dir.path(),
+            &[],
+            &FileSelectionOptions {
+                include_references: true,
+                targeted: false,
+            },
+        )
+        .expect("merged references + definitions failed");
+
+        assert!(result.files.contains(&dir.path().join("Alpha.swift")));
+        assert!(result.files.contains(&dir.path().join("Gamma.swift")));
+        assert!(result.files.contains(&instr_path));
+
+        let mut sorted = result.files.clone();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(result.files, sorted, "output must be sorted and deduped");
+    }
+
+    #[test]
+    fn char_exclusion_applies_to_both_definitions_and_references() {
+        let (dir, instr_path) = swift_project(
+            &[
+                ("Def.swift", "class Widget {}\n"),
+                ("Ref.swift", "let w = Widget()\n"),
+            ],
+            "class Widget {}\n// TODO: - Fix Widget\n",
+            "Instruction.swift",
+        );
+
+        let result = determine_files_to_include_with_options(
+            &instr_path,
+            false,
+            dir.path(),
+            &["Ref.swift".to_string()],
+            &FileSelectionOptions {
+                include_references: true,
+                targeted: false,
+            },
+        )
+        .expect("exclusion across both paths failed");
+
+        assert!(
+            !result.files.contains(&dir.path().join("Ref.swift")),
+            "Ref.swift should be excluded"
+        );
+        assert!(result.files.contains(&dir.path().join("Def.swift")));
+        assert!(result.files.contains(&instr_path));
+    }
+
+    #[test]
+    fn char_exclusion_of_definition_does_not_suppress_same_file_as_reference() {
+        let (dir, instr_path) = swift_project(
+            &[("Both.swift", "class Both {}\nlet b = Both()\n")],
+            "class Both {}\n// TODO: - Fix Both\n",
+            "Instruction.swift",
+        );
+
+        let result_without_exclude = determine_files_to_include_with_options(
+            &instr_path,
+            false,
+            dir.path(),
+            &[],
+            &FileSelectionOptions {
+                include_references: true,
+                targeted: false,
+            },
+        )
+        .expect("without exclude failed");
+
+        assert!(result_without_exclude
+            .files
+            .contains(&dir.path().join("Both.swift")));
+
+        let result_with_exclude = determine_files_to_include_with_options(
+            &instr_path,
+            false,
+            dir.path(),
+            &["Both.swift".to_string()],
+            &FileSelectionOptions {
+                include_references: true,
+                targeted: false,
+            },
+        )
+        .expect("with exclude failed");
+
+        assert!(
+            !result_with_exclude
+                .files
+                .contains(&dir.path().join("Both.swift")),
+            "Both.swift excluded from both definition and reference paths"
+        );
+    }
+
+    #[test]
+    fn char_no_references_without_include_references_flag() {
+        let (dir, instr_path) = swift_project(
+            &[
+                ("Def.swift", "class Gadget {}\n"),
+                ("Ref.swift", "let g = Gadget()\n"),
+            ],
+            "class Gadget {}\n// TODO: - Fix Gadget\n",
+            "Instruction.swift",
+        );
+
+        let result = determine_files_to_include_with_options(
+            &instr_path,
+            false,
+            dir.path(),
+            &[],
+            &FileSelectionOptions {
+                include_references: false,
+                targeted: false,
+            },
+        )
+        .expect("no-references failed");
+
+        assert!(result.files.contains(&dir.path().join("Def.swift")));
+        assert!(
+            !result.files.contains(&dir.path().join("Ref.swift")),
+            "Ref.swift should not appear without include_references"
+        );
+    }
+
+    #[test]
+    fn char_types_found_populated_in_non_singular_mode() {
+        let (dir, instr_path) = swift_project(
+            &[("Foo.swift", "class Foo {}\n")],
+            "class Foo {}\n// TODO: - Fix Foo\n",
+            "Instruction.swift",
+        );
+
+        let result = determine_files_to_include_with_options(
+            &instr_path,
+            false,
+            dir.path(),
+            &[],
+            &FileSelectionOptions {
+                include_references: false,
+                targeted: false,
+            },
+        )
+        .expect("types_found test failed");
+
+        assert!(
+            result.types_found.contains("Foo"),
+            "types_found should contain Foo"
+        );
+    }
+
+    #[test]
+    fn char_singular_mode_with_references_still_searches_references() {
+        let (dir, instr_path) = swift_project(
+            &[("Ref.swift", "let v = Singular()\n")],
+            "class Singular {}\n// TODO: - Fix Singular\n",
+            "Instruction.swift",
+        );
+
+        let result = determine_files_to_include_with_options(
+            &instr_path,
+            true,
+            dir.path(),
+            &[],
+            &FileSelectionOptions {
+                include_references: true,
+                targeted: false,
+            },
+        )
+        .expect("singular + references failed");
+
+        assert!(result.files.contains(&instr_path));
+        assert!(
+            result.files.contains(&dir.path().join("Ref.swift")),
+            "references should still be found in singular + include_references mode"
+        );
     }
 }

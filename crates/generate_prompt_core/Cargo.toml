@@ -16,6 +16,7 @@ extract_enclosing_type = { path = "../extract_enclosing_type" }
 find_referencing_files = { path = "../find_referencing_files" }
 assemble_prompt = { path = "../assemble_prompt" }
 find_definition_files = { path = "../find_definition_files" }
+lang_support = { path = "../lang_support" }
 post_processing = { path = "../post_processing" }
 todo_marker = { path = "../todo_marker" }
 
