@@ -75,6 +75,80 @@ fn is_candidate_line(line: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+//  FileAnalysis – unified file context for marker and enclosing-block logic
+// ---------------------------------------------------------------------------
+
+/// Pre-computed analysis of a source file's marker structure and TODO position.
+///
+/// Consumers that need to filter markers, extract enclosing blocks, or check
+/// TODO position should construct a `FileAnalysis` once and call its methods,
+/// rather than re-implementing gating logic independently.
+pub struct FileAnalysis<'a> {
+    content: &'a str,
+    has_markers: bool,
+    todo_idx: Option<usize>,
+    todo_inside_markers: bool,
+}
+
+impl<'a> FileAnalysis<'a> {
+    /// Analyse the content once.
+    pub fn new(content: &'a str) -> Self {
+        let has_markers = file_uses_markers(content);
+        let todo_idx = todo_index(content);
+        let todo_inside_markers =
+            has_markers && todo_idx.is_some_and(|idx| is_todo_inside_markers(content, idx));
+        Self {
+            content,
+            has_markers,
+            todo_idx,
+            todo_inside_markers,
+        }
+    }
+
+    pub fn has_markers(&self) -> bool {
+        self.has_markers
+    }
+
+    pub fn todo_inside_markers(&self) -> bool {
+        self.todo_inside_markers
+    }
+
+    /// The zero-based line index of the TODO marker, if present.
+    pub fn todo_idx(&self) -> Option<usize> {
+        self.todo_idx
+    }
+
+    /// Filter content through substring markers (delegates to `filter_substring_markers`).
+    pub fn filtered_content(&self, placeholder: &str) -> String {
+        filter_substring_markers(self.content, placeholder)
+    }
+
+    /// Extract the enclosing block around the TODO marker, using an optional
+    /// additional candidate predicate.
+    ///
+    /// Returns `None` if:
+    /// - There is no TODO marker in the content
+    /// - The TODO is inside markers (gating)
+    /// - No candidate line is found before the TODO
+    ///
+    /// The `additional_candidate` predicate extends the built-in function/method
+    /// candidates. Pass `None` for function-only matching (assembly path), or
+    /// supply a type-candidate predicate for class/enum matching (extract_types path).
+    pub fn enclosing_block(
+        &self,
+        additional_candidate: Option<&dyn Fn(&str) -> bool>,
+    ) -> Option<String> {
+        if !self.has_markers {
+            return None;
+        }
+        if self.todo_inside_markers {
+            return None;
+        }
+        extract_enclosing_block_from_content(self.content, additional_candidate)
+    }
+}
+
+// ---------------------------------------------------------------------------
 //  Extract the enclosing block around the TODO marker
 // ---------------------------------------------------------------------------
 

@@ -17,5 +17,5 @@ pub mod utils;
 
 pub use utils::marker_utils::{
     extract_enclosing_block, extract_enclosing_block_from_content, file_uses_markers,
-    filter_substring_markers,
+    filter_substring_markers, FileAnalysis,
 };

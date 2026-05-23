@@ -4,9 +4,7 @@ use anyhow::Result;
 use std::fs;
 use std::path::Path;
 
-use substring_marker_snippet_extractor::{
-    extract_enclosing_block, file_uses_markers, filter_substring_markers,
-};
+use substring_marker_snippet_extractor::{filter_substring_markers, FileAnalysis};
 
 /// Trait that abstracts file processing.
 pub trait FileProcessor {
@@ -20,6 +18,7 @@ pub struct DefaultFileProcessor;
 impl FileProcessor for DefaultFileProcessor {
     fn process_file(&self, file_path: &Path, todo_file_basename: Option<&str>) -> Result<String> {
         let file_content = fs::read_to_string(file_path)?;
+        let analysis = FileAnalysis::new(&file_content);
 
         let processed_content = if file_content.lines().any(|line| line.trim() == "// v") {
             filter_substring_markers(&file_content, "// ...")
@@ -30,10 +29,10 @@ impl FileProcessor for DefaultFileProcessor {
         let file_basename = file_path.file_name().and_then(|s| s.to_str()).unwrap_or("");
         let mut combined_content = processed_content;
 
-        if file_uses_markers(&file_content) {
+        if analysis.has_markers() {
             if let Some(expected_basename) = todo_file_basename {
                 if file_basename == expected_basename {
-                    if let Some(context) = extract_enclosing_block(file_path) {
+                    if let Some(context) = analysis.enclosing_block(None) {
                         combined_content.push_str("\n\n// Enclosing function context:\n");
                         combined_content.push_str(&context);
                     }

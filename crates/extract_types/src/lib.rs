@@ -8,10 +8,8 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use lang_support::for_extension;
-use substring_marker_snippet_extractor::{
-    extract_enclosing_block_from_content, file_uses_markers, filter_substring_markers,
-};
-use todo_marker::{is_todo_inside_markers, TODO_MARKER, TODO_MARKER_WS};
+use substring_marker_snippet_extractor::FileAnalysis;
+use todo_marker::{TODO_MARKER, TODO_MARKER_WS};
 
 fn is_type_candidate_line(line: &str) -> bool {
     for_extension("swift").is_some_and(|lang| lang.is_type_candidate(line))
@@ -108,17 +106,20 @@ pub fn extract_types_from_file_with_options<P: AsRef<Path>>(
         } else {
             full_content.clone()
         }
-    } else if file_uses_markers(&full_content) {
-        let mut filtered = filter_substring_markers(&full_content, "");
-        if !filtered.contains(TODO_MARKER) {
-            if let Some(enclosing) = extract_enclosing_block(&full_content) {
-                filtered.push('\n');
-                filtered.push_str(&enclosing);
-            }
-        }
-        filtered
     } else {
-        full_content.clone()
+        let analysis = FileAnalysis::new(&full_content);
+        if analysis.has_markers() {
+            let mut filtered = analysis.filtered_content("");
+            if !filtered.contains(TODO_MARKER) {
+                if let Some(enclosing) = analysis.enclosing_block(Some(&is_type_candidate_line)) {
+                    filtered.push('\n');
+                    filtered.push_str(&enclosing);
+                }
+            }
+            filtered
+        } else {
+            full_content.clone()
+        }
     };
 
     // 1️⃣  Legacy TypeExtractor on the slice
@@ -137,19 +138,6 @@ pub fn extract_types_from_file_with_options<P: AsRef<Path>>(
     }
 
     Ok(all_types)
-}
-
-/// ---------------------------------------------------------------------------
-///  Helper: extract enclosing block (delegates to shared implementation)
-/// ---------------------------------------------------------------------------
-fn extract_enclosing_block(content: &str) -> Option<String> {
-    let todo_idx = content
-        .lines()
-        .position(|line| line.contains(TODO_MARKER_WS))?;
-    if is_todo_inside_markers(content, todo_idx) {
-        return None;
-    }
-    extract_enclosing_block_from_content(content, Some(&is_type_candidate_line))
 }
 
 /// ---------------------------------------------------------------------------
@@ -434,7 +422,10 @@ func markedFunction() {\n\
 }\n\
 // ^";
 
-        assert!(extract_enclosing_block(content).is_none());
+        let analysis = FileAnalysis::new(content);
+        assert!(analysis
+            .enclosing_block(Some(&is_type_candidate_line))
+            .is_none());
     }
 
     #[test]
@@ -538,6 +529,11 @@ mod type_extractor_tests {
 #[cfg(test)]
 mod objc_tests {
     use super::*;
+    use substring_marker_snippet_extractor::extract_enclosing_block_from_content;
+
+    fn enclosing_block_with_type_predicate(content: &str) -> Option<String> {
+        extract_enclosing_block_from_content(content, Some(&is_type_candidate_line))
+    }
 
     #[test]
     fn test_extract_enclosing_block_with_objc_method_split_lines() {
@@ -549,7 +545,7 @@ mod objc_tests {
 void anotherFunction() {\n\
     // TODO: - Fix issue\n\
 }";
-        let block = extract_enclosing_block(content);
+        let block = enclosing_block_with_type_predicate(content);
         assert!(block.is_some());
         let block_str = block.unwrap();
         assert!(block_str.contains("- (void)MyObjCMethod"));
@@ -565,7 +561,7 @@ void anotherFunction() {\n\
 void someFunction() {\n\
     // TODO: - Address bug\n\
 }";
-        let block = extract_enclosing_block(content);
+        let block = enclosing_block_with_type_predicate(content);
         assert!(block.is_some());
         let block_str = block.unwrap();
         assert!(block_str.contains("- (void)MyObjCMethod {"));
@@ -617,7 +613,12 @@ mod candidate_detection_tests {
 mod enclosing_block_characterization_tests {
     use super::*;
     use std::io::Write;
+    use substring_marker_snippet_extractor::extract_enclosing_block_from_content;
     use tempfile::NamedTempFile;
+
+    fn enclosing_block_with_type_predicate(content: &str) -> Option<String> {
+        extract_enclosing_block_from_content(content, Some(&is_type_candidate_line))
+    }
 
     /// Characterizes that extract_types recognizes ObjC split-line declarations
     /// (method signature on one line, `{` on the next) as candidates via the
@@ -631,7 +632,7 @@ mod enclosing_block_characterization_tests {
     // TODO: - Do something in ObjC\n\
     NSLog(@\"End\");\n\
 }";
-        let block = extract_enclosing_block(content);
+        let block = enclosing_block_with_type_predicate(content);
         assert!(
             block.is_some(),
             "Should recognize ObjC split-line as a diff candidate"
@@ -652,7 +653,7 @@ class MyEnclosingClass {\n\
     let value = 42\n\
     // TODO: - Implement feature\n\
 }";
-        let block = extract_enclosing_block(content);
+        let block = enclosing_block_with_type_predicate(content);
         assert!(
             block.is_some(),
             "extract_types should recognize class as a candidate"
@@ -672,7 +673,7 @@ enum MyState {\n\
     case loaded\n\
     // TODO: - Add error case\n\
 }";
-        let block = extract_enclosing_block(content);
+        let block = enclosing_block_with_type_predicate(content);
         assert!(
             block.is_some(),
             "extract_types should recognize enum as a candidate"
@@ -701,7 +702,7 @@ func sharedFunction() {\n\
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "{}", content).unwrap();
 
-        let local_result = extract_enclosing_block(content);
+        let local_result = enclosing_block_with_type_predicate(content);
 
         let file_result =
             substring_marker_snippet_extractor::utils::marker_utils::extract_enclosing_block(
@@ -730,7 +731,7 @@ class MyWidget {\n\
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "{}", content).unwrap();
 
-        let local_result = extract_enclosing_block(content);
+        let local_result = enclosing_block_with_type_predicate(content);
 
         let file_result =
             substring_marker_snippet_extractor::utils::marker_utils::extract_enclosing_block(
