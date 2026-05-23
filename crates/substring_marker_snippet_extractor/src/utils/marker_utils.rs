@@ -565,3 +565,141 @@ mod candidate_line_characterization_tests {
         assert!(!is_candidate_line("func doSomething()"));
     }
 }
+
+#[cfg(test)]
+mod predicate_extension_characterization_tests {
+    use super::*;
+
+    fn type_candidate_predicate(line: &str) -> bool {
+        lang_support::for_extension("swift").is_some_and(|lang| lang.is_type_candidate(line))
+    }
+
+    /// With no additional predicate, a class declaration is NOT recognized as a
+    /// candidate — only functions/methods are. This is the path used by
+    /// `assemble_prompt::DefaultFileProcessor`.
+    #[test]
+    fn char_class_not_found_without_predicate() {
+        let content = "\
+class MyWidget {\n\
+    var name: String\n\
+    // TODO: - Add initializer\n\
+}";
+        let result = extract_enclosing_block_from_content(content, None);
+        assert!(
+            result.is_none(),
+            "Without type predicate, class should not be a candidate"
+        );
+    }
+
+    /// With the type-candidate predicate, a class declaration IS recognized.
+    /// This is the path used by `extract_types`.
+    #[test]
+    fn char_class_found_with_type_predicate() {
+        let content = "\
+class MyWidget {\n\
+    var name: String\n\
+    // TODO: - Add initializer\n\
+}";
+        let result = extract_enclosing_block_from_content(content, Some(&type_candidate_predicate));
+        assert!(result.is_some(), "With type predicate, class should match");
+        let block = result.unwrap();
+        assert!(block.contains("class MyWidget {"));
+        assert!(block.contains("// TODO: - Add initializer"));
+    }
+
+    /// Enum declarations are only found with the type predicate.
+    #[test]
+    fn char_enum_not_found_without_predicate() {
+        let content = "\
+enum MyState {\n\
+    case loading\n\
+    // TODO: - Add error case\n\
+}";
+        assert!(extract_enclosing_block_from_content(content, None).is_none());
+    }
+
+    #[test]
+    fn char_enum_found_with_type_predicate() {
+        let content = "\
+enum MyState {\n\
+    case loading\n\
+    // TODO: - Add error case\n\
+}";
+        let result = extract_enclosing_block_from_content(content, Some(&type_candidate_predicate));
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("enum MyState {"));
+    }
+
+    /// Functions are found by both paths (no predicate needed).
+    #[test]
+    fn char_function_found_with_and_without_predicate() {
+        let content = "\
+func doWork() {\n\
+    let x = 42\n\
+    // TODO: - Fix calculation\n\
+}";
+        let without = extract_enclosing_block_from_content(content, None);
+        let with = extract_enclosing_block_from_content(content, Some(&type_candidate_predicate));
+        assert!(without.is_some());
+        assert!(with.is_some());
+        assert_eq!(
+            without, with,
+            "Both paths should produce identical output for functions"
+        );
+    }
+
+    /// When both a function and a class precede the TODO, the last candidate wins.
+    /// The algorithm picks the last candidate LINE before the TODO regardless of
+    /// brace closure. Without type predicate: last function is the candidate.
+    /// With type predicate: last of (function OR type) is the candidate.
+    #[test]
+    fn char_last_candidate_wins_divergence() {
+        let content = "\
+func earlyFunc() {\n\
+    let a = 1\n\
+}\n\
+class LateClass {\n\
+    var b = 2\n\
+    // TODO: - Do something\n\
+}";
+        let without = extract_enclosing_block_from_content(content, None);
+        let with = extract_enclosing_block_from_content(content, Some(&type_candidate_predicate));
+
+        // Without: earlyFunc is still the last function-candidate line before TODO.
+        // The algorithm extracts the brace block starting from that candidate.
+        assert!(
+            without.is_some(),
+            "earlyFunc is a candidate line before TODO"
+        );
+        assert!(
+            without.as_ref().unwrap().contains("func earlyFunc()"),
+            "Should extract from earlyFunc"
+        );
+
+        // With: class LateClass is the last candidate (later than earlyFunc).
+        assert!(with.is_some());
+        assert!(
+            with.as_ref().unwrap().contains("class LateClass {"),
+            "Type predicate makes class the last candidate"
+        );
+    }
+
+    /// Documents behavior when function appears AFTER class but before TODO.
+    #[test]
+    fn char_function_after_class_before_todo() {
+        let content = "\
+class Container {\n\
+    func innerMethod() {\n\
+        // TODO: - Implement\n\
+    }\n\
+}";
+        let without = extract_enclosing_block_from_content(content, None);
+        let with = extract_enclosing_block_from_content(content, Some(&type_candidate_predicate));
+
+        // Both should find innerMethod (last candidate before TODO in both modes)
+        assert!(without.is_some());
+        assert!(with.is_some());
+        assert!(without.unwrap().contains("func innerMethod()"));
+        assert!(with.unwrap().contains("func innerMethod()"));
+    }
+}
