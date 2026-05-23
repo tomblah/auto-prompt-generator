@@ -295,6 +295,23 @@ func myFunction() {
     }
 
     #[test]
+    fn test_extract_enclosing_block_todo_inside_markers_file_path() {
+        let content = "\
+// v\n\
+func insideMarkers() {\n\
+    // TODO: - This is inside markers\n\
+}\n\
+// ^";
+        let mut temp_file = NamedTempFile::new().unwrap();
+        write!(temp_file, "{}", content).unwrap();
+        let block = extract_enclosing_block(temp_file.path());
+        assert!(
+            block.is_none(),
+            "File-path wrapper should return None when TODO is inside markers"
+        );
+    }
+
+    #[test]
     fn test_extract_enclosing_block_parse_cloud_success() {
         // Create a temporary file where substring markers wrap header content
         // and a Parse.Cloud.beforeSave function (which contains the TODO marker)
@@ -775,5 +792,77 @@ class Container {\n\
         assert!(with.is_some());
         assert!(without.unwrap().contains("func innerMethod()"));
         assert!(with.unwrap().contains("func innerMethod()"));
+    }
+}
+
+#[cfg(test)]
+mod file_analysis_tests {
+    use super::*;
+
+    #[test]
+    fn no_markers_reports_no_markers() {
+        let content = "func doWork() {\n    // TODO: - Fix\n}\n";
+        let analysis = FileAnalysis::new(content);
+        assert!(!analysis.has_markers());
+        assert!(!analysis.todo_inside_markers());
+        assert!(analysis.todo_idx().is_some());
+    }
+
+    #[test]
+    fn markers_present_reports_true() {
+        let content = "// v\nlet x = 1\n// ^\nfunc f() {\n    // TODO: - Do\n}\n";
+        let analysis = FileAnalysis::new(content);
+        assert!(analysis.has_markers());
+        assert!(!analysis.todo_inside_markers());
+    }
+
+    #[test]
+    fn todo_inside_markers_detected() {
+        let content = "// v\nfunc f() {\n    // TODO: - Inside\n}\n// ^\n";
+        let analysis = FileAnalysis::new(content);
+        assert!(analysis.has_markers());
+        assert!(analysis.todo_inside_markers());
+        assert!(analysis.todo_idx().is_some());
+    }
+
+    #[test]
+    fn enclosing_block_returns_none_without_markers() {
+        let content = "func doWork() {\n    // TODO: - Fix\n}\n";
+        let analysis = FileAnalysis::new(content);
+        assert!(analysis.enclosing_block(None).is_none());
+    }
+
+    #[test]
+    fn enclosing_block_returns_none_when_todo_inside_markers() {
+        let content = "// v\nfunc f() {\n    // TODO: - Inside\n}\n// ^\n";
+        let analysis = FileAnalysis::new(content);
+        assert!(analysis.enclosing_block(None).is_none());
+    }
+
+    #[test]
+    fn enclosing_block_finds_function_outside_markers() {
+        let content = "// v\nlet x = 1\n// ^\nfunc doWork() {\n    // TODO: - Fix\n}\n";
+        let analysis = FileAnalysis::new(content);
+        let block = analysis.enclosing_block(None);
+        assert!(block.is_some());
+        assert!(block.unwrap().contains("func doWork()"));
+    }
+
+    #[test]
+    fn filtered_content_delegates_correctly() {
+        let content = "preamble\n// v\nkept line\n// ^\npostamble\n";
+        let analysis = FileAnalysis::new(content);
+        let filtered = analysis.filtered_content("...");
+        assert!(filtered.contains("kept line"));
+        assert!(!filtered.contains("preamble"));
+        assert!(!filtered.contains("postamble"));
+    }
+
+    #[test]
+    fn todo_idx_returns_none_without_todo() {
+        let content = "// v\nlet x = 1\n// ^\n";
+        let analysis = FileAnalysis::new(content);
+        assert!(analysis.todo_idx().is_none());
+        assert!(!analysis.todo_inside_markers());
     }
 }
