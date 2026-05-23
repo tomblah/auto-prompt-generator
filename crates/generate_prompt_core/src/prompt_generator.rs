@@ -317,3 +317,207 @@ class Dummy {}
         );
     }
 }
+
+#[cfg(test)]
+mod enclosing_block_pipeline_characterization_tests {
+    use super::*;
+    use std::fs::File;
+    use std::io::Write;
+    use std::path::{Path, PathBuf};
+    use tempfile::tempdir;
+
+    fn write_temp_file(dir: &Path, filename: &str, contents: &str) -> PathBuf {
+        let file_path = dir.join(filename);
+        let mut file = File::create(&file_path).expect("Failed to create temp file");
+        file.write_all(contents.as_bytes())
+            .expect("Failed to write to temp file");
+        file_path
+    }
+
+    /// Characterizes that when a Swift file has markers and the TODO is outside
+    /// the markers, the assembled prompt contains "Enclosing function context"
+    /// with the function body.
+    #[test]
+    fn char_markers_with_todo_outside_produces_enclosing_function_context() {
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let git_root = temp_dir.path().to_str().unwrap();
+
+        let file_content = concat!(
+            "import Foundation\n",
+            "// v\n",
+            "let headerConstant = 42\n",
+            "// ^\n",
+            "func processData() {\n",
+            "    let result = compute()\n",
+            "    // TODO: - Handle edge case\n",
+            "    return result\n",
+            "}\n",
+        );
+        let instruction_file = write_temp_file(temp_dir.path(), "Processor.swift", file_content);
+
+        let result = generate_prompt_with_options(
+            git_root,
+            &instruction_file,
+            &GeneratePromptOptions {
+                singular: true,
+                force_global: false,
+                include_references: false,
+                excludes: vec![],
+                diff_branch: None,
+                targeted: false,
+            },
+        );
+
+        assert!(
+            result.is_ok(),
+            "Pipeline should succeed: {:?}",
+            result.err()
+        );
+        let output = result.unwrap();
+        assert!(
+            output
+                .final_prompt
+                .contains("// Enclosing function context:"),
+            "Should contain enclosing function context header"
+        );
+        assert!(
+            output.final_prompt.contains("func processData()"),
+            "Should contain the function declaration"
+        );
+        assert!(
+            output.final_prompt.contains("let result = compute()"),
+            "Should contain the function body"
+        );
+    }
+
+    /// Characterizes that when TODO is INSIDE markers, no enclosing function
+    /// context is appended (gating logic suppresses it).
+    #[test]
+    fn char_todo_inside_markers_suppresses_enclosing_context() {
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let git_root = temp_dir.path().to_str().unwrap();
+
+        let file_content = concat!(
+            "import Foundation\n",
+            "func outerFunc() {\n",
+            "    let x = 1\n",
+            "}\n",
+            "// v\n",
+            "func markedFunc() {\n",
+            "    // TODO: - Inside markers\n",
+            "}\n",
+            "// ^\n",
+        );
+        let instruction_file = write_temp_file(temp_dir.path(), "Marked.swift", file_content);
+
+        let result = generate_prompt_with_options(
+            git_root,
+            &instruction_file,
+            &GeneratePromptOptions {
+                singular: true,
+                force_global: false,
+                include_references: false,
+                excludes: vec![],
+                diff_branch: None,
+                targeted: false,
+            },
+        );
+
+        assert!(
+            result.is_ok(),
+            "Pipeline should succeed: {:?}",
+            result.err()
+        );
+        let output = result.unwrap();
+        assert!(
+            !output
+                .final_prompt
+                .contains("// Enclosing function context:"),
+            "Should NOT contain enclosing context when TODO is inside markers"
+        );
+    }
+
+    /// Characterizes that a file with markers and a class-level TODO where a
+    /// function also appears does get enclosing context from the FUNCTION (not
+    /// the class). This proves the assembly path uses function-only candidates.
+    #[test]
+    fn char_class_only_no_enclosing_context_in_assembly() {
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let git_root = temp_dir.path().to_str().unwrap();
+
+        let file_content = concat!(
+            "import Foundation\n",
+            "// v\n",
+            "let constant = 99\n",
+            "// ^\n",
+            "class Widget {\n",
+            "    func doWork() {\n",
+            "        let x = 1\n",
+            "        // TODO: - Add validation\n",
+            "    }\n",
+            "}\n",
+        );
+        let instruction_file = write_temp_file(temp_dir.path(), "Widget.swift", file_content);
+
+        let result = generate_prompt_with_options(
+            git_root,
+            &instruction_file,
+            &GeneratePromptOptions {
+                singular: true,
+                force_global: false,
+                include_references: false,
+                excludes: vec![],
+                diff_branch: None,
+                targeted: false,
+            },
+        );
+
+        assert!(
+            result.is_ok(),
+            "Pipeline should succeed: {:?}",
+            result.err()
+        );
+        let output = result.unwrap();
+        assert!(
+            output
+                .final_prompt
+                .contains("// Enclosing function context:"),
+            "Should contain enclosing context from the function"
+        );
+        assert!(
+            output.final_prompt.contains("func doWork()"),
+            "Enclosing block should be the function, not the class"
+        );
+    }
+
+    /// Characterizes that extract_types finds class types from enclosing-block
+    /// extraction when the class is the last candidate before the TODO. The
+    /// type-predicate extension allows classes to be candidates (divergence from
+    /// the assembly path which only recognizes functions).
+    #[test]
+    fn char_extract_types_finds_class_with_markers() {
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+
+        // Class is the LAST candidate before TODO (no intervening function)
+        let file_content = concat!(
+            "import Foundation\n",
+            "// v\n",
+            "let constant = 99\n",
+            "// ^\n",
+            "class Widget {\n",
+            "    var name = \"hello\"\n",
+            "    // TODO: - Add validation\n",
+            "}\n",
+        );
+        let instruction_file = write_temp_file(temp_dir.path(), "Widget.swift", file_content);
+
+        let types = extract_types::extract_types_from_file(&instruction_file)
+            .expect("extract_types should succeed");
+
+        assert!(
+            types.contains("Widget"),
+            "extract_types should find Widget via enclosing-block with type predicate, got: {:?}",
+            types
+        );
+    }
+}

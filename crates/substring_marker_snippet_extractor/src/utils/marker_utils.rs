@@ -75,6 +75,80 @@ fn is_candidate_line(line: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+//  FileAnalysis – unified file context for marker and enclosing-block logic
+// ---------------------------------------------------------------------------
+
+/// Pre-computed analysis of a source file's marker structure and TODO position.
+///
+/// Consumers that need to filter markers, extract enclosing blocks, or check
+/// TODO position should construct a `FileAnalysis` once and call its methods,
+/// rather than re-implementing gating logic independently.
+pub struct FileAnalysis<'a> {
+    content: &'a str,
+    has_markers: bool,
+    todo_idx: Option<usize>,
+    todo_inside_markers: bool,
+}
+
+impl<'a> FileAnalysis<'a> {
+    /// Analyse the content once.
+    pub fn new(content: &'a str) -> Self {
+        let has_markers = file_uses_markers(content);
+        let todo_idx = todo_index(content);
+        let todo_inside_markers =
+            has_markers && todo_idx.is_some_and(|idx| is_todo_inside_markers(content, idx));
+        Self {
+            content,
+            has_markers,
+            todo_idx,
+            todo_inside_markers,
+        }
+    }
+
+    pub fn has_markers(&self) -> bool {
+        self.has_markers
+    }
+
+    pub fn todo_inside_markers(&self) -> bool {
+        self.todo_inside_markers
+    }
+
+    /// The zero-based line index of the TODO marker, if present.
+    pub fn todo_idx(&self) -> Option<usize> {
+        self.todo_idx
+    }
+
+    /// Filter content through substring markers (delegates to `filter_substring_markers`).
+    pub fn filtered_content(&self, placeholder: &str) -> String {
+        filter_substring_markers(self.content, placeholder)
+    }
+
+    /// Extract the enclosing block around the TODO marker, using an optional
+    /// additional candidate predicate.
+    ///
+    /// Returns `None` if:
+    /// - There is no TODO marker in the content
+    /// - The TODO is inside markers (gating)
+    /// - No candidate line is found before the TODO
+    ///
+    /// The `additional_candidate` predicate extends the built-in function/method
+    /// candidates. Pass `None` for function-only matching (assembly path), or
+    /// supply a type-candidate predicate for class/enum matching (extract_types path).
+    pub fn enclosing_block(
+        &self,
+        additional_candidate: Option<&dyn Fn(&str) -> bool>,
+    ) -> Option<String> {
+        if !self.has_markers {
+            return None;
+        }
+        if self.todo_inside_markers {
+            return None;
+        }
+        extract_enclosing_block_from_content(self.content, additional_candidate)
+    }
+}
+
+// ---------------------------------------------------------------------------
 //  Extract the enclosing block around the TODO marker
 // ---------------------------------------------------------------------------
 
@@ -218,6 +292,23 @@ func myFunction() {
         write!(temp_file, "{}", content).unwrap();
         let block = extract_enclosing_block(temp_file.path());
         assert!(block.is_none());
+    }
+
+    #[test]
+    fn test_extract_enclosing_block_todo_inside_markers_file_path() {
+        let content = "\
+// v\n\
+func insideMarkers() {\n\
+    // TODO: - This is inside markers\n\
+}\n\
+// ^";
+        let mut temp_file = NamedTempFile::new().unwrap();
+        write!(temp_file, "{}", content).unwrap();
+        let block = extract_enclosing_block(temp_file.path());
+        assert!(
+            block.is_none(),
+            "File-path wrapper should return None when TODO is inside markers"
+        );
     }
 
     #[test]
@@ -563,5 +654,215 @@ mod candidate_line_characterization_tests {
     #[test]
     fn test_swift_func_missing_brace_not_candidate() {
         assert!(!is_candidate_line("func doSomething()"));
+    }
+}
+
+#[cfg(test)]
+mod predicate_extension_characterization_tests {
+    use super::*;
+
+    fn type_candidate_predicate(line: &str) -> bool {
+        lang_support::for_extension("swift").is_some_and(|lang| lang.is_type_candidate(line))
+    }
+
+    /// With no additional predicate, a class declaration is NOT recognized as a
+    /// candidate — only functions/methods are. This is the path used by
+    /// `assemble_prompt::DefaultFileProcessor`.
+    #[test]
+    fn char_class_not_found_without_predicate() {
+        let content = "\
+class MyWidget {\n\
+    var name: String\n\
+    // TODO: - Add initializer\n\
+}";
+        let result = extract_enclosing_block_from_content(content, None);
+        assert!(
+            result.is_none(),
+            "Without type predicate, class should not be a candidate"
+        );
+    }
+
+    /// With the type-candidate predicate, a class declaration IS recognized.
+    /// This is the path used by `extract_types`.
+    #[test]
+    fn char_class_found_with_type_predicate() {
+        let content = "\
+class MyWidget {\n\
+    var name: String\n\
+    // TODO: - Add initializer\n\
+}";
+        let result = extract_enclosing_block_from_content(content, Some(&type_candidate_predicate));
+        assert!(result.is_some(), "With type predicate, class should match");
+        let block = result.unwrap();
+        assert!(block.contains("class MyWidget {"));
+        assert!(block.contains("// TODO: - Add initializer"));
+    }
+
+    /// Enum declarations are only found with the type predicate.
+    #[test]
+    fn char_enum_not_found_without_predicate() {
+        let content = "\
+enum MyState {\n\
+    case loading\n\
+    // TODO: - Add error case\n\
+}";
+        assert!(extract_enclosing_block_from_content(content, None).is_none());
+    }
+
+    #[test]
+    fn char_enum_found_with_type_predicate() {
+        let content = "\
+enum MyState {\n\
+    case loading\n\
+    // TODO: - Add error case\n\
+}";
+        let result = extract_enclosing_block_from_content(content, Some(&type_candidate_predicate));
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("enum MyState {"));
+    }
+
+    /// Functions are found by both paths (no predicate needed).
+    #[test]
+    fn char_function_found_with_and_without_predicate() {
+        let content = "\
+func doWork() {\n\
+    let x = 42\n\
+    // TODO: - Fix calculation\n\
+}";
+        let without = extract_enclosing_block_from_content(content, None);
+        let with = extract_enclosing_block_from_content(content, Some(&type_candidate_predicate));
+        assert!(without.is_some());
+        assert!(with.is_some());
+        assert_eq!(
+            without, with,
+            "Both paths should produce identical output for functions"
+        );
+    }
+
+    /// When both a function and a class precede the TODO, the last candidate wins.
+    /// The algorithm picks the last candidate LINE before the TODO regardless of
+    /// brace closure. Without type predicate: last function is the candidate.
+    /// With type predicate: last of (function OR type) is the candidate.
+    #[test]
+    fn char_last_candidate_wins_divergence() {
+        let content = "\
+func earlyFunc() {\n\
+    let a = 1\n\
+}\n\
+class LateClass {\n\
+    var b = 2\n\
+    // TODO: - Do something\n\
+}";
+        let without = extract_enclosing_block_from_content(content, None);
+        let with = extract_enclosing_block_from_content(content, Some(&type_candidate_predicate));
+
+        // Without: earlyFunc is still the last function-candidate line before TODO.
+        // The algorithm extracts the brace block starting from that candidate.
+        assert!(
+            without.is_some(),
+            "earlyFunc is a candidate line before TODO"
+        );
+        assert!(
+            without.as_ref().unwrap().contains("func earlyFunc()"),
+            "Should extract from earlyFunc"
+        );
+
+        // With: class LateClass is the last candidate (later than earlyFunc).
+        assert!(with.is_some());
+        assert!(
+            with.as_ref().unwrap().contains("class LateClass {"),
+            "Type predicate makes class the last candidate"
+        );
+    }
+
+    /// Documents behavior when function appears AFTER class but before TODO.
+    #[test]
+    fn char_function_after_class_before_todo() {
+        let content = "\
+class Container {\n\
+    func innerMethod() {\n\
+        // TODO: - Implement\n\
+    }\n\
+}";
+        let without = extract_enclosing_block_from_content(content, None);
+        let with = extract_enclosing_block_from_content(content, Some(&type_candidate_predicate));
+
+        // Both should find innerMethod (last candidate before TODO in both modes)
+        assert!(without.is_some());
+        assert!(with.is_some());
+        assert!(without.unwrap().contains("func innerMethod()"));
+        assert!(with.unwrap().contains("func innerMethod()"));
+    }
+}
+
+#[cfg(test)]
+mod file_analysis_tests {
+    use super::*;
+
+    #[test]
+    fn no_markers_reports_no_markers() {
+        let content = "func doWork() {\n    // TODO: - Fix\n}\n";
+        let analysis = FileAnalysis::new(content);
+        assert!(!analysis.has_markers());
+        assert!(!analysis.todo_inside_markers());
+        assert!(analysis.todo_idx().is_some());
+    }
+
+    #[test]
+    fn markers_present_reports_true() {
+        let content = "// v\nlet x = 1\n// ^\nfunc f() {\n    // TODO: - Do\n}\n";
+        let analysis = FileAnalysis::new(content);
+        assert!(analysis.has_markers());
+        assert!(!analysis.todo_inside_markers());
+    }
+
+    #[test]
+    fn todo_inside_markers_detected() {
+        let content = "// v\nfunc f() {\n    // TODO: - Inside\n}\n// ^\n";
+        let analysis = FileAnalysis::new(content);
+        assert!(analysis.has_markers());
+        assert!(analysis.todo_inside_markers());
+        assert!(analysis.todo_idx().is_some());
+    }
+
+    #[test]
+    fn enclosing_block_returns_none_without_markers() {
+        let content = "func doWork() {\n    // TODO: - Fix\n}\n";
+        let analysis = FileAnalysis::new(content);
+        assert!(analysis.enclosing_block(None).is_none());
+    }
+
+    #[test]
+    fn enclosing_block_returns_none_when_todo_inside_markers() {
+        let content = "// v\nfunc f() {\n    // TODO: - Inside\n}\n// ^\n";
+        let analysis = FileAnalysis::new(content);
+        assert!(analysis.enclosing_block(None).is_none());
+    }
+
+    #[test]
+    fn enclosing_block_finds_function_outside_markers() {
+        let content = "// v\nlet x = 1\n// ^\nfunc doWork() {\n    // TODO: - Fix\n}\n";
+        let analysis = FileAnalysis::new(content);
+        let block = analysis.enclosing_block(None);
+        assert!(block.is_some());
+        assert!(block.unwrap().contains("func doWork()"));
+    }
+
+    #[test]
+    fn filtered_content_delegates_correctly() {
+        let content = "preamble\n// v\nkept line\n// ^\npostamble\n";
+        let analysis = FileAnalysis::new(content);
+        let filtered = analysis.filtered_content("...");
+        assert!(filtered.contains("kept line"));
+        assert!(!filtered.contains("preamble"));
+        assert!(!filtered.contains("postamble"));
+    }
+
+    #[test]
+    fn todo_idx_returns_none_without_todo() {
+        let content = "// v\nlet x = 1\n// ^\n";
+        let analysis = FileAnalysis::new(content);
+        assert!(analysis.todo_idx().is_none());
+        assert!(!analysis.todo_inside_markers());
     }
 }
