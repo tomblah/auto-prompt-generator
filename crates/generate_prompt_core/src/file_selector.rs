@@ -3,7 +3,10 @@
 use anyhow::Result;
 use extract_enclosing_type::extract_enclosing_type;
 use extract_types::{extract_types_from_file_with_options, ExtractTypesOptions};
-use find_definition_files::find_definition_files;
+use find_definition_files::find_definition_files_from_sources;
+use find_referencing_files::find_files_referencing_from_sources;
+use get_search_roots::get_search_roots;
+use lang_support::walk_source_files;
 use log::{debug, info, warn};
 use std::path::{Path, PathBuf};
 
@@ -47,6 +50,13 @@ pub fn determine_files_to_include_with_options(
     let mut found_files: Vec<PathBuf> = Vec::new();
     let mut types_found = std::collections::BTreeSet::new();
 
+    let needs_source_walk = !singular || options.include_references;
+    let sources = if needs_source_walk {
+        walk_all_search_roots(search_root)
+    } else {
+        Vec::new()
+    };
+
     if singular {
         info!("Singular mode enabled: only including the TODO file");
         found_files.push(file_path.to_path_buf());
@@ -63,7 +73,7 @@ pub fn determine_files_to_include_with_options(
         }
         debug!("--------------------------------------------------");
 
-        let def_files_set = find_definition_files(&types, search_root)?;
+        let def_files_set = find_definition_files_from_sources(&types, &sources);
         types_found = types;
 
         for path in def_files_set {
@@ -71,14 +81,6 @@ pub fn determine_files_to_include_with_options(
         }
 
         found_files.push(file_path.to_path_buf());
-
-        if !excludes.is_empty() {
-            debug!("Excluding files matching: {:?}", excludes);
-            found_files.retain(|p| {
-                let basename = p.file_name().unwrap_or_default().to_string_lossy();
-                !excludes.contains(&basename.to_string())
-            });
-        }
     }
 
     if options.include_references {
@@ -93,19 +95,19 @@ pub fn determine_files_to_include_with_options(
         if !enclosing_type.is_empty() {
             debug!("Enclosing type: {}", enclosing_type);
             debug!("Searching for files referencing {}", enclosing_type);
-            let referencing_files =
-                find_referencing_files::find_files_referencing(&enclosing_type, search_root)?;
+            let referencing_files = find_files_referencing_from_sources(&enclosing_type, &sources)?;
             found_files.extend(referencing_files);
         } else {
             debug!("No enclosing type found; skipping reference search.");
         }
-        if !excludes.is_empty() {
-            debug!("Excluding files matching: {:?}", excludes);
-            found_files.retain(|p| {
-                let basename = p.file_name().unwrap_or_default().to_string_lossy();
-                !excludes.contains(&basename.to_string())
-            });
-        }
+    }
+
+    if !excludes.is_empty() {
+        debug!("Excluding files matching: {:?}", excludes);
+        found_files.retain(|p| {
+            let basename = p.file_name().unwrap_or_default().to_string_lossy();
+            !excludes.contains(&basename.to_string())
+        });
     }
 
     found_files.sort();
@@ -121,6 +123,30 @@ pub fn determine_files_to_include_with_options(
         files: found_files,
         types_found,
     })
+}
+
+/// Walks all search roots once to produce a single source-file collection.
+///
+/// Mirrors what `find_definition_files` did internally: resolve search roots
+/// via `get_search_roots`, then walk each one. Because `walk_source_files`
+/// recurses and roots may overlap, duplicates are removed by path.
+fn walk_all_search_roots(search_root: &Path) -> Vec<lang_support::SourceFile> {
+    let roots = get_search_roots(search_root).unwrap_or_else(|_| vec![search_root.to_path_buf()]);
+
+    if roots.len() == 1 {
+        return walk_source_files(&roots[0]);
+    }
+
+    let mut seen = std::collections::BTreeSet::new();
+    let mut all = Vec::new();
+    for root in &roots {
+        for sf in walk_source_files(root) {
+            if seen.insert(sf.path.clone()) {
+                all.push(sf);
+            }
+        }
+    }
+    all
 }
 
 #[cfg(test)]

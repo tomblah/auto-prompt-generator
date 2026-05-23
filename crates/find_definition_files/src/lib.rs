@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use get_search_roots::get_search_roots;
-use lang_support::walk_source_files;
+use lang_support::{walk_source_files, SourceFile};
 
 /// ---------------------------------------------------------------------------
 ///  DefinitionFinder
@@ -43,7 +43,25 @@ impl DefinitionFinder {
     }
 }
 
-/// Public API
+/// Filters a pre-walked set of source files for those that define any of the
+/// requested types. Use when the caller has already materialised the source
+/// collection and wants to avoid a redundant filesystem walk.
+pub fn find_definition_files_from_sources(
+    types: &BTreeSet<String>,
+    sources: &[SourceFile],
+) -> BTreeSet<PathBuf> {
+    if types.is_empty() {
+        return BTreeSet::new();
+    }
+    let type_vec: Vec<String> = types.iter().cloned().collect();
+    sources
+        .iter()
+        .filter(|sf| sf.language.file_defines_any(&sf.content, &type_vec))
+        .map(|sf| sf.path.clone())
+        .collect()
+}
+
+/// Public API — walks the source tree then filters for definitions.
 pub fn find_definition_files(types: &BTreeSet<String>, root: &Path) -> Result<BTreeSet<PathBuf>> {
     if types.is_empty() {
         return Ok(BTreeSet::new());
@@ -310,5 +328,30 @@ mod tests {
         let mut perms = fs::metadata(&unreadable_file).unwrap().permissions();
         perms.set_mode(0o644);
         fs::set_permissions(&unreadable_file, perms).unwrap();
+    }
+
+    #[test]
+    fn test_from_sources_filters_definitions() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        fs::write(root.join("Match.swift"), "class MyType {}\n").unwrap();
+        fs::write(root.join("NoMatch.swift"), "let x = 1\n").unwrap();
+
+        let sources = walk_source_files(root);
+        let found = find_definition_files_from_sources(&types(&["MyType"]), &sources);
+
+        assert!(found.contains(&root.join("Match.swift")));
+        assert!(!found.contains(&root.join("NoMatch.swift")));
+    }
+
+    #[test]
+    fn test_from_sources_returns_empty_for_empty_types() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("A.swift"), "class A {}\n").unwrap();
+        let sources = walk_source_files(dir.path());
+
+        let found = find_definition_files_from_sources(&BTreeSet::new(), &sources);
+        assert!(found.is_empty());
     }
 }
