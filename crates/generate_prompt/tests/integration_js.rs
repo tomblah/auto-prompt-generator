@@ -48,11 +48,6 @@ Parse.Cloud.define("someCloudCodeFunction", async (request) => {
         let index_js_content = r#"const example = "example";"#;
         fs::write(&index_js_path, index_js_content).unwrap();
 
-        // Set GET_INSTRUCTION_FILE so that main.js is used as the instruction file.
-        env::set_var("GET_INSTRUCTION_FILE", main_js_path.to_str().unwrap());
-        // Also set GET_GIT_ROOT to our temporary directory.
-        env::set_var("GET_GIT_ROOT", temp_dir.path().to_str().unwrap());
-
         // Set up a dummy pbcopy executable that writes its stdin to a temporary clipboard file.
         let pbcopy_dir = TempDir::new().unwrap();
         let clipboard_file = pbcopy_dir.path().join("clipboard.txt");
@@ -69,19 +64,18 @@ Parse.Cloud.define("someCloudCodeFunction", async (request) => {
             perms.set_mode(0o755);
             fs::set_permissions(&dummy_pbcopy_path, perms).unwrap();
         }
-        // Prepend the dummy pbcopy directory to the PATH.
         let original_path = env::var("PATH").unwrap();
-        env::set_var(
-            "PATH",
-            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
-        );
-
-        // Ensure that clipboard copying is enabled.
-        env::remove_var("DISABLE_PBCOPY");
 
         // Run the generate_prompt binary in singular mode.
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-        cmd.arg("--singular");
+        cmd.arg("--singular")
+            .env("GET_GIT_ROOT", temp_dir.path())
+            .env("GET_INSTRUCTION_FILE", &main_js_path)
+            .env(
+                "PATH",
+                format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+            )
+            .env_remove("DISABLE_PBCOPY");
         cmd.assert().success();
 
         // Read the dummy clipboard file.
@@ -153,11 +147,6 @@ someFunction = function(someParameter) {
         let index_js_content = r#"const example = "example";"#;
         fs::write(&index_js_path, index_js_content).unwrap();
 
-        // Set GET_INSTRUCTION_FILE so that main.js is used as the instruction file.
-        env::set_var("GET_INSTRUCTION_FILE", main_js_path.to_str().unwrap());
-        // Also set GET_GIT_ROOT to our temporary directory.
-        env::set_var("GET_GIT_ROOT", temp_dir.path().to_str().unwrap());
-
         // Set up a dummy pbcopy executable that writes its stdin to a temporary clipboard file.
         let pbcopy_dir = TempDir::new().unwrap();
         let clipboard_file = pbcopy_dir.path().join("clipboard.txt");
@@ -174,19 +163,18 @@ someFunction = function(someParameter) {
             perms.set_mode(0o755);
             fs::set_permissions(&dummy_pbcopy_path, perms).unwrap();
         }
-        // Prepend the dummy pbcopy directory to the PATH.
         let original_path = env::var("PATH").unwrap();
-        env::set_var(
-            "PATH",
-            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
-        );
-
-        // Ensure that clipboard copying is enabled.
-        env::remove_var("DISABLE_PBCOPY");
 
         // Run the generate_prompt binary in singular mode.
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-        cmd.arg("--singular");
+        cmd.arg("--singular")
+            .env("GET_GIT_ROOT", temp_dir.path())
+            .env("GET_INSTRUCTION_FILE", &main_js_path)
+            .env(
+                "PATH",
+                format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+            )
+            .env_remove("DISABLE_PBCOPY");
         cmd.assert().success();
 
         // Read the dummy clipboard file.
@@ -252,11 +240,6 @@ async function someFunction(someParameter) {
         let index_js_content = r#"const example = "example";"#;
         fs::write(&index_js_path, index_js_content).unwrap();
 
-        // Set GET_INSTRUCTION_FILE so that main.js is used as the instruction file.
-        env::set_var("GET_INSTRUCTION_FILE", main_js_path.to_str().unwrap());
-        // Also set GET_GIT_ROOT to our temporary directory.
-        env::set_var("GET_GIT_ROOT", temp_dir.path().to_str().unwrap());
-
         // Set up a dummy pbcopy executable that writes its stdin to a temporary clipboard file.
         let pbcopy_dir = TempDir::new().unwrap();
         let clipboard_file = pbcopy_dir.path().join("clipboard.txt");
@@ -273,19 +256,18 @@ async function someFunction(someParameter) {
             perms.set_mode(0o755);
             fs::set_permissions(&dummy_pbcopy_path, perms).unwrap();
         }
-        // Prepend the dummy pbcopy directory to the PATH.
         let original_path = env::var("PATH").unwrap();
-        env::set_var(
-            "PATH",
-            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
-        );
-
-        // Ensure that clipboard copying is enabled.
-        env::remove_var("DISABLE_PBCOPY");
 
         // Run the generate_prompt binary in singular mode.
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-        cmd.arg("--singular");
+        cmd.arg("--singular")
+            .env("GET_GIT_ROOT", temp_dir.path())
+            .env("GET_INSTRUCTION_FILE", &main_js_path)
+            .env(
+                "PATH",
+                format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+            )
+            .env_remove("DISABLE_PBCOPY");
         cmd.assert().success();
 
         // Read the dummy clipboard file.
@@ -371,10 +353,6 @@ async function someFunction(someParameter) {
         let other_js_content = r#"console.log("This is other file");"#;
         fs::write(&other_js_path, other_js_content).unwrap();
 
-        // Set environment variables so that complex.js is the instruction file.
-        env::set_var("GET_INSTRUCTION_FILE", complex_js_path.to_str().unwrap());
-        env::set_var("GET_GIT_ROOT", temp_dir.path().to_str().unwrap());
-
         // Set up a dummy pbcopy executable that writes its stdin to a temporary clipboard file.
         let pbcopy_dir = TempDir::new().unwrap();
         let clipboard_file = pbcopy_dir.path().join("clipboard.txt");
@@ -391,17 +369,18 @@ async function someFunction(someParameter) {
             perms.set_mode(0o755);
             fs::set_permissions(&dummy_pbcopy_path, perms).unwrap();
         }
-        // Prepend the dummy pbcopy directory to the PATH.
         let original_path = env::var("PATH").unwrap();
-        env::set_var(
-            "PATH",
-            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
-        );
-        env::remove_var("DISABLE_PBCOPY");
 
         // Run the generate_prompt binary in singular mode.
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-        cmd.arg("--singular");
+        cmd.arg("--singular")
+            .env("GET_GIT_ROOT", temp_dir.path())
+            .env("GET_INSTRUCTION_FILE", &complex_js_path)
+            .env(
+                "PATH",
+                format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+            )
+            .env_remove("DISABLE_PBCOPY");
         cmd.assert().success();
 
         // Read the content from the dummy clipboard file.
@@ -496,10 +475,6 @@ async function someFunction(someParameter) {
             r#"console.log("This file should not be processed in singular mode.");"#;
         fs::write(&other_js_path, other_content).unwrap();
 
-        // Set environment variables so that kitchen_sink.js is used as the instruction file.
-        env::set_var("GET_INSTRUCTION_FILE", js_file_path.to_str().unwrap());
-        env::set_var("GET_GIT_ROOT", temp_dir.path().to_str().unwrap());
-
         // Set up a dummy pbcopy executable that writes its stdin to a temporary clipboard file.
         let pbcopy_dir = TempDir::new().unwrap();
         let clipboard_file = pbcopy_dir.path().join("clipboard.txt");
@@ -516,17 +491,18 @@ async function someFunction(someParameter) {
             perms.set_mode(0o755);
             fs::set_permissions(&dummy_pbcopy_path, perms).unwrap();
         }
-        // Prepend the dummy pbcopy directory to the PATH.
         let original_path = env::var("PATH").unwrap();
-        env::set_var(
-            "PATH",
-            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
-        );
-        env::remove_var("DISABLE_PBCOPY");
 
         // Run the generate_prompt binary in singular mode.
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-        cmd.arg("--singular");
+        cmd.arg("--singular")
+            .env("GET_GIT_ROOT", temp_dir.path())
+            .env("GET_INSTRUCTION_FILE", &js_file_path)
+            .env(
+                "PATH",
+                format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+            )
+            .env_remove("DISABLE_PBCOPY");
         cmd.assert().success();
 
         // Read the output from the dummy clipboard file.
@@ -574,13 +550,9 @@ async function someFunction(someParameter) {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_js_scrubs_extra_todo_markers() {
-        // Ensure diff mode is disabled so that no extra diff markers are appended.
-        env::remove_var("DIFF_WITH_BRANCH");
-
         // Create a temporary directory to simulate a dummy JavaScript project.
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let temp_dir_path = temp_dir.path();
-        env::set_var("GET_GIT_ROOT", temp_dir_path.to_str().unwrap());
 
         // Create an Instruction.js file with multiple "// TODO: -" markers.
         // The first marker is the primary (CTA) marker.
@@ -595,10 +567,6 @@ function doSomething() {
 // TODO: - Another marker that should be scrubbed
 "#;
         fs::write(&instruction_file, instruction_content).expect("Failed to write Instruction.js");
-
-        // Set the environment variable so generate_prompt uses this instruction file.
-        env::set_var("GET_INSTRUCTION_FILE", instruction_file.to_str().unwrap());
-        env::remove_var("DISABLE_PBCOPY");
 
         // Set up a dummy pbcopy executable to capture clipboard output.
         let pbcopy_dir = TempDir::new().expect("Failed to create dummy pbcopy directory");
@@ -619,17 +587,20 @@ function doSomething() {
             fs::set_permissions(&dummy_pbcopy_path, perms)
                 .expect("Failed to set permissions on dummy pbcopy");
         }
-        // Prepend the dummy pbcopy directory to the PATH.
         let original_path = env::var("PATH").expect("PATH not found");
-        env::set_var(
-            "PATH",
-            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
-        );
 
         // Run generate_prompt in singular mode so that only the instruction file is processed.
         let mut cmd =
             Command::cargo_bin("generate_prompt").expect("Failed to find generate_prompt binary");
-        cmd.arg("--singular");
+        cmd.arg("--singular")
+            .env("GET_GIT_ROOT", temp_dir_path)
+            .env("GET_INSTRUCTION_FILE", &instruction_file)
+            .env(
+                "PATH",
+                format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+            )
+            .env_remove("DISABLE_PBCOPY")
+            .env_remove("DIFF_WITH_BRANCH");
         cmd.assert().success();
 
         // Read the final prompt from the clipboard output.
