@@ -45,12 +45,6 @@ mod integration_tests {
         let git_root_dir = TempDir::new().unwrap();
         let git_root_path = git_root_dir.path();
 
-        // Set GET_GIT_ROOT to the git root.
-        env::set_var("GET_GIT_ROOT", git_root_path.to_str().unwrap());
-
-        // Remove any diff branch setting to avoid unwanted branch verification.
-        env::remove_var("DIFF_WITH_BRANCH");
-
         // Create the package directory inside the git root.
         let package_dir = git_root_path.join("my_package");
         fs::create_dir_all(&package_dir).unwrap();
@@ -134,23 +128,20 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_normal_mode_includes_all_files() {
-        env::remove_var("DIFF_WITH_BRANCH");
-        let (_project_dir, instruction_file_path) = setup_dummy_project();
-
-        env::set_var(
-            "GET_INSTRUCTION_FILE",
-            instruction_file_path.to_str().unwrap(),
-        );
-        env::remove_var("DISABLE_PBCOPY");
+        let (project_dir, instruction_file_path) = setup_dummy_project();
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var(
-            "PATH",
-            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
-        );
 
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.env("GET_GIT_ROOT", project_dir.path())
+            .env("GET_INSTRUCTION_FILE", &instruction_file_path)
+            .env(
+                "PATH",
+                format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+            )
+            .env_remove("DISABLE_PBCOPY")
+            .env_remove("DIFF_WITH_BRANCH");
         cmd.assert().success();
 
         let clipboard_content =
@@ -208,24 +199,21 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_singular_mode_includes_only_todo_file() {
-        env::remove_var("DIFF_WITH_BRANCH");
-        let (_project_dir, instruction_file_path) = setup_dummy_project();
-
-        env::set_var(
-            "GET_INSTRUCTION_FILE",
-            instruction_file_path.to_str().unwrap(),
-        );
-        env::remove_var("DISABLE_PBCOPY");
+        let (project_dir, instruction_file_path) = setup_dummy_project();
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var(
-            "PATH",
-            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
-        );
 
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-        cmd.arg("--singular");
+        cmd.arg("--singular")
+            .env("GET_GIT_ROOT", project_dir.path())
+            .env("GET_INSTRUCTION_FILE", &instruction_file_path)
+            .env(
+                "PATH",
+                format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+            )
+            .env_remove("DISABLE_PBCOPY")
+            .env_remove("DIFF_WITH_BRANCH");
         cmd.assert().success();
 
         let clipboard_content =
@@ -275,24 +263,21 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_include_references_includes_ref_file() {
-        env::remove_var("DIFF_WITH_BRANCH");
-        let (_project_dir, instruction_file_path) = setup_dummy_project();
-
-        env::set_var(
-            "GET_INSTRUCTION_FILE",
-            instruction_file_path.to_str().unwrap(),
-        );
-        env::remove_var("DISABLE_PBCOPY");
+        let (project_dir, instruction_file_path) = setup_dummy_project();
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var(
-            "PATH",
-            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
-        );
 
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-        cmd.arg("--include-references");
+        cmd.arg("--include-references")
+            .env("GET_GIT_ROOT", project_dir.path())
+            .env("GET_INSTRUCTION_FILE", &instruction_file_path)
+            .env(
+                "PATH",
+                format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+            )
+            .env_remove("DISABLE_PBCOPY")
+            .env_remove("DIFF_WITH_BRANCH");
         cmd.assert().success();
 
         let clipboard_content =
@@ -339,25 +324,23 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_excludes_definition1() {
-        env::remove_var("DIFF_WITH_BRANCH");
-        let (_project_dir, instruction_file_path) = setup_dummy_project();
-
-        env::set_var(
-            "GET_INSTRUCTION_FILE",
-            instruction_file_path.to_str().unwrap(),
-        );
-        env::remove_var("DISABLE_PBCOPY");
+        let (project_dir, instruction_file_path) = setup_dummy_project();
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var(
-            "PATH",
-            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
-        );
 
         // Run generate_prompt with the exclusion flag for "Definition1.swift"
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-        cmd.arg("--exclude").arg("Definition1.swift");
+        cmd.arg("--exclude")
+            .arg("Definition1.swift")
+            .env("GET_GIT_ROOT", project_dir.path())
+            .env("GET_INSTRUCTION_FILE", &instruction_file_path)
+            .env(
+                "PATH",
+                format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+            )
+            .env_remove("DISABLE_PBCOPY")
+            .env_remove("DIFF_WITH_BRANCH");
         cmd.assert().success();
 
         let clipboard_content =
@@ -391,24 +374,21 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_force_global_includes_outside_file() {
-        env::remove_var("DIFF_WITH_BRANCH");
-        let (_project_dir, instruction_file_path) = setup_dummy_project();
-
-        env::set_var(
-            "GET_INSTRUCTION_FILE",
-            instruction_file_path.to_str().unwrap(),
-        );
-        env::remove_var("DISABLE_PBCOPY");
+        let (project_dir, instruction_file_path) = setup_dummy_project();
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var(
-            "PATH",
-            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
-        );
 
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-        cmd.arg("--force-global");
+        cmd.arg("--force-global")
+            .env("GET_GIT_ROOT", project_dir.path())
+            .env("GET_INSTRUCTION_FILE", &instruction_file_path)
+            .env(
+                "PATH",
+                format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+            )
+            .env_remove("DISABLE_PBCOPY")
+            .env_remove("DIFF_WITH_BRANCH");
         cmd.assert().success();
 
         let clipboard_content =
@@ -430,25 +410,21 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_includes_trigger_referenced_file() {
-        env::remove_var("DIFF_WITH_BRANCH");
-        let (_project_dir, instruction_file_path) = setup_dummy_project();
-
-        // Set the GET_INSTRUCTION_FILE to point to Instruction.swift.
-        env::set_var(
-            "GET_INSTRUCTION_FILE",
-            instruction_file_path.to_str().unwrap(),
-        );
-        env::remove_var("DISABLE_PBCOPY");
+        let (project_dir, instruction_file_path) = setup_dummy_project();
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var(
-            "PATH",
-            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
-        );
 
         // Run generate_prompt (normal mode).
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.env("GET_GIT_ROOT", project_dir.path())
+            .env("GET_INSTRUCTION_FILE", &instruction_file_path)
+            .env(
+                "PATH",
+                format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+            )
+            .env_remove("DISABLE_PBCOPY")
+            .env_remove("DIFF_WITH_BRANCH");
         cmd.assert().success();
 
         let clipboard_content =
@@ -471,25 +447,21 @@ mod integration_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_excludes_comment_referenced_file() {
-        env::remove_var("DIFF_WITH_BRANCH");
-        let (_project_dir, instruction_file_path) = setup_dummy_project();
-
-        // Set the GET_INSTRUCTION_FILE to point to Instruction.swift.
-        env::set_var(
-            "GET_INSTRUCTION_FILE",
-            instruction_file_path.to_str().unwrap(),
-        );
-        env::remove_var("DISABLE_PBCOPY");
+        let (project_dir, instruction_file_path) = setup_dummy_project();
 
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var(
-            "PATH",
-            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
-        );
 
         // Run generate_prompt (normal mode).
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.env("GET_GIT_ROOT", project_dir.path())
+            .env("GET_INSTRUCTION_FILE", &instruction_file_path)
+            .env(
+                "PATH",
+                format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+            )
+            .env_remove("DISABLE_PBCOPY")
+            .env_remove("DIFF_WITH_BRANCH");
         cmd.assert().success();
 
         let clipboard_content =
@@ -518,7 +490,6 @@ mod integration_tests_substring_markers {
     #[cfg(unix)]
     // NB: substring markers and Swift aren't really working too well, will not support it for the time being
     fn test_generate_prompt_swift_enclosing_function_outside_markers() {
-        env::remove_var("DIFF_WITH_BRANCH");
         // Create a temporary directory for our dummy Swift project.
         let temp_dir = TempDir::new().unwrap();
         let main_swift_path = temp_dir.path().join("main.swift");
@@ -568,10 +539,6 @@ public func enclosingFunction<V: Equatable, W: Codable>(input: V) -> W? {
 "#;
         fs::write(&main_swift_path, main_swift_content).unwrap();
 
-        // Set environment variables so generate_prompt uses our Swift file.
-        env::set_var("GET_INSTRUCTION_FILE", main_swift_path.to_str().unwrap());
-        env::set_var("GET_GIT_ROOT", temp_dir.path().to_str().unwrap());
-
         // Set up a dummy pbcopy executable that writes its stdin to a temporary clipboard file.
         let pbcopy_dir = TempDir::new().unwrap();
         let clipboard_file = pbcopy_dir.path().join("clipboard.txt");
@@ -588,19 +555,19 @@ public func enclosingFunction<V: Equatable, W: Codable>(input: V) -> W? {
             perms.set_mode(0o755);
             fs::set_permissions(&dummy_pbcopy_path, perms).unwrap();
         }
-        // Prepend the dummy pbcopy directory to the PATH.
         let original_path = env::var("PATH").unwrap();
-        env::set_var(
-            "PATH",
-            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
-        );
-
-        // Ensure that clipboard copying is enabled.
-        env::remove_var("DISABLE_PBCOPY");
 
         // Run the generate_prompt binary in singular mode.
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-        cmd.arg("--singular");
+        cmd.arg("--singular")
+            .env("GET_GIT_ROOT", temp_dir.path())
+            .env("GET_INSTRUCTION_FILE", &main_swift_path)
+            .env(
+                "PATH",
+                format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+            )
+            .env_remove("DISABLE_PBCOPY")
+            .env_remove("DIFF_WITH_BRANCH");
         cmd.assert().success();
 
         // Read the output from the dummy clipboard file.
@@ -747,26 +714,23 @@ mod integration_diff {
         fs::write(&instruction_file_path, modified_content)
             .expect("Failed to modify Instruction.swift");
 
-        // Set environment variables so generate_prompt picks up our dummy project.
-        env::set_var("GET_GIT_ROOT", git_root_path.to_str().unwrap());
-        env::set_var(
-            "GET_INSTRUCTION_FILE",
-            instruction_file_path.to_str().unwrap(),
-        );
-        env::remove_var("DISABLE_PBCOPY");
-
         // Set up dummy pbcopy so that clipboard output is captured.
         let (pbcopy_dir, clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var(
-            "PATH",
-            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
-        );
 
         // Run the generate_prompt binary with --diff-with flag.
         let mut cmd =
             Command::cargo_bin("generate_prompt").expect("Failed to find generate_prompt binary");
-        cmd.arg("--diff-with").arg("HEAD");
+        cmd.arg("--diff-with")
+            .arg("HEAD")
+            .env("GET_GIT_ROOT", git_root_path)
+            .env("GET_INSTRUCTION_FILE", &instruction_file_path)
+            .env(
+                "PATH",
+                format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+            )
+            .env_remove("DISABLE_PBCOPY")
+            .env_remove("DIFF_WITH_BRANCH");
         cmd.assert().success();
 
         // Read the content from our dummy clipboard file.
@@ -796,12 +760,9 @@ mod integration_diff {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_scrubs_extra_todo_markers() {
-        // Ensure diff mode is disabled so that no extra diff markers are appended.
-        env::remove_var("DIFF_WITH_BRANCH");
         // Create a temporary directory to simulate a Git repository.
         let git_root = TempDir::new().expect("Failed to create temp git root");
         let git_root_path = git_root.path();
-        env::set_var("GET_GIT_ROOT", git_root_path.to_str().unwrap());
 
         // Create a package directory with a Package.swift to mark it as a Swift package.
         let package_dir = git_root_path.join("test_package");
@@ -828,10 +789,6 @@ public class Dummy {
         fs::write(&instruction_file, instruction_content)
             .expect("Failed to write Instruction.swift");
 
-        // Set the environment variable so generate_prompt uses this instruction file.
-        env::set_var("GET_INSTRUCTION_FILE", instruction_file.to_str().unwrap());
-        env::remove_var("DISABLE_PBCOPY");
-
         // Set up a dummy pbcopy executable to capture clipboard output.
         let pbcopy_dir = TempDir::new().expect("Failed to create dummy pbcopy dir");
         let clipboard_file = pbcopy_dir.path().join("clipboard.txt");
@@ -851,17 +808,20 @@ public class Dummy {
             fs::set_permissions(&dummy_pbcopy_path, perms)
                 .expect("Failed to set permissions on dummy pbcopy");
         }
-        // Prepend the dummy pbcopy directory to the PATH.
         let original_path = env::var("PATH").expect("PATH not found");
-        env::set_var(
-            "PATH",
-            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
-        );
 
         // Run generate_prompt in singular mode so that only the instruction file is processed.
         let mut cmd =
             Command::cargo_bin("generate_prompt").expect("Failed to find generate_prompt binary");
-        cmd.arg("--singular");
+        cmd.arg("--singular")
+            .env("GET_GIT_ROOT", git_root_path)
+            .env("GET_INSTRUCTION_FILE", &instruction_file)
+            .env(
+                "PATH",
+                format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+            )
+            .env_remove("DISABLE_PBCOPY")
+            .env_remove("DIFF_WITH_BRANCH");
         cmd.assert().success();
 
         // Read the final prompt from the clipboard output.
@@ -929,26 +889,23 @@ public class Dummy {
             "public final class SomeClass { var x: Int = 0 } \n// TODO: - Fix SomeClass\n";
         fs::write(&instruction_file_path, content).expect("Failed to write Instruction.swift");
 
-        // Set environment variables.
-        env::set_var("GET_GIT_ROOT", git_root_path.to_str().unwrap());
-        env::set_var(
-            "GET_INSTRUCTION_FILE",
-            instruction_file_path.to_str().unwrap(),
-        );
-        env::remove_var("DISABLE_PBCOPY");
-
         // Set up dummy pbcopy so that if any output were produced, it would be captured.
         let (pbcopy_dir, _clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var(
-            "PATH",
-            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
-        );
 
         // Run generate_prompt with --diff-with pointing to a nonexistent branch.
         let mut cmd =
             Command::cargo_bin("generate_prompt").expect("Failed to find generate_prompt binary");
-        cmd.arg("--diff-with").arg("nonexistent");
+        cmd.arg("--diff-with")
+            .arg("nonexistent")
+            .env("GET_GIT_ROOT", git_root_path)
+            .env("GET_INSTRUCTION_FILE", &instruction_file_path)
+            .env(
+                "PATH",
+                format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+            )
+            .env_remove("DISABLE_PBCOPY")
+            .env_remove("DIFF_WITH_BRANCH");
         cmd.assert().failure().stderr(predicate::str::contains(
             "Error: Branch 'nonexistent' does not exist.",
         ));
@@ -962,7 +919,6 @@ mod strict_end_to_end_tests {
     use assert_fs::fixture::PathChild; // explicitly bring the PathChild trait into scope
     use assert_fs::prelude::*; // for methods like child(), which requires the PathChild trait
     use predicates::boolean::PredicateBooleanExt;
-    use std::env; // for env::set_var etc.
     use std::process::Command as StdCommand;
 
     #[test]
@@ -976,9 +932,6 @@ mod strict_end_to_end_tests {
             .write_str("// TODO: - Implement feature\nfn main() {}\n")
             .unwrap();
 
-        // Set GET_INSTRUCTION_FILE to force generate_prompt to use our file.
-        env::set_var("GET_INSTRUCTION_FILE", test_swift.path().to_str().unwrap());
-
         // Initialize the temporary directory as a git repository.
         StdCommand::new("git")
             .current_dir(temp.path())
@@ -986,17 +939,16 @@ mod strict_end_to_end_tests {
             .assert()
             .success();
 
-        // Set GET_GIT_ROOT explicitly to the canonicalized path of the temp directory.
+        // Canonicalize the temp directory for use as the explicit Git root.
         let canonical_git_root = temp.path().canonicalize().unwrap();
-        env::set_var("GET_GIT_ROOT", canonical_git_root.to_str().unwrap());
-
-        // Optionally, disable clipboard copying.
-        env::set_var("DISABLE_PBCOPY", "1");
 
         // Run the generate_prompt binary from the temporary git repo.
         Command::cargo_bin("generate_prompt")
             .unwrap()
             .current_dir(temp.path())
+            .env("GET_GIT_ROOT", &canonical_git_root)
+            .env("GET_INSTRUCTION_FILE", test_swift.path())
+            .env("DISABLE_PBCOPY", "1")
             .assert()
             .success()
             .stdout(predicates::str::contains("Success:"));
@@ -1008,9 +960,6 @@ mod strict_end_to_end_tests {
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_with_swift_input() {
-        // Remove any diff branch setting.
-        env::remove_var("DIFF_WITH_BRANCH");
-
         // Create a temporary directory to simulate the Git repository.
         let temp = assert_fs::TempDir::new().unwrap();
 
@@ -1030,18 +979,8 @@ func exampleFunction() {
             )
             .unwrap();
 
-        // Force generate_prompt to use this file as the instruction file.
-        env::set_var(
-            "GET_INSTRUCTION_FILE",
-            example_swift.path().to_str().unwrap(),
-        );
-
-        // Set GET_GIT_ROOT to the canonicalized temporary directory.
+        // Canonicalize the temporary directory for use as the explicit Git root.
         let canonical_git_root = temp.path().canonicalize().unwrap();
-        env::set_var("GET_GIT_ROOT", canonical_git_root.to_str().unwrap());
-
-        // Disable clipboard copying during testing.
-        env::set_var("DISABLE_PBCOPY", "1");
 
         // Initialize a Git repository in the temp directory.
         StdCommand::new("git")
@@ -1054,6 +993,10 @@ func exampleFunction() {
         Command::cargo_bin("generate_prompt")
             .unwrap()
             .current_dir(temp.path())
+            .env("GET_GIT_ROOT", &canonical_git_root)
+            .env("GET_INSTRUCTION_FILE", example_swift.path())
+            .env("DISABLE_PBCOPY", "1")
+            .env_remove("DIFF_WITH_BRANCH")
             .assert()
             .success()
             .stdout(
@@ -1071,7 +1014,6 @@ mod targeted_mode {
     use assert_fs::fixture::PathChild;
     use assert_fs::prelude::*;
     use predicates::str::contains;
-    use std::env;
     use std::process::Command as StdCommand;
 
     #[test]
@@ -1097,15 +1039,8 @@ mod targeted_mode {
             )
             .unwrap();
 
-        // Force generate_prompt to use this file as the instruction file.
-        env::set_var("GET_INSTRUCTION_FILE", swift_file.path().to_str().unwrap());
-
-        // Set GET_GIT_ROOT to the canonical path of the temporary directory.
+        // Canonicalize the temporary directory for use as the explicit Git root.
         let canonical_git_root = temp.path().canonicalize().unwrap();
-        env::set_var("GET_GIT_ROOT", canonical_git_root.to_str().unwrap());
-
-        // Disable clipboard copying during testing.
-        env::set_var("DISABLE_PBCOPY", "1");
 
         // Initialize the temporary directory as a Git repository.
         StdCommand::new("git")
@@ -1120,6 +1055,9 @@ mod targeted_mode {
             .unwrap()
             .current_dir(temp.path())
             .arg("--tgtd")
+            .env("GET_GIT_ROOT", &canonical_git_root)
+            .env("GET_INSTRUCTION_FILE", swift_file.path())
+            .env("DISABLE_PBCOPY", "1")
             .assert()
             .success()
             .stdout(contains("Success:"))

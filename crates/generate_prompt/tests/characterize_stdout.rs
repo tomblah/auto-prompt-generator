@@ -19,9 +19,6 @@ mod characterize_stdout_tests {
         let git_root_dir = TempDir::new().unwrap();
         let git_root_path = git_root_dir.path();
 
-        env::set_var("GET_GIT_ROOT", git_root_path.to_str().unwrap());
-        env::remove_var("DIFF_WITH_BRANCH");
-
         let package_dir = git_root_path.join("my_package");
         fs::create_dir_all(&package_dir).unwrap();
         fs::write(package_dir.join("Package.swift"), "// swift package").unwrap();
@@ -70,22 +67,20 @@ mod characterize_stdout_tests {
     #[test]
     #[cfg(unix)]
     fn test_stdout_contains_library_diagnostic_lines() {
-        let (_project_dir, instruction_file_path) = setup_swift_project();
-
-        env::set_var(
-            "GET_INSTRUCTION_FILE",
-            instruction_file_path.to_str().unwrap(),
-        );
-        env::remove_var("DISABLE_PBCOPY");
+        let (project_dir, instruction_file_path) = setup_swift_project();
 
         let (pbcopy_dir, _clipboard_file) = setup_dummy_pbcopy();
         let original_path = env::var("PATH").unwrap();
-        env::set_var(
-            "PATH",
-            format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
-        );
 
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.env("GET_GIT_ROOT", project_dir.path())
+            .env("GET_INSTRUCTION_FILE", &instruction_file_path)
+            .env(
+                "PATH",
+                format!("{}:{}", pbcopy_dir.path().to_str().unwrap(), original_path),
+            )
+            .env_remove("DISABLE_PBCOPY")
+            .env_remove("DIFF_WITH_BRANCH");
         let output = cmd.output().expect("failed to run generate_prompt");
         let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -115,17 +110,17 @@ mod characterize_stdout_tests {
     #[test]
     #[cfg(unix)]
     fn test_stdout_singular_mode_diagnostic() {
-        let (_project_dir, instruction_file_path) = setup_swift_project();
-
-        env::set_var(
-            "GET_INSTRUCTION_FILE",
-            instruction_file_path.to_str().unwrap(),
-        );
-
-        env::set_var("DISABLE_PBCOPY", "1");
+        let (project_dir, instruction_file_path) = setup_swift_project();
 
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-        let output = cmd.arg("--singular").output().expect("failed to run");
+        let output = cmd
+            .arg("--singular")
+            .env("GET_GIT_ROOT", project_dir.path())
+            .env("GET_INSTRUCTION_FILE", &instruction_file_path)
+            .env("DISABLE_PBCOPY", "1")
+            .env_remove("DIFF_WITH_BRANCH")
+            .output()
+            .expect("failed to run");
         let stdout = String::from_utf8_lossy(&output.stdout);
 
         assert!(
@@ -142,17 +137,17 @@ mod characterize_stdout_tests {
     #[test]
     #[cfg(unix)]
     fn test_stdout_force_global_diagnostic() {
-        let (_project_dir, instruction_file_path) = setup_swift_project();
-
-        env::set_var(
-            "GET_INSTRUCTION_FILE",
-            instruction_file_path.to_str().unwrap(),
-        );
-
-        env::set_var("DISABLE_PBCOPY", "1");
+        let (project_dir, instruction_file_path) = setup_swift_project();
 
         let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
-        let output = cmd.arg("--force-global").output().expect("failed to run");
+        let output = cmd
+            .arg("--force-global")
+            .env("GET_GIT_ROOT", project_dir.path())
+            .env("GET_INSTRUCTION_FILE", &instruction_file_path)
+            .env("DISABLE_PBCOPY", "1")
+            .env_remove("DIFF_WITH_BRANCH")
+            .output()
+            .expect("failed to run");
         let stdout = String::from_utf8_lossy(&output.stdout);
 
         assert!(

@@ -6,15 +6,11 @@ mod strict_end_to_end_tests {
     use assert_fs::fixture::PathChild; // explicitly bring the PathChild trait into scope
     use assert_fs::prelude::*; // for methods like child(), which requires the PathChild trait
     use predicates::boolean::PredicateBooleanExt;
-    use std::env; // for env::set_var etc.
     use std::process::Command as StdCommand;
 
     #[test]
     #[cfg(unix)]
     fn test_generate_prompt_with_objc_input() {
-        // Remove any diff branch setting so we don't run diff mode.
-        env::remove_var("DIFF_WITH_BRANCH");
-
         // Create a temporary directory to simulate the Git repository.
         let temp = assert_fs::TempDir::new().unwrap();
 
@@ -34,18 +30,8 @@ mod strict_end_to_end_tests {
             )
             .unwrap();
 
-        // Force generate_prompt to use this file as the instruction file.
-        env::set_var(
-            "GET_INSTRUCTION_FILE",
-            example_objc.path().to_str().unwrap(),
-        );
-
-        // Set GET_GIT_ROOT to the canonicalized temporary directory.
+        // Canonicalize the temporary directory for use as the explicit Git root.
         let canonical_git_root = temp.path().canonicalize().unwrap();
-        env::set_var("GET_GIT_ROOT", canonical_git_root.to_str().unwrap());
-
-        // Disable clipboard copying during testing.
-        env::set_var("DISABLE_PBCOPY", "1");
 
         // Optionally, initialize a Git repository.
         StdCommand::new("git")
@@ -58,6 +44,10 @@ mod strict_end_to_end_tests {
         Command::cargo_bin("generate_prompt")
             .unwrap()
             .current_dir(temp.path())
+            .env("GET_GIT_ROOT", &canonical_git_root)
+            .env("GET_INSTRUCTION_FILE", example_objc.path())
+            .env("DISABLE_PBCOPY", "1")
+            .env_remove("DIFF_WITH_BRANCH")
             .assert()
             .success()
             .stdout(

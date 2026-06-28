@@ -6,30 +6,27 @@ use std::process::{Command, Stdio};
 use unescape_newlines::unescape_newlines;
 
 /// Copies the provided prompt to the clipboard using the `pbcopy` command.
-/// If the environment variable `DISABLE_PBCOPY` is set, the function logs a message and skips copying.
+///
+/// This always performs the copy; whether copying should happen at all is decided by the
+/// caller at the binary edge (see `main`).
 pub fn copy_to_clipboard(final_prompt: &str) -> Result<()> {
-    // Test seam: DISABLE_PBCOPY skips clipboard interaction during tests.
-    if std::env::var("DISABLE_PBCOPY").is_err() {
-        let mut pbcopy = Command::new("pbcopy")
-            .stdin(Stdio::piped())
-            .spawn()
-            .context("Error running pbcopy")?;
-        {
-            let pb_stdin = pbcopy
-                .stdin
-                .as_mut()
-                .context("Failed to open pbcopy stdin")?;
-            pb_stdin
-                .write_all(unescape_newlines(final_prompt).as_bytes())
-                .context("Failed to write to pbcopy")?;
-        }
+    let mut pbcopy = Command::new("pbcopy")
+        .stdin(Stdio::piped())
+        .spawn()
+        .context("Error running pbcopy")?;
+    {
+        let pb_stdin = pbcopy
+            .stdin
+            .as_mut()
+            .context("Failed to open pbcopy stdin")?;
+        pb_stdin
+            .write_all(unescape_newlines(final_prompt).as_bytes())
+            .context("Failed to write to pbcopy")?;
+    }
 
-        let status = pbcopy.wait().context("Failed to wait on pbcopy")?;
-        if !status.success() {
-            return Err(anyhow!("pbcopy exited with status {status}"));
-        }
-    } else {
-        eprintln!("DISABLE_PBCOPY is set; skipping clipboard copy.");
+    let status = pbcopy.wait().context("Failed to wait on pbcopy")?;
+    if !status.success() {
+        return Err(anyhow!("pbcopy exited with status {status}"));
     }
 
     Ok(())
@@ -46,22 +43,7 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn test_copy_to_clipboard_disabled() {
-        // Set DISABLE_PBCOPY so that the clipboard copy is skipped.
-        env::set_var("DISABLE_PBCOPY", "1");
-
-        // Call the function. This branch should not attempt to run pbcopy.
-        copy_to_clipboard("Test\\nPrompt").expect("clipboard copy should be skipped");
-
-        // Clean up the environment variable.
-        env::remove_var("DISABLE_PBCOPY");
-    }
-
-    #[test]
     fn test_copy_to_clipboard_with_fake_pbcopy() {
-        // Ensure DISABLE_PBCOPY is not set.
-        env::remove_var("DISABLE_PBCOPY");
-
         // Create a temporary directory that will contain our fake pbcopy command.
         let temp_dir = tempdir().expect("failed to create temp dir");
         let fake_dir_path = temp_dir.path();
@@ -118,8 +100,6 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn test_copy_to_clipboard_returns_error_when_pbcopy_fails() {
-        env::remove_var("DISABLE_PBCOPY");
-
         let temp_dir = tempdir().expect("failed to create temp dir");
         let fake_pbcopy_path = temp_dir.path().join("pbcopy");
         fs::write(&fake_pbcopy_path, "#!/bin/sh\nexit 42\n")
