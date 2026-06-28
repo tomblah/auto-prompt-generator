@@ -3,7 +3,7 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{Arg, Command};
 use std::env;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, Stdio};
 
 use generate_prompt_core::instruction_locator;
@@ -13,10 +13,12 @@ use get_git_root::get_git_root;
 mod clipboard;
 
 fn init_logging(verbose: bool) {
+    let mut builder = env_logger::Builder::from_default_env();
+    // When verbose is requested and the user has not pinned RUST_LOG, default to debug.
     if verbose && env::var_os("RUST_LOG").is_none() {
-        env::set_var("RUST_LOG", "debug");
+        builder.filter_level(log::LevelFilter::Debug);
     }
-    env_logger::init();
+    builder.init();
 }
 
 fn main() -> Result<()> {
@@ -111,10 +113,13 @@ fn main() -> Result<()> {
         }
     }
 
-    env::set_current_dir(&git_root).context("Failed to change directory to Git root")?;
-
-    let file_path = instruction_locator::locate_instruction_file(Path::new(&git_root))
-        .context("Failed to locate the instruction file")?;
+    // Test seam: GET_INSTRUCTION_FILE overrides instruction-file discovery for integration tests.
+    let file_path = if let Ok(instruction_override) = env::var("GET_INSTRUCTION_FILE") {
+        PathBuf::from(instruction_override)
+    } else {
+        instruction_locator::locate_instruction_file(Path::new(&git_root))
+            .context("Failed to locate the instruction file")?
+    };
     println!("Found exactly one instruction in {}", file_path.display());
     println!("--------------------------------------------------");
 
@@ -159,7 +164,12 @@ fn main() -> Result<()> {
     println!("--------------------------------------------------\n");
     println!("Prompt has been copied to clipboard.");
 
-    clipboard::copy_to_clipboard(&output.final_prompt)?;
+    // Test seam: DISABLE_PBCOPY skips clipboard interaction during tests.
+    if env::var_os("DISABLE_PBCOPY").is_none() {
+        clipboard::copy_to_clipboard(&output.final_prompt)?;
+    } else {
+        eprintln!("DISABLE_PBCOPY is set; skipping clipboard copy.");
+    }
 
     Ok(())
 }

@@ -70,6 +70,28 @@ mod characterize_env_seams_tests {
             ));
     }
 
+    /// Pins that, without the GET_INSTRUCTION_FILE override, the binary falls
+    /// back to real instruction discovery under the resolved Git root.
+    #[test]
+    fn test_instruction_discovery_without_override() {
+        let (git_root_dir, instruction_file_path) = setup_swift_project();
+
+        let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+        cmd.env("GET_GIT_ROOT", git_root_dir.path())
+            .env("DISABLE_PBCOPY", "1")
+            .env_remove("GET_INSTRUCTION_FILE");
+
+        cmd.assert()
+            .success()
+            .stdout(predicate::str::contains("Found exactly one instruction in"))
+            .stdout(predicate::str::contains(
+                instruction_file_path.display().to_string(),
+            ))
+            .stdout(predicate::str::contains(
+                "Instruction content: // TODO: - Fix SomeClass",
+            ));
+    }
+
     /// Pins that DISABLE_PBCOPY skips the clipboard copy and emits the
     /// skip notice on stderr, while the success diagnostics still print.
     #[test]
