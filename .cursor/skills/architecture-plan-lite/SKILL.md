@@ -1,15 +1,13 @@
 ---
-name: architecture-plan
-description: Find the single smelliest, highest-impact architectural smell regardless of how narrow or thick the fix is, and create a test-first architecture plan. Use when the user asks to improve architecture, remove an impediment to future work, correct patterns, improve clunky APIs, reduce coupling, or plan an architectural refactor with regression safety.
+name: architecture-plan-lite
+description: Find a narrow, high-confidence architectural improvement and create a test-first architecture plan. Use when the user wants a small, tightly-scoped architectural refactor with regression safety.
 ---
 
-# Architecture Plan
+# Architecture Plan (Lite)
 
 ## Purpose
 
-Use this skill to create a plan for a reviewable architecture-improvement branch. The skill is for planning only: do not implement the architecture change unless the user separately accepts the plan and asks to execute it.
-
-Hunt for the smelliest architectural smell irrespective of how narrow or thick it is. Search for any kind of architecture smell that would be an impediment to future work, and pick the one with the highest impact. De-coupling wins are a bonus, not a requirement: if the smelliest problem is tight coupling, great, but do not ignore a worse smell just because it is not a coupling issue.
+Use this skill to create a plan for a small, reviewable architecture-improvement branch. The skill is for planning only: do not implement the architecture change unless the user separately accepts the plan and asks to execute it.
 
 The plan must include a full regression-safety workflow before and after the architecture change. It must commit characterization or test-strengthening work separately from the implementation, and it must end with committing the architecture branch. Do not include merging into `main` or pushing unless the user explicitly asks for that later.
 
@@ -22,12 +20,11 @@ The plan must include a full regression-safety workflow before and after the arc
    - Create the architecture branch from the updated `main`, not from an arbitrary feature branch.
    - If the user asked to create a branch immediately, include refreshing `main` and creating the branch as the first execution steps.
 
-2. Look for the smelliest architecture candidate.
-   - Scan broadly for any architecture smell that would impede future work: tight coupling, wrong dependency direction, leaky abstractions, clunky APIs, duplicated orchestration, unclear ownership boundaries, inconsistent patterns, god modules, or modules that know too much about each other.
-   - Do not filter by size. A candidate is not disqualified for being thick, nor preferred for being narrow; judge it by how much it impedes future work.
+2. Look for narrow architecture candidates.
+   - Prefer small, high-confidence issues: tight coupling, wrong dependency direction, leaky abstractions, clunky APIs, duplicated orchestration, unclear ownership boundaries, inconsistent patterns, or modules that know too much about each other.
+   - Avoid broad rewrites, framework swaps, speculative layering, or style-only reorganizations.
    - Use code search, dependency/call-site mapping, focused file reads, and readonly exploration subagents in parallel for broad exploration.
-   - Rank candidates by impact/severity and choose the single smelliest smell, whatever its size. Still commit to one primary smell per plan rather than bundling several.
-   - Treat de-coupling wins as a bonus: prefer them when they are also the smelliest smell, but do not downgrade a worse smell just because it is not about coupling.
+   - Rank candidates by risk/reward and choose one narrow architectural slice unless the user asks for a larger design effort.
 
 3. Map the architectural boundary before choosing the fix.
    - Identify producers, consumers, direct callers, integration tests, CLI/user-facing behavior, persisted data, public APIs, and cross-crate/module contracts.
@@ -41,7 +38,7 @@ The plan must include a full regression-safety workflow before and after the arc
    - Run the focused tests before the architecture change where practical.
    - Run the project validation gate and confirm it is green before changing production architecture.
    - Commit characterization and test-strengthening changes separately before starting the architecture change.
-   - Make the architecture change scoped to fully fix the chosen smell, sized to the smell rather than artificially minimized.
+   - Make the smallest scoped architecture change that fixes the chosen smell.
    - Update or add integration tests only when the boundary contract is intentionally changed or currently untested.
    - Run focused tests and the entire test suite; fix any issues.
    - Commit the architecture implementation separately, but do not merge or push.
@@ -92,7 +89,7 @@ Use this structure for the final plan:
 
 ## Chosen Architecture Smell
 
-<Describe the tight coupling, incorrect pattern, clunky API, leaky abstraction, duplicated orchestration, or unclear ownership. Include file paths and why this is the smelliest / highest-impact smell and how it blocks future work.>
+<Describe the tight coupling, incorrect pattern, clunky API, leaky abstraction, duplicated orchestration, or unclear ownership. Include file paths and why this is the right small slice.>
 
 ## Architecture Risk Assessment
 
@@ -123,7 +120,7 @@ Branch setup:
 
 ## Architecture Steps
 
-1. Make the architecture change scoped to fully fix the chosen smell, sized to the smell rather than artificially minimized.
+1. Make the smallest scoped architecture change.
 2. Update call sites and integration tests only for intentional contract changes.
 3. Add extra tests for new failure paths, migration behavior, or coverage gaps.
 4. Run focused tests and the full suite.
@@ -135,7 +132,7 @@ Branch setup:
 
 - Do not merge into `main`.
 - Do not push.
-- A larger change is allowed when the chosen smell justifies it, but still exclude speculative abstractions, unrelated formatting, and generated artifacts.
+- Do not include broad rewrites, speculative abstractions, unrelated formatting, or generated artifacts.
 ```
 
 ## Safety Rules
