@@ -318,7 +318,6 @@ dependencies = [
  "assert_cmd",
  "lang_support",
  "predicates 2.1.5",
- "regex",
  "substring_marker_snippet_extractor",
  "tempfile",
  "todo_marker",
@@ -613,6 +612,7 @@ dependencies = [
  "once_cell",
  "regex",
  "tempfile",
+ "todo_marker",
  "walkdir",
 ]
 
