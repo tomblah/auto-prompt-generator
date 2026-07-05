@@ -1,83 +1,16 @@
 // crates/extract_types/src/lib.rs
 
 use anyhow::{Context, Result};
-use regex::Regex;
 use std::collections::BTreeSet;
 use std::fs;
-use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use lang_support::for_extension;
+use lang_support::{extract_generic_identifiers, for_extension};
 use substring_marker_snippet_extractor::FileAnalysis;
 use todo_marker::{TODO_MARKER, TODO_MARKER_WS};
 
 fn is_type_candidate_line(line: &str) -> bool {
     for_extension("swift").is_some_and(|lang| lang.is_type_candidate(line))
-}
-
-/// ---------------------------------------------------------------------------
-///  Token extraction helper (legacy logic)
-/// ---------------------------------------------------------------------------
-struct TypeExtractor {
-    re_simple: Regex,
-    re_bracket: Regex,
-}
-
-impl TypeExtractor {
-    fn new() -> Result<Self, regex::Error> {
-        Ok(Self {
-            re_simple: Regex::new(r"^[A-Z][A-Za-z0-9]+$")?,
-            re_bracket: Regex::new(r"^\[([A-Z][A-Za-z0-9]+)\]$")?,
-        })
-    }
-
-    fn extract_tokens(&self, line: &str) -> Option<Vec<String>> {
-        let trimmed = line.trim();
-
-        if trimmed.is_empty()
-            || trimmed.starts_with("import ")
-            || trimmed.starts_with("#import")
-            || trimmed.starts_with("#include")
-            || (trimmed.starts_with("//") && !trimmed.starts_with(TODO_MARKER))
-        {
-            return None;
-        }
-
-        let content = if trimmed.starts_with(TODO_MARKER) {
-            trimmed.trim_start_matches(TODO_MARKER).trim_start()
-        } else {
-            trimmed
-        };
-
-        let cleaned: String = content
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c } else { ' ' })
-            .collect();
-        let cleaned = cleaned.trim();
-
-        Some(cleaned.split_whitespace().map(String::from).collect())
-    }
-
-    fn extract_types<I>(&self, lines: I) -> BTreeSet<String>
-    where
-        I: Iterator<Item = String>,
-    {
-        let mut types = BTreeSet::new();
-        for line in lines {
-            if let Some(tokens) = self.extract_tokens(&line) {
-                for token in tokens {
-                    if self.re_simple.is_match(&token) {
-                        types.insert(token);
-                    } else if let Some(caps) = self.re_bracket.captures(&token) {
-                        if let Some(inner) = caps.get(1) {
-                            types.insert(inner.as_str().to_string());
-                        }
-                    }
-                }
-            }
-        }
-        types
-    }
 }
 
 /// ---------------------------------------------------------------------------
@@ -122,13 +55,12 @@ pub fn extract_types_from_file_with_options<P: AsRef<Path>>(
         }
     };
 
-    // 1️⃣  Legacy TypeExtractor on the slice
-    let reader = BufReader::new(content_slice.as_bytes());
-    let extractor = TypeExtractor::new()?;
-    let mut all_types: BTreeSet<String> =
-        extractor.extract_types(reader.lines().map_while(Result::ok));
+    // 1️⃣  Generic, language-agnostic token extraction on the slice.
+    let mut all_types: BTreeSet<String> = extract_generic_identifiers(&content_slice)
+        .into_iter()
+        .collect();
 
-    // 2️⃣  Language‑specific extraction on the SAME slice
+    // 2️⃣  Language‑specific extraction on the SAME slice.
     if let Some(ext) = swift_file.as_ref().extension().and_then(|s| s.to_str()) {
         if let Some(lang) = for_extension(ext) {
             for ident in lang.extract_identifiers(&content_slice) {
@@ -440,93 +372,6 @@ func testFunction() {\n\
 }
 
 #[cfg(test)]
-mod type_extractor_tests {
-    use super::*;
-    use std::collections::BTreeSet;
-
-    #[test]
-    fn test_type_extractor_new() {
-        let extractor = TypeExtractor::new().expect("Failed to create TypeExtractor");
-        assert!(extractor.re_simple.is_match("MyType"));
-    }
-
-    #[test]
-    fn test_extract_tokens_returns_none_for_empty_or_non_eligible_lines() {
-        let extractor = TypeExtractor::new().unwrap();
-        assert!(extractor.extract_tokens("").is_none());
-        assert!(extractor.extract_tokens("   ").is_none());
-        assert!(extractor.extract_tokens("import Foundation").is_none());
-        assert!(extractor.extract_tokens("// comment").is_none());
-    }
-
-    #[test]
-    fn test_extract_tokens_splits_and_cleans_input() {
-        let extractor = TypeExtractor::new().unwrap();
-        let tokens = extractor.extract_tokens("MyClass,struct MyStruct").unwrap();
-        assert_eq!(tokens, vec!["MyClass", "struct", "MyStruct"]);
-    }
-
-    #[test]
-    fn test_extract_tokens_for_trigger_comment() {
-        let extractor = TypeExtractor::new().unwrap();
-        let tokens = extractor
-            .extract_tokens("// TODO: - MyTriggeredType")
-            .unwrap();
-        assert_eq!(tokens, vec!["MyTriggeredType"]);
-    }
-
-    #[test]
-    fn test_extract_types_basic() {
-        let extractor = TypeExtractor::new().unwrap();
-        let lines = vec![
-            "class MyClass {}".to_string(),
-            "struct MyStruct {}".to_string(),
-            "enum MyEnum {}".to_string(),
-        ];
-        let types = extractor.extract_types(lines.into_iter());
-        let expected: BTreeSet<String> = ["MyClass", "MyEnum", "MyStruct"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        assert_eq!(types, expected);
-    }
-
-    #[test]
-    fn test_extract_types_with_bracket_notation() {
-        let extractor = TypeExtractor::new().unwrap();
-        let lines = vec!["let array: [CustomType] = []".to_string()];
-        let types = extractor.extract_types(lines.into_iter());
-        let expected: BTreeSet<String> = ["CustomType"].iter().map(|s| s.to_string()).collect();
-        assert_eq!(types, expected);
-    }
-
-    #[test]
-    fn test_extract_types_mixed_tokens() {
-        let extractor = TypeExtractor::new().unwrap();
-        let lines = vec!["class MyClass, struct MyStruct; enum MyEnum.".to_string()];
-        let types = extractor.extract_types(lines.into_iter());
-        let expected: BTreeSet<String> = ["MyClass", "MyEnum", "MyStruct"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        assert_eq!(types, expected);
-    }
-
-    #[test]
-    fn test_extract_types_deduplication() {
-        let extractor = TypeExtractor::new().unwrap();
-        let lines = vec![
-            "class DuplicateType {}".to_string(),
-            "struct DuplicateType {}".to_string(),
-            "enum DuplicateType {}".to_string(),
-        ];
-        let types = extractor.extract_types(lines.into_iter());
-        let expected: BTreeSet<String> = ["DuplicateType"].iter().map(|s| s.to_string()).collect();
-        assert_eq!(types, expected);
-    }
-}
-
-#[cfg(test)]
 mod objc_tests {
     use super::*;
     use substring_marker_snippet_extractor::extract_enclosing_block_from_content;
@@ -811,5 +656,77 @@ mod type_candidate_characterization_tests {
     #[test]
     fn test_class_without_brace_not_type_candidate() {
         assert!(!is_type_candidate_line("class MyClass"));
+    }
+}
+
+/// Characterizes the exact `BTreeSet` returned by the public API for inputs
+/// where the union of generic token extraction and language-specific
+/// extraction matters. These lock behavior before consolidating the generic
+/// extractor into `lang_support`, so the union must remain byte-for-byte
+/// identical afterwards.
+#[cfg(test)]
+mod union_characterization_tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn types(items: &[&str]) -> BTreeSet<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn write_source(dir: &std::path::Path, name: &str, contents: &str) -> std::path::PathBuf {
+        let path = dir.join(name);
+        fs::write(&path, contents).expect("Failed to write source file");
+        path
+    }
+
+    /// Obj-C: `ObjCSupport::extract_identifiers` returns an empty `Vec`, so the
+    /// generic token extractor is the *only* source of identifiers. This proves
+    /// the generic path is load-bearing and cannot simply be dropped.
+    #[test]
+    fn char_objc_relies_solely_on_generic_extraction() {
+        let dir = tempdir().unwrap();
+        let path = write_source(
+            dir.path(),
+            "Downloader.m",
+            "#import <Foundation/Foundation.h>\n@implementation Downloader\n@end\n",
+        );
+
+        let result = extract_types_from_file(&path).expect("extract_types failed");
+
+        assert_eq!(result, types(&["Downloader"]));
+    }
+
+    /// JS: the result is the union of generic capitalized tokens (`UserModel`)
+    /// and language-specific lowercase call-site identifiers (`loadData`), the
+    /// latter contributed only by `JavaScriptSupport::extract_identifiers`.
+    #[test]
+    fn char_js_unions_generic_and_language_specific_identifiers() {
+        let dir = tempdir().unwrap();
+        let path = write_source(
+            dir.path(),
+            "loader.js",
+            "function loadData() {\n    return new UserModel();\n}\n",
+        );
+
+        let result = extract_types_from_file(&path).expect("extract_types failed");
+
+        assert_eq!(result, types(&["UserModel", "loadData"]));
+    }
+
+    /// Unknown extension: `for_extension` returns `None`, so no language-specific
+    /// extraction runs and the generic extractor still produces results.
+    #[test]
+    fn char_unknown_extension_still_runs_generic_extraction() {
+        let dir = tempdir().unwrap();
+        let path = write_source(
+            dir.path(),
+            "notes.txt",
+            "class Alpha\nstruct Beta\nlet value = Gamma\n",
+        );
+
+        let result = extract_types_from_file(&path).expect("extract_types failed");
+
+        assert_eq!(result, types(&["Alpha", "Beta", "Gamma"]));
     }
 }

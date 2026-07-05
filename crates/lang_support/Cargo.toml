@@ -7,6 +7,7 @@ edition = "2021"
 regex = { workspace = true }
 once_cell = { workspace = true }
 walkdir = { workspace = true }
+todo_marker = { path = "../todo_marker" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
