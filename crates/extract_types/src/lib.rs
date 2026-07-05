@@ -813,3 +813,75 @@ mod type_candidate_characterization_tests {
         assert!(!is_type_candidate_line("class MyClass"));
     }
 }
+
+/// Characterizes the exact `BTreeSet` returned by the public API for inputs
+/// where the union of generic token extraction and language-specific
+/// extraction matters. These lock behavior before consolidating the generic
+/// extractor into `lang_support`, so the union must remain byte-for-byte
+/// identical afterwards.
+#[cfg(test)]
+mod union_characterization_tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn types(items: &[&str]) -> BTreeSet<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn write_source(dir: &std::path::Path, name: &str, contents: &str) -> std::path::PathBuf {
+        let path = dir.join(name);
+        fs::write(&path, contents).expect("Failed to write source file");
+        path
+    }
+
+    /// Obj-C: `ObjCSupport::extract_identifiers` returns an empty `Vec`, so the
+    /// generic token extractor is the *only* source of identifiers. This proves
+    /// the generic path is load-bearing and cannot simply be dropped.
+    #[test]
+    fn char_objc_relies_solely_on_generic_extraction() {
+        let dir = tempdir().unwrap();
+        let path = write_source(
+            dir.path(),
+            "Downloader.m",
+            "#import <Foundation/Foundation.h>\n@implementation Downloader\n@end\n",
+        );
+
+        let result = extract_types_from_file(&path).expect("extract_types failed");
+
+        assert_eq!(result, types(&["Downloader"]));
+    }
+
+    /// JS: the result is the union of generic capitalized tokens (`UserModel`)
+    /// and language-specific lowercase call-site identifiers (`loadData`), the
+    /// latter contributed only by `JavaScriptSupport::extract_identifiers`.
+    #[test]
+    fn char_js_unions_generic_and_language_specific_identifiers() {
+        let dir = tempdir().unwrap();
+        let path = write_source(
+            dir.path(),
+            "loader.js",
+            "function loadData() {\n    return new UserModel();\n}\n",
+        );
+
+        let result = extract_types_from_file(&path).expect("extract_types failed");
+
+        assert_eq!(result, types(&["UserModel", "loadData"]));
+    }
+
+    /// Unknown extension: `for_extension` returns `None`, so no language-specific
+    /// extraction runs and the generic extractor still produces results.
+    #[test]
+    fn char_unknown_extension_still_runs_generic_extraction() {
+        let dir = tempdir().unwrap();
+        let path = write_source(
+            dir.path(),
+            "notes.txt",
+            "class Alpha\nstruct Beta\nlet value = Gamma\n",
+        );
+
+        let result = extract_types_from_file(&path).expect("extract_types failed");
+
+        assert_eq!(result, types(&["Alpha", "Beta", "Gamma"]));
+    }
+}
