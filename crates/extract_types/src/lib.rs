@@ -291,6 +291,45 @@ mod tests {
         Ok(())
     }
 
+    /// Characterizes the Swift enclosing-block type extension end-to-end: the
+    /// file uses markers, the `// TODO:` sits OUTSIDE the marked region (so it is
+    /// replaced by a placeholder and the filtered content no longer contains the
+    /// marker), and the nearest enclosing declaration is a Swift `class`. The
+    /// class's enclosing block is appended, so its inner type (`HelperType`) is
+    /// recovered even though it lives outside the kept marker region. This path
+    /// must remain byte-for-byte identical after per-language dispatch.
+    #[test]
+    fn test_extract_types_swift_enclosing_class_type_extension() -> Result<()> {
+        let swift_content = "\
+// v\n\
+let kept = KeptType()\n\
+// ^\n\
+\n\
+class Widget {\n\
+    let internalDetail = HelperType()\n\
+    // TODO: - build it\n\
+}";
+        let mut swift_file = NamedTempFile::new()?;
+        write!(swift_file, "{}", swift_content)?;
+        let result = extract_types_from_file(swift_file.path())?;
+        assert!(
+            result.contains("HelperType"),
+            "enclosing class block should contribute HelperType: {:?}",
+            result
+        );
+        assert!(
+            result.contains("Widget"),
+            "enclosing class name should be extracted: {:?}",
+            result
+        );
+        assert!(
+            result.contains("KeptType"),
+            "kept marker region should still be extracted: {:?}",
+            result
+        );
+        Ok(())
+    }
+
     #[test]
     fn test_extract_types_targeted_mode() -> Result<()> {
         let swift_content = r#"
