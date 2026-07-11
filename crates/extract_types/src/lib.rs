@@ -9,7 +9,12 @@ use lang_support::{extract_generic_identifiers, for_extension};
 use substring_marker_snippet_extractor::FileAnalysis;
 use todo_marker::{TODO_MARKER, TODO_MARKER_WS};
 
-fn is_type_candidate_line(line: &str) -> bool {
+/// Test-only helper that exercises the Swift type-candidate predicate
+/// explicitly. Production code dispatches this predicate on each file's own
+/// language, so tests that assert Swift-specific behavior name the language
+/// here rather than relying on a hardcoded default.
+#[cfg(test)]
+fn swift_type_candidate_line(line: &str) -> bool {
     for_extension("swift").is_some_and(|lang| lang.is_type_candidate(line))
 }
 
@@ -32,6 +37,13 @@ pub fn extract_types_from_file_with_options<P: AsRef<Path>>(
     let full_content = fs::read_to_string(&swift_file)
         .with_context(|| format!("Failed to open file {}", swift_file.as_ref().display()))?;
 
+    // Resolve the file's own language once. Both the enclosing-block type
+    // predicate and the language-specific extraction dispatch on this, so a
+    // file's type-candidate rules always come from its own language rather than
+    // a hardcoded one.
+    let ext = swift_file.as_ref().extension().and_then(|s| s.to_str());
+    let language = ext.and_then(for_extension);
+
     // Decide which slice of the file to analyse
     let content_slice = if options.targeted {
         if let Some(inner) = extract_inner_block_from_content(&full_content) {
@@ -44,7 +56,9 @@ pub fn extract_types_from_file_with_options<P: AsRef<Path>>(
         if analysis.has_markers() {
             let mut filtered = analysis.filtered_content("");
             if !filtered.contains(TODO_MARKER) {
-                if let Some(enclosing) = analysis.enclosing_block(Some(&is_type_candidate_line)) {
+                let predicate = language.map(|lang| move |line: &str| lang.is_type_candidate(line));
+                let predicate = predicate.as_ref().map(|p| p as &dyn Fn(&str) -> bool);
+                if let Some(enclosing) = analysis.enclosing_block(predicate) {
                     filtered.push('\n');
                     filtered.push_str(&enclosing);
                 }
@@ -61,11 +75,9 @@ pub fn extract_types_from_file_with_options<P: AsRef<Path>>(
         .collect();
 
     // 2️⃣  Language‑specific extraction on the SAME slice.
-    if let Some(ext) = swift_file.as_ref().extension().and_then(|s| s.to_str()) {
-        if let Some(lang) = for_extension(ext) {
-            for ident in lang.extract_identifiers(&content_slice) {
-                all_types.insert(ident);
-            }
+    if let Some(lang) = language {
+        for ident in lang.extract_identifiers(&content_slice) {
+            all_types.insert(ident);
         }
     }
 
@@ -291,6 +303,47 @@ mod tests {
         Ok(())
     }
 
+    /// Characterizes the Swift enclosing-block type extension end-to-end: a
+    /// `.swift` file uses markers, the `// TODO:` sits OUTSIDE the marked region
+    /// (so it is replaced by a placeholder and the filtered content no longer
+    /// contains the marker), and the nearest enclosing declaration is a Swift
+    /// `class`. The class's enclosing block is appended, so its inner type
+    /// (`HelperType`) is recovered even though it lives outside the kept marker
+    /// region. This Swift path must remain byte-for-byte identical after
+    /// per-language dispatch.
+    #[test]
+    fn test_extract_types_swift_enclosing_class_type_extension() -> Result<()> {
+        let swift_content = "\
+// v\n\
+let kept = KeptType()\n\
+// ^\n\
+\n\
+class Widget {\n\
+    let internalDetail = HelperType()\n\
+    // TODO: - build it\n\
+}";
+        let dir = tempfile::tempdir()?;
+        let swift_file = dir.path().join("Widget.swift");
+        fs::write(&swift_file, swift_content)?;
+        let result = extract_types_from_file(&swift_file)?;
+        assert!(
+            result.contains("HelperType"),
+            "enclosing class block should contribute HelperType: {:?}",
+            result
+        );
+        assert!(
+            result.contains("Widget"),
+            "enclosing class name should be extracted: {:?}",
+            result
+        );
+        assert!(
+            result.contains("KeptType"),
+            "kept marker region should still be extracted: {:?}",
+            result
+        );
+        Ok(())
+    }
+
     #[test]
     fn test_extract_types_targeted_mode() -> Result<()> {
         let swift_content = r#"
@@ -356,7 +409,7 @@ func markedFunction() {\n\
 
         let analysis = FileAnalysis::new(content);
         assert!(analysis
-            .enclosing_block(Some(&is_type_candidate_line))
+            .enclosing_block(Some(&swift_type_candidate_line))
             .is_none());
     }
 
@@ -377,7 +430,7 @@ mod objc_tests {
     use substring_marker_snippet_extractor::extract_enclosing_block_from_content;
 
     fn enclosing_block_with_type_predicate(content: &str) -> Option<String> {
-        extract_enclosing_block_from_content(content, Some(&is_type_candidate_line))
+        extract_enclosing_block_from_content(content, Some(&swift_type_candidate_line))
     }
 
     #[test]
@@ -421,7 +474,7 @@ mod candidate_detection_tests {
     fn test_type_candidate_line_swift_class() {
         let swift_class = "class MyInnerClass {";
         assert!(
-            is_type_candidate_line(swift_class),
+            swift_type_candidate_line(swift_class),
             "Swift class declaration should be detected as a type candidate"
         );
     }
@@ -430,7 +483,7 @@ mod candidate_detection_tests {
     fn test_type_candidate_line_swift_enum() {
         let swift_enum = "enum MyEnum {";
         assert!(
-            is_type_candidate_line(swift_enum),
+            swift_type_candidate_line(swift_enum),
             "Swift enum declaration should be detected as a type candidate"
         );
     }
@@ -439,7 +492,7 @@ mod candidate_detection_tests {
     fn test_type_candidate_line_non_candidate() {
         let non_candidate = "let x = 10;";
         assert!(
-            !is_type_candidate_line(non_candidate),
+            !swift_type_candidate_line(non_candidate),
             "Non-declaration line should not be detected as a type candidate"
         );
     }
@@ -448,7 +501,7 @@ mod candidate_detection_tests {
     fn test_type_candidate_line_function_not_matched() {
         let func = "func testAsyncFunction(foo: Int) async {";
         assert!(
-            !is_type_candidate_line(func),
+            !swift_type_candidate_line(func),
             "Function declarations are handled by the shared marker_utils, not the type predicate"
         );
     }
@@ -462,7 +515,7 @@ mod enclosing_block_characterization_tests {
     use tempfile::NamedTempFile;
 
     fn enclosing_block_with_type_predicate(content: &str) -> Option<String> {
-        extract_enclosing_block_from_content(content, Some(&is_type_candidate_line))
+        extract_enclosing_block_from_content(content, Some(&swift_type_candidate_line))
     }
 
     /// Characterizes that extract_types recognizes ObjC split-line declarations
@@ -600,62 +653,62 @@ mod type_candidate_characterization_tests {
 
     #[test]
     fn test_swift_class_is_type_candidate() {
-        assert!(is_type_candidate_line("class MyClass {"));
+        assert!(swift_type_candidate_line("class MyClass {"));
     }
 
     #[test]
     fn test_swift_class_indented() {
-        assert!(is_type_candidate_line("    class MyClass {"));
+        assert!(swift_type_candidate_line("    class MyClass {"));
     }
 
     #[test]
     fn test_swift_class_with_inheritance() {
-        assert!(is_type_candidate_line("class MyClass: BaseClass {"));
+        assert!(swift_type_candidate_line("class MyClass: BaseClass {"));
     }
 
     #[test]
     fn test_swift_enum_is_type_candidate() {
-        assert!(is_type_candidate_line("enum MyEnum {"));
+        assert!(swift_type_candidate_line("enum MyEnum {"));
     }
 
     #[test]
     fn test_swift_enum_indented() {
-        assert!(is_type_candidate_line("    enum MyEnum {"));
+        assert!(swift_type_candidate_line("    enum MyEnum {"));
     }
 
     #[test]
     fn test_swift_enum_with_raw_type() {
-        assert!(is_type_candidate_line("enum MyEnum: String {"));
+        assert!(swift_type_candidate_line("enum MyEnum: String {"));
     }
 
     #[test]
     fn test_struct_not_type_candidate() {
-        assert!(!is_type_candidate_line("struct MyStruct {"));
+        assert!(!swift_type_candidate_line("struct MyStruct {"));
     }
 
     #[test]
     fn test_func_not_type_candidate() {
-        assert!(!is_type_candidate_line("func doSomething() {"));
+        assert!(!swift_type_candidate_line("func doSomething() {"));
     }
 
     #[test]
     fn test_let_not_type_candidate() {
-        assert!(!is_type_candidate_line("let x = 10;"));
+        assert!(!swift_type_candidate_line("let x = 10;"));
     }
 
     #[test]
     fn test_protocol_not_type_candidate() {
-        assert!(!is_type_candidate_line("protocol MyProtocol {"));
+        assert!(!swift_type_candidate_line("protocol MyProtocol {"));
     }
 
     #[test]
     fn test_empty_not_type_candidate() {
-        assert!(!is_type_candidate_line(""));
+        assert!(!swift_type_candidate_line(""));
     }
 
     #[test]
     fn test_class_without_brace_not_type_candidate() {
-        assert!(!is_type_candidate_line("class MyClass"));
+        assert!(!swift_type_candidate_line("class MyClass"));
     }
 }
 
@@ -728,5 +781,122 @@ mod union_characterization_tests {
         let result = extract_types_from_file(&path).expect("extract_types failed");
 
         assert_eq!(result, types(&["Alpha", "Beta", "Gamma"]));
+    }
+}
+
+/// Locks the enclosing-block type predicate to each file's OWN language.
+///
+/// The shared fixture uses markers whose `// TODO:` sits outside the kept marker
+/// region and is enclosed by a `class` declaration (a type, not a function).
+/// Only a language that recognizes the class as a type candidate appends the
+/// enclosing block, so `HelperType` (which lives outside the kept region) is
+/// recovered only for that language.
+#[cfg(test)]
+mod language_dispatch_tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn types(items: &[&str]) -> BTreeSet<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn write_source(dir: &std::path::Path, name: &str, contents: &str) -> std::path::PathBuf {
+        let path = dir.join(name);
+        fs::write(&path, contents).expect("Failed to write source file");
+        path
+    }
+
+    const MARKER_CLASS_ENCLOSED_TODO: &str = "\
+// v\n\
+let kept = KeptType()\n\
+// ^\n\
+\n\
+class Widget {\n\
+    let internalDetail = HelperType()\n\
+    // TODO: - build it\n\
+}";
+
+    /// Swift dispatches to its own `is_type_candidate`, so the enclosing class
+    /// block is appended and `HelperType` (outside the kept region) is recovered.
+    /// This is the preserved Swift contract, now proven via extension dispatch.
+    #[test]
+    fn swift_file_extends_enclosing_class_block() {
+        let dir = tempdir().unwrap();
+        let path = write_source(dir.path(), "Widget.swift", MARKER_CLASS_ENCLOSED_TODO);
+
+        let result = extract_types_from_file(&path).expect("extract_types failed");
+
+        assert!(
+            result.contains("HelperType"),
+            "swift enclosing class block should contribute HelperType: {:?}",
+            result
+        );
+        assert!(result.contains("Widget"), "swift result: {:?}", result);
+        assert!(result.contains("KeptType"), "swift result: {:?}", result);
+    }
+
+    /// JS has no `is_type_candidate`, so after per-language dispatch the enclosing
+    /// class block is NOT appended. Old contract (hardcoded Swift predicate):
+    /// `class Widget {` matched and pulled in `Widget`/`HelperType`. New contract:
+    /// only the kept marker region contributes, so those names are absent.
+    #[test]
+    fn js_file_does_not_extend_enclosing_class_block() {
+        let dir = tempdir().unwrap();
+        let path = write_source(dir.path(), "widget.js", MARKER_CLASS_ENCLOSED_TODO);
+
+        let result = extract_types_from_file(&path).expect("extract_types failed");
+
+        assert_eq!(
+            result,
+            types(&["KeptType"]),
+            "js should only extract the kept marker region, not the enclosing class: {:?}",
+            result
+        );
+    }
+
+    /// Obj-C likewise has no `is_type_candidate`; a Swift-style `class` line is not
+    /// an Obj-C type declaration, so the enclosing block is not appended.
+    #[test]
+    fn objc_file_does_not_extend_enclosing_class_block() {
+        let dir = tempdir().unwrap();
+        let path = write_source(dir.path(), "widget.m", MARKER_CLASS_ENCLOSED_TODO);
+
+        let result = extract_types_from_file(&path).expect("extract_types failed");
+
+        assert_eq!(
+            result,
+            types(&["KeptType"]),
+            "objc should only extract the kept marker region, not the enclosing class: {:?}",
+            result
+        );
+    }
+
+    /// Unknown extension resolves to no language, so the type-candidate predicate
+    /// is `None` and the shared function-only enclosing-block matching still runs.
+    /// A `func` enclosing the out-of-marker TODO is therefore appended (via the
+    /// cross-language function-candidate heuristic), contributing `InsideFunc`.
+    #[test]
+    fn unknown_extension_uses_function_only_enclosing_block() {
+        let content = "\
+// v\n\
+let kept = KeptType()\n\
+// ^\n\
+\n\
+func helper() {\n\
+    let value = InsideFunc()\n\
+    // TODO: - do it\n\
+}";
+        let dir = tempdir().unwrap();
+        let path = write_source(dir.path(), "notes.txt", content);
+
+        let result = extract_types_from_file(&path).expect("extract_types failed");
+
+        assert_eq!(
+            result,
+            types(&["InsideFunc", "KeptType"]),
+            "unknown extension should still append the enclosing function block: {:?}",
+            result
+        );
     }
 }
