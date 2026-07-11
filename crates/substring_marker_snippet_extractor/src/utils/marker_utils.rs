@@ -849,6 +849,16 @@ mod file_analysis_tests {
     }
 
     #[test]
+    fn language_unknown_analysis_uses_any_language_function_fallback() {
+        let content = "// v\nlet x = 1\n// ^\nfunction doWork() {\n    // TODO: - Fix\n}\n";
+        let analysis = FileAnalysis::new(content);
+        let block = analysis.enclosing_block(None);
+
+        assert!(block.is_some());
+        assert!(block.unwrap().contains("function doWork()"));
+    }
+
+    #[test]
     fn filtered_content_delegates_correctly() {
         let content = "preamble\n// v\nkept line\n// ^\npostamble\n";
         let analysis = FileAnalysis::new(content);
