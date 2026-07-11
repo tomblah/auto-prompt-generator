@@ -50,6 +50,24 @@ pub trait LanguageSupport: Sync + Send {
     fn extract_type_name(&self, _line: &str) -> Option<String> {
         None
     }
+
+    /// Returns `true` when this language can identify the type that encloses a
+    /// TODO marker, i.e. it implements a meaningful `extract_enclosing_type_name`.
+    ///
+    /// Callers use this to gate features (such as reference search) that require
+    /// an enclosing type, instead of hardcoding a per-language check.
+    fn supports_enclosing_type(&self) -> bool {
+        false
+    }
+
+    /// Best-effort extraction of the name of the type that encloses the TODO
+    /// marker, scanning `content` up to the first TODO marker line.
+    ///
+    /// Returns the last type declaration seen before the marker, or `None` when
+    /// no type precedes it (or the language does not support enclosing types).
+    fn extract_enclosing_type_name(&self, _content: &str) -> Option<String> {
+        None
+    }
 }
 
 /// Returns the language helper for a given file extension.
@@ -197,6 +215,28 @@ mod tests {
         assert!(has_ignored_component(Path::new("Root/.build/File.swift")));
         assert!(has_ignored_component(Path::new("Root/Pods/File.swift")));
         assert!(!has_ignored_component(Path::new("Root/Sources/File.swift")));
+    }
+
+    #[test]
+    fn non_swift_languages_do_not_support_enclosing_type() {
+        for ext in ["js", "jsx", "mjs", "cjs", "h", "m"] {
+            let lang = for_extension(ext).expect("language should resolve");
+            assert!(
+                !lang.supports_enclosing_type(),
+                "{ext} unexpectedly supports enclosing types"
+            );
+            assert_eq!(
+                lang.extract_enclosing_type_name("class Foo {}\n// TODO: - x"),
+                None,
+                "{ext} unexpectedly extracted an enclosing type"
+            );
+        }
+    }
+
+    #[test]
+    fn swift_supports_enclosing_type_via_dispatch() {
+        let lang = for_extension("swift").expect("swift should resolve");
+        assert!(lang.supports_enclosing_type());
     }
 
     #[test]

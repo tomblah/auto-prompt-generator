@@ -73,9 +73,10 @@ fn test_generate_prompt_include_references_error_for_non_swift() {
 }
 
 /// --- Test: Include References Extension Case Sensitivity ---
-/// Characterizes how the `--include-references` gate treats an uppercase
-/// `.SWIFT` extension. The current gate is a case-sensitive `.swift` string
-/// check, so an uppercase extension is rejected as non-Swift.
+/// Documents how the `--include-references` gate treats an uppercase `.SWIFT`
+/// extension. The gate now dispatches through `lang_support::for_extension`,
+/// which normalizes the extension case, so an uppercase `.SWIFT` file is
+/// recognized as Swift and accepted (aligning with the rest of the pipeline).
 #[test]
 #[cfg(unix)]
 fn test_generate_prompt_include_references_uppercase_swift_extension() {
@@ -90,8 +91,8 @@ fn test_generate_prompt_include_references_uppercase_swift_extension() {
         .env("GET_INSTRUCTION_FILE", &todo_file)
         .env("DISABLE_PBCOPY", "1");
 
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "--include-references is only supported for Swift files",
+    cmd.assert().success().stdout(predicate::str::contains(
+        "Prompt has been copied to clipboard.",
     ));
 }
 

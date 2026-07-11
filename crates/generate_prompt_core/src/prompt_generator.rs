@@ -39,12 +39,15 @@ pub fn generate_prompt_with_options(
         .unwrap_or("")
         .to_string();
 
-    let file_path_str = file_path.to_string_lossy();
-
-    if options.include_references && !file_path_str.ends_with(".swift") {
-        return Err(anyhow!(
-            "--include-references is only supported for Swift files"
-        ));
+    if options.include_references {
+        let extension = file_path.extension().and_then(|s| s.to_str()).unwrap_or("");
+        let supports_references = lang_support::for_extension(extension)
+            .is_some_and(|lang| lang.supports_enclosing_type());
+        if !supports_references {
+            return Err(anyhow!(
+                "--include-references is only supported for Swift files"
+            ));
+        }
     }
 
     let base_dir = PathBuf::from(git_root);

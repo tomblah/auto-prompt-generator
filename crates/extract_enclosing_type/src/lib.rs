@@ -1,9 +1,10 @@
 // crates/extract_enclosing_type/src/lib.rs
 
 //
-// Finds the type (class/struct/enum) that encloses the shared TODO marker in a
-// Swift source file.  Uses a tree‑sitter pass first, then falls back to a regex
-// scan if the parser is unavailable or fails.
+// Finds the type (class/struct/enum) that encloses the shared TODO marker.
+// Dispatches on the file's extension via `lang_support`: Swift files use a
+// tree‑sitter pass first, and every language then falls back to its own
+// line-based scan (`LanguageSupport::extract_enclosing_type_name`).
 
 use anyhow::{anyhow, Context, Result};
 use std::fs;
@@ -11,7 +12,7 @@ use std::mem;
 use std::path::Path;
 use tree_sitter::{Node, Parser};
 
-use todo_marker::{TODO_MARKER, TODO_MARKER_WS};
+use todo_marker::TODO_MARKER_WS;
 
 // ---------------------------------------------------------------------------
 //  Parser abstraction
@@ -129,35 +130,30 @@ pub fn extract_enclosing_type(file_path: &Path) -> Result<String> {
 
     let todo_offset = content.find(TODO_MARKER_WS).unwrap_or(content.len());
 
-    // 1️⃣  Try the tree‑sitter path first.
-    if let Some(mut parser) = RealSwiftParser::new() {
-        if let Some(ty) = extract_enclosing_type_with_parser(&content, todo_offset, &mut parser) {
-            return Ok(ty);
+    let extension = file_path.extension().and_then(|s| s.to_str()).unwrap_or("");
+    let language = lang_support::for_extension(extension);
+
+    // 1️⃣  Swift-specific fast path: try the tree‑sitter parser first.
+    if extension.eq_ignore_ascii_case("swift") {
+        if let Some(mut parser) = RealSwiftParser::new() {
+            if let Some(ty) = extract_enclosing_type_with_parser(&content, todo_offset, &mut parser)
+            {
+                return Ok(ty);
+            }
         }
     }
 
-    let swift_lang = lang_support::for_extension("swift");
-
-    let mut last_type: Option<String> = None;
-    for line in content.lines() {
-        if line.contains(TODO_MARKER) {
-            break;
-        }
-        if let Some(name) = swift_lang.and_then(|lang| lang.extract_type_name(line)) {
-            last_type = Some(name);
-        }
+    // 2️⃣  Language-dispatched line scan fallback.
+    if let Some(found) = language.and_then(|lang| lang.extract_enclosing_type_name(&content)) {
+        return Ok(found);
     }
 
     // 3️⃣  Fallback to file name if nothing found.
-    if let Some(found) = last_type {
-        Ok(found)
-    } else {
-        file_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .map(|s| s.to_string())
-            .ok_or_else(|| anyhow!("Unknown"))
-    }
+    file_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| anyhow!("Unknown"))
 }
 
 #[cfg(test)]
