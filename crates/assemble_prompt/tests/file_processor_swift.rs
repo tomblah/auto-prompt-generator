@@ -81,6 +81,30 @@ func myFunction() {
 }
 
 #[test]
+fn test_swift_file_rejects_javascript_enclosing_candidate() {
+    let content = r#"
+function foreignJavaScriptFunction() {
+    return true;
+}
+
+// v
+selected context
+// ^
+
+// TODO: - update behavior
+"#;
+    let path = create_temp_file_with_content(content);
+    let file_name = path.file_name().unwrap().to_str().unwrap();
+    let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
+        .expect("process_file should use Swift candidate rules");
+
+    assert!(!result.contains("// Enclosing function context:"));
+    assert!(!result.contains("function foreignJavaScriptFunction() {"));
+
+    fs::remove_file(&path).expect("Failed to remove temporary file");
+}
+
+#[test]
 fn test_file_not_found() {
     let path = PathBuf::from("non_existent_file.swift");
     let result = process_file_with_processor(
