@@ -6,7 +6,7 @@ use std::fs;
 use std::path::Path;
 
 use lang_support::{extract_generic_identifiers, for_extension};
-use substring_marker_snippet_extractor::FileAnalysis;
+use substring_marker_snippet_extractor::{EnclosingBlockScope, FileAnalysis};
 use todo_marker::{TODO_MARKER, TODO_MARKER_WS};
 
 /// Test-only helper that exercises the Swift type-candidate predicate
@@ -52,13 +52,13 @@ pub fn extract_types_from_file_with_options<P: AsRef<Path>>(
             full_content.clone()
         }
     } else {
-        let analysis = FileAnalysis::new(&full_content);
+        let analysis = FileAnalysis::for_path(&full_content, swift_file.as_ref());
         if analysis.has_markers() {
             let mut filtered = analysis.filtered_content("");
             if !filtered.contains(TODO_MARKER) {
-                let predicate = language.map(|lang| move |line: &str| lang.is_type_candidate(line));
-                let predicate = predicate.as_ref().map(|p| p as &dyn Fn(&str) -> bool);
-                if let Some(enclosing) = analysis.enclosing_block(predicate) {
+                if let Some(enclosing) =
+                    analysis.enclosing_block(EnclosingBlockScope::FunctionsAndTypes)
+                {
                     filtered.push('\n');
                     filtered.push_str(&enclosing);
                 }
@@ -407,9 +407,9 @@ func markedFunction() {\n\
 }\n\
 // ^";
 
-        let analysis = FileAnalysis::new(content);
+        let analysis = FileAnalysis::for_path(content, Path::new("Marked.swift"));
         assert!(analysis
-            .enclosing_block(Some(&swift_type_candidate_line))
+            .enclosing_block(EnclosingBlockScope::FunctionsAndTypes)
             .is_none());
     }
 
@@ -429,8 +429,12 @@ mod objc_tests {
     use super::*;
     use substring_marker_snippet_extractor::extract_enclosing_block_from_content;
 
-    fn enclosing_block_with_type_predicate(content: &str) -> Option<String> {
-        extract_enclosing_block_from_content(content, Some(&swift_type_candidate_line))
+    fn enclosing_objc_block(content: &str) -> Option<String> {
+        extract_enclosing_block_from_content(
+            content,
+            Some("m"),
+            EnclosingBlockScope::FunctionsAndTypes,
+        )
     }
 
     #[test]
@@ -443,7 +447,7 @@ mod objc_tests {
 void anotherFunction() {\n\
     // TODO: - Fix issue\n\
 }";
-        let block = enclosing_block_with_type_predicate(content);
+        let block = enclosing_objc_block(content);
         assert!(block.is_some());
         let block_str = block.unwrap();
         assert!(block_str.contains("- (void)MyObjCMethod"));
@@ -459,7 +463,7 @@ void anotherFunction() {\n\
 void someFunction() {\n\
     // TODO: - Address bug\n\
 }";
-        let block = enclosing_block_with_type_predicate(content);
+        let block = enclosing_objc_block(content);
         assert!(block.is_some());
         let block_str = block.unwrap();
         assert!(block_str.contains("- (void)MyObjCMethod {"));
@@ -514,8 +518,12 @@ mod enclosing_block_characterization_tests {
     use substring_marker_snippet_extractor::extract_enclosing_block_from_content;
     use tempfile::NamedTempFile;
 
-    fn enclosing_block_with_type_predicate(content: &str) -> Option<String> {
-        extract_enclosing_block_from_content(content, Some(&swift_type_candidate_line))
+    fn enclosing_swift_block_with_types(content: &str) -> Option<String> {
+        extract_enclosing_block_from_content(
+            content,
+            Some("swift"),
+            EnclosingBlockScope::FunctionsAndTypes,
+        )
     }
 
     /// Characterizes that extract_types recognizes ObjC split-line declarations
@@ -530,7 +538,11 @@ mod enclosing_block_characterization_tests {
     // TODO: - Do something in ObjC\n\
     NSLog(@\"End\");\n\
 }";
-        let block = enclosing_block_with_type_predicate(content);
+        let block = extract_enclosing_block_from_content(
+            content,
+            Some("m"),
+            EnclosingBlockScope::FunctionsAndTypes,
+        );
         assert!(
             block.is_some(),
             "Should recognize ObjC split-line as a diff candidate"
@@ -551,7 +563,7 @@ class MyEnclosingClass {\n\
     let value = 42\n\
     // TODO: - Implement feature\n\
 }";
-        let block = enclosing_block_with_type_predicate(content);
+        let block = enclosing_swift_block_with_types(content);
         assert!(
             block.is_some(),
             "extract_types should recognize class as a candidate"
@@ -571,7 +583,7 @@ enum MyState {\n\
     case loaded\n\
     // TODO: - Add error case\n\
 }";
-        let block = enclosing_block_with_type_predicate(content);
+        let block = enclosing_swift_block_with_types(content);
         assert!(
             block.is_some(),
             "extract_types should recognize enum as a candidate"
@@ -600,7 +612,7 @@ func sharedFunction() {\n\
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "{}", content).unwrap();
 
-        let local_result = enclosing_block_with_type_predicate(content);
+        let local_result = enclosing_swift_block_with_types(content);
 
         let file_result =
             substring_marker_snippet_extractor::utils::marker_utils::extract_enclosing_block(
@@ -629,7 +641,7 @@ class MyWidget {\n\
         let mut temp_file = NamedTempFile::new().unwrap();
         write!(temp_file, "{}", content).unwrap();
 
-        let local_result = enclosing_block_with_type_predicate(content);
+        let local_result = enclosing_swift_block_with_types(content);
 
         let file_result =
             substring_marker_snippet_extractor::utils::marker_utils::extract_enclosing_block(

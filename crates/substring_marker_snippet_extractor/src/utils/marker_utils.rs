@@ -7,6 +7,8 @@
 use std::fs;
 use std::path::Path;
 
+use lang_support::LanguageSupport;
+
 // ---------------------------------------------------------------------------
 //  Public API – marker filtering
 // ---------------------------------------------------------------------------
@@ -74,6 +76,15 @@ fn is_candidate_line(line: &str) -> bool {
     lang_support::is_function_candidate_any_lang(line)
 }
 
+/// Selects which declaration kinds may provide enclosing context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnclosingBlockScope {
+    /// Match functions and methods only.
+    Functions,
+    /// Match functions, methods, and language-specific type declarations.
+    FunctionsAndTypes,
+}
+
 // ---------------------------------------------------------------------------
 //  FileAnalysis – unified file context for marker and enclosing-block logic
 // ---------------------------------------------------------------------------
@@ -85,20 +96,37 @@ fn is_candidate_line(line: &str) -> bool {
 /// rather than re-implementing gating logic independently.
 pub struct FileAnalysis<'a> {
     content: &'a str,
+    language: Option<&'static dyn LanguageSupport>,
     has_markers: bool,
     todo_idx: Option<usize>,
     todo_inside_markers: bool,
 }
 
 impl<'a> FileAnalysis<'a> {
-    /// Analyse the content once.
+    /// Analyse content whose source language is unknown.
+    ///
+    /// Enclosing function detection falls back to all registered languages.
     pub fn new(content: &'a str) -> Self {
+        Self::with_language(content, None)
+    }
+
+    /// Analyse content using the language resolved from `file_path`.
+    pub fn for_path(content: &'a str, file_path: &Path) -> Self {
+        let language = file_path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .and_then(lang_support::for_extension);
+        Self::with_language(content, language)
+    }
+
+    fn with_language(content: &'a str, language: Option<&'static dyn LanguageSupport>) -> Self {
         let has_markers = file_uses_markers(content);
         let todo_idx = todo_index(content);
         let todo_inside_markers =
             has_markers && todo_idx.is_some_and(|idx| is_todo_inside_markers(content, idx));
         Self {
             content,
+            language,
             has_markers,
             todo_idx,
             todo_inside_markers,
@@ -123,28 +151,23 @@ impl<'a> FileAnalysis<'a> {
         filter_substring_markers(self.content, placeholder)
     }
 
-    /// Extract the enclosing block around the TODO marker, using an optional
-    /// additional candidate predicate.
+    /// Extract the enclosing block around the TODO marker using `scope`.
     ///
     /// Returns `None` if:
     /// - There is no TODO marker in the content
     /// - The TODO is inside markers (gating)
     /// - No candidate line is found before the TODO
     ///
-    /// The `additional_candidate` predicate extends the built-in function/method
-    /// candidates. Pass `None` for function-only matching (assembly path), or
-    /// supply a type-candidate predicate for class/enum matching (extract_types path).
-    pub fn enclosing_block(
-        &self,
-        additional_candidate: Option<&dyn Fn(&str) -> bool>,
-    ) -> Option<String> {
+    /// Known source languages use only their own declaration rules. Content
+    /// without a known language falls back to all-language function matching.
+    pub fn enclosing_block(&self, scope: EnclosingBlockScope) -> Option<String> {
         if !self.has_markers {
             return None;
         }
         if self.todo_inside_markers {
             return None;
         }
-        extract_enclosing_block_from_content(self.content, additional_candidate)
+        extract_enclosing_block_with_language(self.content, self.language, scope)
     }
 }
 
@@ -154,16 +177,24 @@ impl<'a> FileAnalysis<'a> {
 
 /// Extracts the enclosing block around the TODO marker from file content.
 ///
-/// Scans lines before the TODO marker for the last candidate line (function,
-/// cloud function, ObjC method, or diff-candidate heuristic). An optional
-/// `additional_candidate` predicate allows callers to extend which lines count
-/// as candidates (e.g. class/enum declarations for type extraction).
+/// Scans lines before the TODO marker for the last candidate line, using the
+/// supplied source extension and candidate scope.
 ///
 /// Returns the brace-delimited block starting from that candidate, or `None`
 /// if no candidate is found.
 pub fn extract_enclosing_block_from_content(
     content: &str,
-    additional_candidate: Option<&dyn Fn(&str) -> bool>,
+    extension: Option<&str>,
+    scope: EnclosingBlockScope,
+) -> Option<String> {
+    let language = extension.and_then(lang_support::for_extension);
+    extract_enclosing_block_with_language(content, language, scope)
+}
+
+fn extract_enclosing_block_with_language(
+    content: &str,
+    language: Option<&dyn LanguageSupport>,
+    scope: EnclosingBlockScope,
 ) -> Option<String> {
     let todo_idx = todo_index(content)?;
 
@@ -175,8 +206,13 @@ pub fn extract_enclosing_block_from_content(
             || line.trim_start().starts_with('+'))
             && i + 1 < todo_idx
             && lines[i + 1].contains('{');
-        let extra_match = additional_candidate.as_ref().is_some_and(|pred| pred(line));
-        if is_candidate_line(line) || diff_candidate || extra_match {
+        let function_candidate = language.map_or_else(
+            || is_candidate_line(line),
+            |language| language.is_function_candidate(line),
+        );
+        let type_candidate = scope == EnclosingBlockScope::FunctionsAndTypes
+            && language.is_some_and(|language| language.is_type_candidate(line));
+        if function_candidate || diff_candidate || type_candidate {
             candidate_index = Some(i);
         }
     }
@@ -207,20 +243,10 @@ pub fn extract_enclosing_block_from_content(
     Some(extracted_lines.join("\n"))
 }
 
-/// File-path-based wrapper: reads the file, checks marker/TODO gating, then
-/// delegates to `extract_enclosing_block_from_content`.
+/// File-path-based wrapper using function-only matching for the file's language.
 pub fn extract_enclosing_block(file_path: &Path) -> Option<String> {
     let content = fs::read_to_string(file_path).ok()?;
-    if !file_uses_markers(&content) {
-        return None;
-    }
-
-    let todo_idx = todo_index(&content)?;
-    if is_todo_inside_markers(&content, todo_idx) {
-        return None;
-    }
-
-    extract_enclosing_block_from_content(&content, None)
+    FileAnalysis::for_path(&content, file_path).enclosing_block(EnclosingBlockScope::Functions)
 }
 
 #[cfg(test)]
@@ -658,79 +684,100 @@ mod candidate_line_characterization_tests {
 }
 
 #[cfg(test)]
-mod predicate_extension_characterization_tests {
+mod scope_characterization_tests {
     use super::*;
 
-    fn type_candidate_predicate(line: &str) -> bool {
-        lang_support::for_extension("swift").is_some_and(|lang| lang.is_type_candidate(line))
-    }
-
-    /// With no additional predicate, a class declaration is NOT recognized as a
-    /// candidate — only functions/methods are. This is the path used by
+    /// With function-only scope, a class declaration is NOT recognized as a
+    /// candidate. This is the path used by
     /// `assemble_prompt::DefaultFileProcessor`.
     #[test]
-    fn char_class_not_found_without_predicate() {
+    fn char_class_not_found_with_function_scope() {
         let content = "\
 class MyWidget {\n\
     var name: String\n\
     // TODO: - Add initializer\n\
 }";
-        let result = extract_enclosing_block_from_content(content, None);
+        let result = extract_enclosing_block_from_content(
+            content,
+            Some("swift"),
+            EnclosingBlockScope::Functions,
+        );
         assert!(
             result.is_none(),
-            "Without type predicate, class should not be a candidate"
+            "Function-only scope should not match a class"
         );
     }
 
-    /// With the type-candidate predicate, a class declaration IS recognized.
+    /// With function-and-type scope, a class declaration IS recognized.
     /// This is the path used by `extract_types`.
     #[test]
-    fn char_class_found_with_type_predicate() {
+    fn char_class_found_with_type_scope() {
         let content = "\
 class MyWidget {\n\
     var name: String\n\
     // TODO: - Add initializer\n\
 }";
-        let result = extract_enclosing_block_from_content(content, Some(&type_candidate_predicate));
-        assert!(result.is_some(), "With type predicate, class should match");
+        let result = extract_enclosing_block_from_content(
+            content,
+            Some("swift"),
+            EnclosingBlockScope::FunctionsAndTypes,
+        );
+        assert!(result.is_some(), "Type scope should match a class");
         let block = result.unwrap();
         assert!(block.contains("class MyWidget {"));
         assert!(block.contains("// TODO: - Add initializer"));
     }
 
-    /// Enum declarations are only found with the type predicate.
+    /// Enum declarations are only found with the type-enabled scope.
     #[test]
-    fn char_enum_not_found_without_predicate() {
+    fn char_enum_not_found_with_function_scope() {
         let content = "\
 enum MyState {\n\
     case loading\n\
     // TODO: - Add error case\n\
 }";
-        assert!(extract_enclosing_block_from_content(content, None).is_none());
+        assert!(extract_enclosing_block_from_content(
+            content,
+            Some("swift"),
+            EnclosingBlockScope::Functions,
+        )
+        .is_none());
     }
 
     #[test]
-    fn char_enum_found_with_type_predicate() {
+    fn char_enum_found_with_type_scope() {
         let content = "\
 enum MyState {\n\
     case loading\n\
     // TODO: - Add error case\n\
 }";
-        let result = extract_enclosing_block_from_content(content, Some(&type_candidate_predicate));
+        let result = extract_enclosing_block_from_content(
+            content,
+            Some("swift"),
+            EnclosingBlockScope::FunctionsAndTypes,
+        );
         assert!(result.is_some());
         assert!(result.unwrap().contains("enum MyState {"));
     }
 
-    /// Functions are found by both paths (no predicate needed).
+    /// Functions are found by both scopes.
     #[test]
-    fn char_function_found_with_and_without_predicate() {
+    fn char_function_found_with_both_scopes() {
         let content = "\
 func doWork() {\n\
     let x = 42\n\
     // TODO: - Fix calculation\n\
 }";
-        let without = extract_enclosing_block_from_content(content, None);
-        let with = extract_enclosing_block_from_content(content, Some(&type_candidate_predicate));
+        let without = extract_enclosing_block_from_content(
+            content,
+            Some("swift"),
+            EnclosingBlockScope::Functions,
+        );
+        let with = extract_enclosing_block_from_content(
+            content,
+            Some("swift"),
+            EnclosingBlockScope::FunctionsAndTypes,
+        );
         assert!(without.is_some());
         assert!(with.is_some());
         assert_eq!(
@@ -741,8 +788,8 @@ func doWork() {\n\
 
     /// When both a function and a class precede the TODO, the last candidate wins.
     /// The algorithm picks the last candidate LINE before the TODO regardless of
-    /// brace closure. Without type predicate: last function is the candidate.
-    /// With type predicate: last of (function OR type) is the candidate.
+    /// brace closure. Function-only scope selects the last function; type-enabled
+    /// scope selects the last function or type.
     #[test]
     fn char_last_candidate_wins_divergence() {
         let content = "\
@@ -753,8 +800,16 @@ class LateClass {\n\
     var b = 2\n\
     // TODO: - Do something\n\
 }";
-        let without = extract_enclosing_block_from_content(content, None);
-        let with = extract_enclosing_block_from_content(content, Some(&type_candidate_predicate));
+        let without = extract_enclosing_block_from_content(
+            content,
+            Some("swift"),
+            EnclosingBlockScope::Functions,
+        );
+        let with = extract_enclosing_block_from_content(
+            content,
+            Some("swift"),
+            EnclosingBlockScope::FunctionsAndTypes,
+        );
 
         // Without: earlyFunc is still the last function-candidate line before TODO.
         // The algorithm extracts the brace block starting from that candidate.
@@ -771,7 +826,7 @@ class LateClass {\n\
         assert!(with.is_some());
         assert!(
             with.as_ref().unwrap().contains("class LateClass {"),
-            "Type predicate makes class the last candidate"
+            "Type-enabled scope makes class the last candidate"
         );
     }
 
@@ -784,8 +839,16 @@ class Container {\n\
         // TODO: - Implement\n\
     }\n\
 }";
-        let without = extract_enclosing_block_from_content(content, None);
-        let with = extract_enclosing_block_from_content(content, Some(&type_candidate_predicate));
+        let without = extract_enclosing_block_from_content(
+            content,
+            Some("swift"),
+            EnclosingBlockScope::Functions,
+        );
+        let with = extract_enclosing_block_from_content(
+            content,
+            Some("swift"),
+            EnclosingBlockScope::FunctionsAndTypes,
+        );
 
         // Both should find innerMethod (last candidate before TODO in both modes)
         assert!(without.is_some());
@@ -829,21 +892,25 @@ mod file_analysis_tests {
     fn enclosing_block_returns_none_without_markers() {
         let content = "func doWork() {\n    // TODO: - Fix\n}\n";
         let analysis = FileAnalysis::new(content);
-        assert!(analysis.enclosing_block(None).is_none());
+        assert!(analysis
+            .enclosing_block(EnclosingBlockScope::Functions)
+            .is_none());
     }
 
     #[test]
     fn enclosing_block_returns_none_when_todo_inside_markers() {
         let content = "// v\nfunc f() {\n    // TODO: - Inside\n}\n// ^\n";
         let analysis = FileAnalysis::new(content);
-        assert!(analysis.enclosing_block(None).is_none());
+        assert!(analysis
+            .enclosing_block(EnclosingBlockScope::Functions)
+            .is_none());
     }
 
     #[test]
     fn enclosing_block_finds_function_outside_markers() {
         let content = "// v\nlet x = 1\n// ^\nfunc doWork() {\n    // TODO: - Fix\n}\n";
         let analysis = FileAnalysis::new(content);
-        let block = analysis.enclosing_block(None);
+        let block = analysis.enclosing_block(EnclosingBlockScope::Functions);
         assert!(block.is_some());
         assert!(block.unwrap().contains("func doWork()"));
     }
@@ -852,10 +919,30 @@ mod file_analysis_tests {
     fn language_unknown_analysis_uses_any_language_function_fallback() {
         let content = "// v\nlet x = 1\n// ^\nfunction doWork() {\n    // TODO: - Fix\n}\n";
         let analysis = FileAnalysis::new(content);
-        let block = analysis.enclosing_block(None);
+        let block = analysis.enclosing_block(EnclosingBlockScope::Functions);
 
         assert!(block.is_some());
         assert!(block.unwrap().contains("function doWork()"));
+    }
+
+    #[test]
+    fn known_language_rejects_foreign_function_candidate() {
+        let content = "// v\nlet x = 1\n// ^\nfunc foreignSwift() {\n    // TODO: - Fix\n}\n";
+        let analysis = FileAnalysis::for_path(content, Path::new("handler.js"));
+
+        assert!(analysis
+            .enclosing_block(EnclosingBlockScope::Functions)
+            .is_none());
+    }
+
+    #[test]
+    fn path_language_resolution_is_case_insensitive() {
+        let content = "// v\nlet x = 1\n// ^\nfunc doWork() {\n    // TODO: - Fix\n}\n";
+        let analysis = FileAnalysis::for_path(content, Path::new("Worker.SWIFT"));
+
+        assert!(analysis
+            .enclosing_block(EnclosingBlockScope::Functions)
+            .is_some());
     }
 
     #[test]

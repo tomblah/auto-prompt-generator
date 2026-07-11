@@ -81,7 +81,7 @@ func myFunction() {
 }
 
 #[test]
-fn test_swift_file_currently_accepts_javascript_enclosing_candidate() {
+fn test_swift_file_rejects_javascript_enclosing_candidate() {
     let content = r#"
 function foreignJavaScriptFunction() {
     return true;
@@ -96,10 +96,10 @@ selected context
     let path = create_temp_file_with_content(content);
     let file_name = path.file_name().unwrap().to_str().unwrap();
     let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
-        .expect("process_file should preserve the current cross-language behavior");
+        .expect("process_file should use Swift candidate rules");
 
-    assert!(result.contains("// Enclosing function context:"));
-    assert!(result.contains("function foreignJavaScriptFunction() {"));
+    assert!(!result.contains("// Enclosing function context:"));
+    assert!(!result.contains("function foreignJavaScriptFunction() {"));
 
     fs::remove_file(&path).expect("Failed to remove temporary file");
 }

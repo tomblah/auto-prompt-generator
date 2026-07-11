@@ -81,7 +81,7 @@ function myFunction() {
 }
 
 #[test]
-fn test_js_file_currently_accepts_swift_enclosing_candidate() {
+fn test_js_file_rejects_swift_enclosing_candidate() {
     let content = r#"
 func foreignSwiftFunction() {
     let value = 1
@@ -96,10 +96,10 @@ selected context
     let path = create_temp_file_with_content(content);
     let file_name = path.file_name().unwrap().to_str().unwrap();
     let result = process_file_with_processor(&DefaultFileProcessor, &path, Some(file_name))
-        .expect("process_file should preserve the current cross-language behavior");
+        .expect("process_file should use JavaScript candidate rules");
 
-    assert!(result.contains("// Enclosing function context:"));
-    assert!(result.contains("func foreignSwiftFunction() {"));
+    assert!(!result.contains("// Enclosing function context:"));
+    assert!(!result.contains("func foreignSwiftFunction() {"));
 
     fs::remove_file(&path).expect("Failed to remove temporary file");
 }
