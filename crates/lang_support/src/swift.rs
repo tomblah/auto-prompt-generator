@@ -10,6 +10,7 @@
 use super::LanguageSupport;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use todo_marker::TODO_MARKER;
 
 pub(super) struct SwiftSupport;
 pub(super) const SWIFT: SwiftSupport = SwiftSupport;
@@ -121,6 +122,23 @@ impl LanguageSupport for SwiftSupport {
             .and_then(|caps| caps.get(2))
             .map(|m| m.as_str().to_string())
     }
+
+    fn supports_enclosing_type(&self) -> bool {
+        true
+    }
+
+    fn extract_enclosing_type_name(&self, content: &str) -> Option<String> {
+        let mut last_type: Option<String> = None;
+        for line in content.lines() {
+            if line.contains(TODO_MARKER) {
+                break;
+            }
+            if let Some(name) = self.extract_type_name(line) {
+                last_type = Some(name);
+            }
+        }
+        last_type
+    }
 }
 
 #[cfg(test)]
@@ -199,5 +217,41 @@ mod tests {
     #[test]
     fn extract_type_name_none_for_func() {
         assert_eq!(SWIFT.extract_type_name("func doSomething() {"), None);
+    }
+
+    #[test]
+    fn swift_supports_enclosing_type() {
+        assert!(SWIFT.supports_enclosing_type());
+    }
+
+    #[test]
+    fn enclosing_type_returns_last_type_before_marker() {
+        let content = "\
+class MyAwesomeClass {}
+struct HelperStruct {
+    // TODO: - Implement something
+}";
+        assert_eq!(
+            SWIFT.extract_enclosing_type_name(content),
+            Some("HelperStruct".to_string())
+        );
+    }
+
+    #[test]
+    fn enclosing_type_ignores_types_after_marker() {
+        let content = "\
+class EarlyClass {}
+// TODO: - Do something
+struct LateStruct {}";
+        assert_eq!(
+            SWIFT.extract_enclosing_type_name(content),
+            Some("EarlyClass".to_string())
+        );
+    }
+
+    #[test]
+    fn enclosing_type_none_when_no_type_precedes_marker() {
+        let content = "func doSomething() {}\n// TODO: - Fix something";
+        assert_eq!(SWIFT.extract_enclosing_type_name(content), None);
     }
 }
