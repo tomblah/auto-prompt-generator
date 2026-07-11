@@ -72,6 +72,29 @@ fn test_generate_prompt_include_references_error_for_non_swift() {
     ));
 }
 
+/// --- Test: Include References Extension Case Sensitivity ---
+/// Characterizes how the `--include-references` gate treats an uppercase
+/// `.SWIFT` extension. The current gate is a case-sensitive `.swift` string
+/// check, so an uppercase extension is rejected as non-Swift.
+#[test]
+#[cfg(unix)]
+fn test_generate_prompt_include_references_uppercase_swift_extension() {
+    let fake_git_root = TempDir::new().unwrap();
+    let fake_git_root_path = fake_git_root.path().to_str().unwrap();
+    let todo_file = format!("{}/TODO.SWIFT", fake_git_root_path);
+    fs::write(&todo_file, "class MyType {}\n   // TODO: - Fix bug").unwrap();
+
+    let mut cmd = Command::cargo_bin("generate_prompt").unwrap();
+    cmd.arg("--include-references")
+        .env("GET_GIT_ROOT", fake_git_root_path)
+        .env("GET_INSTRUCTION_FILE", &todo_file)
+        .env("DISABLE_PBCOPY", "1");
+
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "--include-references is only supported for Swift files",
+    ));
+}
+
 /// --- Test: Normal Mode ---
 /// Verifies that when not in singular mode the prompt includes the instruction
 /// plus the definitions (and that the clipboard copy occurs).
